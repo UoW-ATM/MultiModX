@@ -1,0 +1,4 @@
+[submodule "tactical_evaluator"]
+	path = tactical_evaluator
+	url = https://github.com/UoW-ATM/Mercury.git
+	branch = multimodx
