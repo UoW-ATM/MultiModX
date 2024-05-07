@@ -2,3 +2,6 @@
 	path = tactical_evaluator
 	url = https://github.com/UoW-ATM/Mercury.git
 	branch = multimodx
+[submodule "libs/uow_tool_belt"]
+	path = libs/uow_tool_belt
+	url = https://github.com/UoW-ATM/uow_tool_belt.git
