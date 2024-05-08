@@ -194,10 +194,10 @@ class Network:
         if len(initial_nodes) == 0:
             # Origin not in the layers considered of the network
             print(f"Origin {origin} is not in layers of network --> Path not possible")
-            return paths
+            return paths, 0
         if len(destination_nodes) == 0:
             print(f"Destination {destination} is not in layers of network  --> Path not possible")
-            return paths
+            return paths, 0
 
         # Priority queue to store flights to be explored, ordered by total travel time
         # Add first nodes to start exploring the graph
@@ -270,7 +270,8 @@ class Network:
                                             # if not check_dominated(new_path, paths, dict_best_w_connections):
                                             heapq.heappush(pq, new_path)
 
-                if (allow_transitions_layers and
+                if (len(p.path) > 0 and
+                        allow_transitions_layers and
                         self.dict_transitions.get((p.current_layer_id, p.current_node)) is not None):
                     # Check if we can change layer from p.current_node in layer p.current_layer_id
                     for pt in self.dict_transitions.get((p.current_layer_id, p.current_node)):
