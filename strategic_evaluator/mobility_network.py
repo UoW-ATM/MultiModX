@@ -20,7 +20,7 @@ class Service:
             setattr(self, key, value)
 
     def __repr__(self):
-        return f"Service {self.id}: {self.origin}"
+        return f"Service {self.id}: {self.origin} -> {self.destination}"
         # return f"Service {self.id}: {self.origin} -> {self.destination} {self.departure_time} -> {self.arrival_time} {self.duration}"
 
 
