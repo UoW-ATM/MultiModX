@@ -8,7 +8,7 @@ from strategic_evaluator.mobility_network_particularities import (mct_air_networ
                                                                   fastest_air_time_heuristic, initialise_air_network)
 
 
-def create_example_air_layer(path_fs, path_airports):
+def create_example_air_layer(path_fs, path_airports, keep_only_fastest_service=False):
     # Read air layer
     # Read schedules
     fs = pd.read_parquet(path_fs)
@@ -46,26 +46,50 @@ def create_example_air_layer(path_fs, path_airports):
     fs['service'] = fs.apply(lambda x: Service(x.nid, x.origin, x.destination, x.sobt, x.sibt, 0,
                                                x.airline, x.airline, gcdistance=x.gcdistance), axis=1)
 
+    if keep_only_fastest_service > 0:
+        fs['duration'] = None
+        fs['duration'] = fs.apply(lambda x: x.arrival_time - x.departure_time, axis=1)
+        df_s_min_duration = fs.groupby(['origin', 'destination'])['duration'].min().reset_index()
+        fs = pd.merge(df_s_min_duration, fs, on=['origin', 'destination', 'duration'],
+                               how='inner')
+
+    if keep_only_fastest_service == 2:
+        # Keep only one fastest regardless of airline/alliance
+        fs.drop_duplicates(subset=['origin', 'destination'], keep='first', inplace=True)
+
+
     # Create network
     anl = NetworkLayer('air',
                        fs[['service_id', 'origin', 'destination', 'departure_time', 'arrival_time', 'cost', 'provider',
-                           'alliance', 'service']],
+                           'alliance', 'service']].copy(),
                        dict_mct, regions_access=regions_access_air,
                        custom_mct_func=mct_air_network,
                        custom_heuristic_func=fastest_air_time_heuristic,
                        custom_initialisation=initialise_air_network,
-                       airport_coordinates=airport_data[['icao_id', 'lat', 'lon']].copy())
+                       airport_coordinates=airport_data[['icao_id', 'lat', 'lon']].copy(),
+                       keep_only_fastest_service=keep_only_fastest_service)
 
     return anl
 
 def example_only_air_layer(path_fs, path_airports):
-    anl = create_example_air_layer(path_fs, path_airports)
+    anl = create_example_air_layer(path_fs, path_airports, keep_only_fastest_service=2)
 
     network = Network(layers=[anl])
 
     # Example of finding 100 paths between Madrid and Barcelona region
     start_time = time.time()
-    paths, n_explored = network.find_paths(origin='Madrid', destination='Barcelona', npaths=100, max_connections=2)
+    paths, n_explored = network.find_paths(origin='LEMD', destination='LEBL', npaths=100, max_connections=2)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    print("Paths computed in:", elapsed_time, "seconds, exploring:", n_explored, "nodes and finding",
+          len(paths), "paths")
+    print(paths, "\n")
+
+    # Example of finding 100 paths between Madrid and Barcelona region
+    start_time = time.time()
+    paths, n_explored = network.find_paths(origin='LEMD', destination='LEBL', npaths=100, max_connections=2,
+                                           consider_times_constraints=False, consider_operators_connections=False)
     end_time = time.time()
     elapsed_time = end_time - start_time
 
@@ -168,7 +192,7 @@ def example_only_rail_layer(stops_times_path, date_considered = '09/11/2014'):
 
     # Example 100 paths between Barcelona and Madrid region
     start_time = time.time()
-    paths, n_explored = n.find_paths(origin='Barcelona', destination='Madrid', npaths=100, max_connections=2)
+    paths, n_explored = network.find_paths(origin='Barcelona', destination='Madrid', npaths=100, max_connections=2)
     end_time = time.time()
     elapsed_time = end_time - start_time
 
