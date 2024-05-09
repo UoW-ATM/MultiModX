@@ -4,3 +4,9 @@ strategic_evaluator/__pycache__/
 data_analysis/.ipynb_checkpoints/
 
 tests/
+
+.ipynb_checkpoints/
+
+.idea/
+
+__pycache__/

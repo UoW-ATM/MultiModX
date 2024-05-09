@@ -1,0 +1,11 @@
+Instructions to clean notebooks before pushing them in repository (if output is not needed, avoid conflict due to execution):
+
+
+Usage should be for in-place operation:
+
+jupyter nbconvert --clear-output --inplace my_notebook.ipynb
+
+Or to save to another file called my_notebook_no_out.ipynb:
+
+jupyter nbconvert --clear-output \
+  --to notebook --output=my_notebook_no_out my_notebook.ipynb
