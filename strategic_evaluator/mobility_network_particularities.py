@@ -47,4 +47,5 @@ def initialise_air_network(obj):
     obj.distance_origin_destination = {}
     for s in obj.df_services.service:
         if (s.origin, s.destination) not in obj.distance_origin_destination.keys():
-            obj.distance_origin_destination[(s.origin, s.destination)] = s.gcdistance
+            if s.gcdistance is not None:
+                obj.distance_origin_destination[(s.origin, s.destination)] = s.gcdistance

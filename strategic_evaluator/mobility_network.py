@@ -223,8 +223,9 @@ class Network:
             p = heapq.heappop(pq)
             n_nodes_explored += 1
 
-            # Check if target node is reached
-            if p.current_node in dict_destination_nodes_layers[p.current_layer_id]:
+            # Check if target node is reached --> first if current node layer is in destination layers
+            if ((p.current_layer_id in dict_destination_nodes_layers.keys()) and
+                    (p.current_node in dict_destination_nodes_layers[p.current_layer_id])):
                 egress_time = self.dict_layers[p.current_layer_id].get_egress_time(p.current_node, destination)
                 p.egress_time = egress_time
                 p.total_travel_time += egress_time
