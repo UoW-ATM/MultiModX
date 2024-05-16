@@ -259,7 +259,7 @@ def read_origin_demand_matrix(path_demand):
     return df_demand
 
 
-def process_outcome(dict_paths):
+def process_outcome(dict_paths, compute_simplified=False):
     options = []
     origins = []
     destinations = []
@@ -332,17 +332,23 @@ def process_outcome(dict_paths):
                 if ln > 0:
                     dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)].append(
                         p.mcts[ln - 1].total_seconds() / 60)
-                    dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)].append(
-                        (s.departure_time - prev_arrival_time).total_seconds() / 60)
-                    dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)].append(
-                        (s.departure_time - prev_arrival_time).total_seconds() / 60 -
-                        p.mcts[ln - 1].total_seconds() / 60)
-                    if total_waiting is None:
-                        total_waiting = (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
-                            ln - 1].total_seconds() / 60
+
+                    if compute_simplified:
+                        dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)].append(None)
+                        dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)].append(None)
+                        total_waiting = None
                     else:
-                        total_waiting += (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
-                            ln - 1].total_seconds() / 60
+                        dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)].append(
+                            (s.departure_time - prev_arrival_time).total_seconds() / 60)
+                        dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)].append(
+                            (s.departure_time - prev_arrival_time).total_seconds() / 60 -
+                            p.mcts[ln - 1].total_seconds() / 60)
+                        if total_waiting is None:
+                            total_waiting = (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
+                                ln - 1].total_seconds() / 60
+                        else:
+                            total_waiting += (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
+                                ln - 1].total_seconds() / 60
 
                 dict_legs_info['cost_' + str(ln)].append(s.cost)
                 dict_legs_info['emissions_' + str(ln)].append(None)
@@ -394,7 +400,7 @@ def process_outcome(dict_paths):
     return df
 
 
-def compute_paths(od_paths, network, n_path=10, max_connections=2, allow_mixed_operators=False):
+def compute_paths(od_paths, network, n_path=10, max_connections=2, allow_mixed_operators=False, compute_simplified=False):
     dict_paths = {}
     start_time = time.time()
 
@@ -404,7 +410,8 @@ def compute_paths(od_paths, network, n_path=10, max_connections=2, allow_mixed_o
         same_operators = not allow_mixed_operators
         paths, n_explored = network.find_paths(origin=od.origin, destination=od.destination, npaths=n_path,
                                                max_connections=max_connections,
-                                               consider_operators_connections=same_operators)
+                                               consider_operators_connections=same_operators,
+                                               consider_times_constraints=not compute_simplified)
         dict_paths[(od.origin, od.destination)] = paths
         n_explored_total += n_explored
         end_time_od = time.time()
@@ -434,7 +441,8 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
                                    network,
                                    n_path=n_path,
                                    max_connections=max_connections,
-                                   allow_mixed_operators=allow_mixed_operators)
+                                   allow_mixed_operators=allow_mixed_operators,
+                                   compute_simplified=compute_simplified)
     else:
         # Parallel computation of paths between o-d pairs
         prev_i = 0
@@ -451,10 +459,10 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
             d = od_paths.iloc[prev_i:i].copy().reset_index(drop=True)
 
             if nr == 0:
-                path_computation_param = [[d, network, n_path, max_connections, allow_mixed_operators]]
+                path_computation_param = [[d, network, n_path, max_connections, allow_mixed_operators, compute_simplified]]
             else:
                 if len(d) > 0:
-                    path_computation_param.append([d, network, n_path, max_connections, allow_mixed_operators])
+                    path_computation_param.append([d, network, n_path, max_connections, allow_mixed_operators, compute_simplified])
 
             prev_i = i
             i = i + n_od_per_section
@@ -472,7 +480,7 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
         for dictionary in res:
             dict_paths.update(dictionary)
 
-    df_paths = process_outcome(dict_paths)
+    df_paths = process_outcome(dict_paths, compute_simplified=compute_simplified)
     print("In total", len(df_paths), " paths computed")
     return df_paths
 
