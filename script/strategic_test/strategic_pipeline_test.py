@@ -317,10 +317,10 @@ def process_outcome(dict_paths):
                 dict_legs_info['destination_' + str(ln)].append(s.destination)
                 dict_legs_info['provider_' + str(ln)].append(s.provider)
                 dict_legs_info['alliance_' + str(ln)].append(s.alliance)
-                if p.layers_used[ln - 1] != prev_mode:
-                    prev_mode = p.layers_used[ln - 1]
+                if p.layers_used[ln] != prev_mode:
+                    prev_mode = p.layers_used[ln]
                     n_modes += 1
-                dict_legs_info['mode_' + str(ln)].append(p.layers_used[ln - 1])
+                dict_legs_info['mode_' + str(ln)].append(p.layers_used[ln])
                 dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
                 dict_legs_info['arrival_time_' + str(ln)].append(s.arrival_time)
                 dict_legs_info['travel_time_' + str(ln)].append(s.duration.total_seconds() / 60)
@@ -518,5 +518,4 @@ if __name__ == '__main__':
     # TODO: heuristic on rail to speed up search
     # TODO: factor of worsening w.r.t. fastest
     # TODO: simplify rail layer to find graph of alternatives regardless of services times
-    # TODO: multimodal layer identification check
 
