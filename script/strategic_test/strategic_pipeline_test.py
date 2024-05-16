@@ -264,6 +264,8 @@ def process_outcome(dict_paths):
     nservices = []
     n_modes_p = []
     total_waiting_p = []
+    total_cost_p = []
+    total_emissions_p = []
 
     n_legs = 0
     for dp in dict_paths.values():
@@ -363,14 +365,18 @@ def process_outcome(dict_paths):
 
             n_modes_p.append(n_modes)
             total_waiting_p.append(total_waiting)
+            total_cost_p.append(None)
+            total_emissions_p.append(None)
 
             option += 1
 
     dict_it = {'origin': origins,
                'destination': destinations,
                'option': options,
-               'total_travel_time': total_travel_time,
                'nservices': nservices,
+               'total_travel_time': total_travel_time,
+               'total_cost': total_cost_p,
+               'total_emissions': total_emissions_p,
                'total_waiting_time': total_waiting_p,
                'nmodes': n_modes_p,
                'access_time': access,
@@ -493,6 +499,9 @@ if __name__ == '__main__':
     if args.n_proc is not None:
         pc = int(args.n_proc)
 
+    if args.compute_simplified:
+        args.allow_mixed_operators = True
+
     df_paths = run(network_paths_config['network_definition'],
                    network_paths_config['demand']['demand'], pc=pc, allow_mixed_operators=args.allow_mixed_operators,
                    n_path=int(args.num_paths), max_connections=int(args.max_connections),
@@ -509,3 +518,5 @@ if __name__ == '__main__':
     # TODO: heuristic on rail to speed up search
     # TODO: factor of worsening w.r.t. fastest
     # TODO: simplify rail layer to find graph of alternatives regardless of services times
+    # TODO: multimodal layer identification check
+
