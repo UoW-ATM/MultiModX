@@ -1,6 +1,9 @@
 from datetime import timedelta
 
 
+def mct_rail_network(*args, **kwargs):
+    return timedelta(minutes=10)
+
 def mct_air_network(obj, service_from, service_to):
     if service_from.destination != service_to.origin:
         # Something wrong, destination previous flight should be same as origin next one
