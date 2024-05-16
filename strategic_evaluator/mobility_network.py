@@ -21,7 +21,8 @@ class Service:
 
     def __repr__(self):
         return f"Service {self.id}: {self.origin} -> {self.destination}"
-        # return f"Service {self.id}: {self.origin} -> {self.destination} {self.departure_time} -> {self.arrival_time} {self.duration}"
+        # return f"Service {self.id}: {self.origin} -> {self.destination}
+        # {self.departure_time} -> {self.arrival_time} {self.duration}"
 
 
 class NetworkLayer:
@@ -303,7 +304,7 @@ class Network:
                         self.dict_transitions.get((p.current_layer_id, p.current_node)) is not None):
                     # Check if we can change layer from p.current_node in layer p.current_layer_id
                     # We already have some elements in the path (len(p.path)>0), otherwise we would be
-                    # transitioning accross layers without even moving (e.g. doing door-to-LEBL and then LEBL-Sants
+                    # transitioning accross layers without even moving (e.g. doing door-to-LEBL and then LEBL-Sants)
                     # Transitions are allowed accross layers and the current node has possible transitions
                     # defined in ground mobility accross layers.
 

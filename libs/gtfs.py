@@ -5,7 +5,7 @@ def get_stop_times_on_date(date, calendar, calendar_dates, trips, stop_times, dr
     day_name_of_week = date.strftime('%A').lower()
 
     active_service_ids = set(calendar[(calendar['start_date'] <= date) & (calendar['end_date'] >= date) &
-                                       (calendar[day_name_of_week] == 1)]['service_id'])
+                                      (calendar[day_name_of_week] == 1)]['service_id'])
 
     # Adjust Service IDs Using Calendar Dates
     exception_dates = calendar_dates[calendar_dates['date'] == date]

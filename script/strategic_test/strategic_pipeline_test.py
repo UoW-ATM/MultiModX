@@ -1,6 +1,3 @@
-import sys
-sys.path.insert(1, '../..')
-
 import time
 from pathlib import Path
 import argparse
@@ -9,10 +6,13 @@ import pandas as pd
 from itertools import combinations
 import multiprocessing as mp
 
+import sys
+sys.path.insert(1, '../..')
+
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
                                                                   initialise_air_network, mct_rail_network)
-from libs.gtfs import  get_stop_times_on_date
+from libs.gtfs import get_stop_times_on_date
 
 
 def create_region_access_dict(df_ra_air):
@@ -57,7 +57,7 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     # Create Services for flights (one per flight in the dataframe)
     df_fs['cost'] = 0
     df_fs['service'] = df_fs.apply(lambda x: Service(x.service_id, x.origin, x.destination, x.sobt, x.sibt,  x.cost,
-                                               x.provider, x.alliance, gcdistance=x.gcdistance), axis=1)
+                                                     x.provider, x.alliance, gcdistance=x.gcdistance), axis=1)
     df_fs.rename(columns={'sobt': 'departure_time', 'sibt': 'arrival_time'}, inplace=True)
 
     if keep_only_fastest_service > 0:
@@ -69,7 +69,6 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     if keep_only_fastest_service == 2:
         # Keep only one fastest regardless of airline/alliance
         df_fs.drop_duplicates(subset=['origin', 'destination'], keep='first', inplace=True)
-
 
     # Create network
     anl = NetworkLayer('air',
@@ -155,7 +154,6 @@ def create_networks(path_network_dict, compute_simplified=False):
     df_ra = None
     df_transitions = None
     layers = []
-    layers_simp = []
     network = None
 
     if 'regions_access' in path_network_dict.keys():
@@ -360,7 +358,7 @@ def process_outcome(dict_paths):
                     dict_legs_info['mct_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['connecting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['waiting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
-                dict_legs_info['cost_' + str(lni)].append(s.cost)
+                dict_legs_info['cost_' + str(lni)].append(None)
                 dict_legs_info['emissions_' + str(lni)].append(None)
 
             n_modes_p.append(n_modes)
@@ -500,12 +498,13 @@ if __name__ == '__main__':
                    n_path=int(args.num_paths), max_connections=int(args.max_connections),
                    compute_simplified=args.compute_simplified)
 
-    df_paths.to_csv(Path(network_paths_config['output']['output_folder']) / network_paths_config['output']['output_df_file'])
-
+    df_paths.to_csv(Path(network_paths_config['output']['output_folder']) /
+                    network_paths_config['output']['output_df_file'])
 
     # Improvements
     # TODO: day in rail
-    # TODO: all direct services to be provided (note that now it might find all direct air before rail, even if rail shorter, to check why)
+    # TODO: all direct services to be provided (note that now it might find all direct air before rail,
+    #       even if rail shorter, to check why)
     # TODO: don't change trains that go to the same destination on the same route
     # TODO: heuristic on rail to speed up search
     # TODO: factor of worsening w.r.t. fastest
