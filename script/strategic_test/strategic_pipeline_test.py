@@ -10,7 +10,7 @@ from itertools import combinations
 
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
-                                                                  initialise_air_network)
+                                                                  initialise_air_network, mct_rail_network)
 from libs.gtfs import  get_stop_times_on_date
 
 
@@ -145,7 +145,8 @@ def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_cons
                                     columns=['service_id', 'origin', 'destination', 'departure_time', 'arrival_time',
                                              'cost', 'provider', 'alliance', 'service'])
 
-    nl_rail = NetworkLayer('rail', rail_services_df, regions_access=regions_access_rail)
+    nl_rail = NetworkLayer('rail', rail_services_df, regions_access=regions_access_rail,
+                           custom_mct_func=mct_rail_network)
     return nl_rail
 
 
@@ -204,11 +205,12 @@ def create_networks(path_network_dict, compute_simplified=False):
         df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
         df_calendar_dates = pd.read_csv(Path(path_network_dict['rail_network']['gtfs']) / 'calendar_dates.txt')
         df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
-        get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
+        df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
         df_stops_considered = None
         if 'rail_stations_considered' in path_network_dict['rail_network'].keys():
             df_stops_considered = pd.read_csv(Path(path_network_dict['rail_network']['rail_stations_considered']))
+            df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)]
 
         if 'regions_access' in path_network_dict.keys():
             df_ra = pd.read_csv(Path(path_network_dict['regions_access']['regions_access']))
