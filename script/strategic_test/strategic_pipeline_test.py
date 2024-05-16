@@ -414,9 +414,8 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
     print("Paths computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
 
     df_paths = process_outcome(dict_paths)
-    df_paths.to_csv('./test_paths.csv')
-
-    print(df_paths)
+    print("In total",len(df_paths)," paths computed in:", elapsed_time)
+    return df_paths
 
 
 
@@ -426,7 +425,7 @@ if __name__ == '__main__':
     parser.add_argument('-tf', '--toml_file', help='TOML defining the network', required=True)
     parser.add_argument('-pc', '--n_proc', help='Number of processors', required=False)
     parser.add_argument('-df', '--demand_file', help='Pax demand file', required=False)
-    parser.add_argument('-mo', '--allow_mixed_operators', help='Force same operator',
+    parser.add_argument('-mo', '--allow_mixed_operators', help='Allow mix operators',
                         required=False, action='store_true')
     parser.add_argument('-np', '--num_paths', help='Number of paths to find', required=False, default=50)
     parser.add_argument('-mc', '--max_connections', help='Number of connections allowed', required=False,
@@ -447,7 +446,10 @@ if __name__ == '__main__':
     if args.n_proc is not None:
         pc = int(args.n_proc)
 
-    run(network_paths_config['network_definition'],
-        network_paths_config['demand']['demand'], pc=pc, allow_mixed_operators=args.allow_mixed_operators,
-        n_path=int(args.num_paths), max_connections=int(args.max_connections), compute_simplified=args.compute_simplified)
+    df_paths = run(network_paths_config['network_definition'],
+                   network_paths_config['demand']['demand'], pc=pc, allow_mixed_operators=args.allow_mixed_operators,
+                   n_path=int(args.num_paths), max_connections=int(args.max_connections),
+                   compute_simplified=args.compute_simplified)
+
+    df_paths.to_csv(Path(network_paths_config['output']['output_folder']) / network_paths_config['output']['output_df_file'])
 

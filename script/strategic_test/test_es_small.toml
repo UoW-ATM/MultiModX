@@ -17,3 +17,4 @@
 
 [output]
 	output_folder = "../../data/example_strategic/output/"
+    output_df_file = "df_paths.csv"
