@@ -11,6 +11,7 @@ from itertools import combinations
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
                                                                   initialise_air_network)
+from libs.gtfs import  get_stop_times_on_date
 
 
 def create_region_access_dict(df_ra_air):
@@ -154,7 +155,6 @@ def create_networks(path_network_dict, compute_simplified=False):
     layers = []
     layers_simp = []
     network = None
-    network_simp = None
 
     if 'regions_access' in path_network_dict.keys():
         df_ra = pd.read_csv(Path(path_network_dict['regions_access']['regions_access']))
@@ -186,15 +186,26 @@ def create_networks(path_network_dict, compute_simplified=False):
             if len(df_ra_air) == 0:
                 df_ra_air = None
 
-        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air)
+        only_fastest = 0
+        if compute_simplified:
+            only_fastest = 2
+
+        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air, keep_only_fastest_service=only_fastest)
         layers += [air_layer]
 
-        if compute_simplified:
-            air_layer_simp = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air, keep_only_fastest_service=2)
-            layers_simp += [air_layer_simp]
 
     if 'rail_network' in path_network_dict.keys():
+        # TODO: fix rail dates
+        date_rail = '20230503'
+        date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
         df_stop_times = pd.read_csv(Path(path_network_dict['rail_network']['gtfs']) / 'stop_times.txt')
+        df_trips = pd.read_csv(Path(path_network_dict['rail_network']['gtfs']) / 'trips.txt')
+        df_calendar = pd.read_csv(Path(path_network_dict['rail_network']['gtfs']) / 'calendar.txt')
+        df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
+        df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
+        df_calendar_dates = pd.read_csv(Path(path_network_dict['rail_network']['gtfs']) / 'calendar_dates.txt')
+        df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
+        get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
         df_stops_considered = None
         if 'rail_stations_considered' in path_network_dict['rail_network'].keys():
@@ -209,12 +220,15 @@ def create_networks(path_network_dict, compute_simplified=False):
             if len(df_ra_rail) == 0:
                 df_ra_rail = None
 
+        if compute_simplified:
+            # TODO: rail_layer_simp
+            pass
+
         rail_layer = create_rail_layer(df_stop_times, date_considered='12/09/2014',
                                        df_stops_considered=df_stops_considered,
                                        df_ra_rail=df_ra_rail)
 
         layers += [rail_layer]
-        # layers_simp += [rail_layer]  # TODO: rail_layer_simp pending
 
     if 'multimodal' in path_network_dict.keys():
         df_transitions = pd.read_csv(Path(path_network_dict['multimodal']['air_rail_transitions']))
@@ -230,14 +244,8 @@ def create_networks(path_network_dict, compute_simplified=False):
         else:
             df_transitions_used = df_transitions
         network = Network(layers=layers, transition_btw_layers=df_transitions_used)
-    if len(layers_simp) > 0:
-        if len(layers) == 1:
-            df_transitions_used = None
-        else:
-            df_transitions_used = df_transitions
-        network_simp = Network(layers=layers_simp, transition_btw_layers=df_transitions_used)
 
-    return network, network_simp
+    return network
 
 
 def read_origin_demand_matrix(path_demand):
@@ -249,7 +257,7 @@ def read_origin_demand_matrix(path_demand):
 def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allow_mixed_operators=False,
         compute_simplified=False):
 
-    network, network_simp = create_networks(path_network_dict, compute_simplified)
+    network = create_networks(path_network_dict, compute_simplified=compute_simplified)
 
     demand_matrix = read_origin_demand_matrix(path_demand)
 
@@ -278,32 +286,6 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
     print("Paths computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
 
     print(dict_paths)
-
-    if network_simp is not None:
-
-        dict_paths_simp = {}
-        start_time = time.time()
-
-        n_explored_total = 0
-        for i, od in od_paths.iterrows():
-            start_time_od = time.time()
-            paths, n_explored = network_simp.find_paths(origin=od.origin, destination=od.destination, npaths=n_path,
-                                                   max_connections=max_connections,
-                                                        consider_operators_connections=False,
-                                                        consider_times_constraints=False)
-            dict_paths_simp[(od.origin, od.destination)] = paths
-            n_explored_total += n_explored
-            end_time_od = time.time()
-            print("Paths for", od.origin, "-", od.destination,
-                  ", computed in, ", (end_time_od - start_time_od), " seconds, exploring:", n_explored,
-                  "found", len(paths), "paths.\n")
-
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
-        print("Paths computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
-
-        #print(dict_paths_simp)
 
 
 
