@@ -24,4 +24,3 @@ def get_stop_times_on_date(date, calendar, calendar_dates, trips, stop_times, dr
 
     # Output the filtered stop times
     return stop_times_on_given_day
-
