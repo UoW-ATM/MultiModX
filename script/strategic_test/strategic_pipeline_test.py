@@ -7,6 +7,7 @@ import argparse
 import tomli
 import pandas as pd
 from itertools import combinations
+import multiprocessing as mp
 
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
@@ -384,15 +385,7 @@ def process_outcome(dict_paths):
     return df
 
 
-def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allow_mixed_operators=False,
-        compute_simplified=False):
-
-    network = create_networks(path_network_dict, compute_simplified=compute_simplified)
-
-    demand_matrix = read_origin_demand_matrix(path_demand)
-
-    od_paths = demand_matrix[['origin', 'destination']].drop_duplicates()
-
+def compute_paths(od_paths, network, n_path=10, max_connections=2, allow_mixed_operators=False):
     dict_paths = {}
     start_time = time.time()
 
@@ -407,7 +400,7 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
         n_explored_total += n_explored
         end_time_od = time.time()
         print("Paths for", od.origin, "-", od.destination,
-              ", computed in, ", (end_time_od-start_time_od), " seconds, exploring:", n_explored,
+              ", computed in, ", (end_time_od - start_time_od), " seconds, exploring:", n_explored,
               "found", len(paths), "paths.\n")
 
     end_time = time.time()
@@ -415,10 +408,64 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
 
     print("Paths computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
 
-    df_paths = process_outcome(dict_paths)
-    print("In total",len(df_paths)," paths computed in:", elapsed_time)
-    return df_paths
+    return dict_paths
 
+
+def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allow_mixed_operators=False,
+        compute_simplified=False):
+
+    network = create_networks(path_network_dict, compute_simplified=compute_simplified)
+
+    demand_matrix = read_origin_demand_matrix(path_demand)
+
+    od_paths = demand_matrix[['origin', 'destination']].drop_duplicates()
+
+    if pc == 1:
+        dict_paths = compute_paths(od_paths,
+                                   network,
+                                   n_path=n_path,
+                                   max_connections=max_connections,
+                                   allow_mixed_operators=allow_mixed_operators)
+    else:
+        # Parallel computation of paths between o-d pairs
+        prev_i = 0
+        n_od_per_section = max(1, round(len(od_paths) / pc))
+        if n_od_per_section == 1:
+            pc = len(od_paths)
+        i = n_od_per_section
+
+        path_computation_param = []
+        for nr in range(pc):
+            if nr == pc - 1:
+                i = len(od_paths)
+
+            d = od_paths.iloc[prev_i:i].copy().reset_index(drop=True)
+
+            if nr == 0:
+                path_computation_param = [[d, network, n_path, max_connections, allow_mixed_operators]]
+            else:
+                if len(d) > 0:
+                    path_computation_param.append([d, network, n_path, max_connections, allow_mixed_operators])
+
+            prev_i = i
+            i = i + n_od_per_section
+
+        pool = mp.Pool(processes=min(pc, len(path_computation_param)))
+
+        print("   Launching parallel o-d path finding")
+
+        res = pool.starmap(compute_paths, path_computation_param)
+
+        pool.close()
+        pool.join()
+
+        dict_paths = {}
+        for dictionary in res:
+            dict_paths.update(dictionary)
+
+    df_paths = process_outcome(dict_paths)
+    print("In total", len(df_paths), " paths computed")
+    return df_paths
 
 
 if __name__ == '__main__':
@@ -463,4 +510,3 @@ if __name__ == '__main__':
     # TODO: heuristic on rail to speed up search
     # TODO: factor of worsening w.r.t. fastest
     # TODO: simplify rail layer to find graph of alternatives regardless of services times
-    # TODO: parallel computing of alternatives per independent o-d pair
