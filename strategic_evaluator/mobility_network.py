@@ -69,6 +69,14 @@ class NetworkLayer:
         if custom_initialisation is not None:
             custom_initialisation(self)
 
+    def get_services_between(self, origins, destinations):
+        df = self.df_services[(self.df_services.origin.isin(origins) & self.df_services.destination.isin(destinations))]
+        if len(df) > 0:
+            return df['service'].tolist()
+        else:
+            return None
+
+
     def get_initial_nodes(self, origin):
         initial_nodes = []
         # Check the origins (as nodes) that satisfy the origin required in the call
@@ -172,7 +180,7 @@ class Network:
 
     def find_paths(self, origin, destination, npaths=1, max_connections=1, layers_ids=None,
                    allow_transitions_layers=True, consider_operators_connections=True,
-                   consider_times_constraints=True):
+                   consider_times_constraints=True, do_until_all_one_legs_found=True):
         # Store solutions
         paths = []
 
@@ -203,6 +211,42 @@ class Network:
             print(f"Destination {destination} is not in layers of network  --> Path not possible")
             return paths, 0
 
+        # Try to find first direct services in single layer
+        dict_direct_services = {}
+        for layer in layers_considered:
+            if (layer in dict_destination_nodes_layers.keys()) and (layer in dict_initial_nodes_layers.keys()):
+                dict_direct_services[layer] = self.dict_layers[layer].get_services_between(dict_initial_nodes_layers[layer],
+                                                                                           dict_destination_nodes_layers[layer])
+
+        max_time_direct = None
+        if len(dict_direct_services) > 0:
+            # We have direct services. Let's process them
+            for layer, services in dict_direct_services.items():
+                for service in services:
+                    access_time = self.dict_layers[layer].get_access_time(service.origin, origin)
+                    egress_time = self.dict_layers[layer].get_egress_time(service.destination, destination)
+                    travel_time = access_time + service.duration + egress_time
+                    p = Path(path=[service], current_node=service.destination, total_travel_time=travel_time,
+                             layer_id=layer, access_time=access_time, egress_time=egress_time)
+                    p.arrived = True
+                    paths += [p]
+                    if (max_time_direct is None) or (max_time_direct < travel_time):
+                        max_time_direct = travel_time
+
+        if len(paths) > 0:
+            # Order the paths based on travel time
+            def __get_total_travel_time(obj):
+                return obj.total_travel_time
+
+            # Sort the list of objects based on the 'travel_time' attribute
+            paths = sorted(paths, key=__get_total_travel_time)
+            if len(paths) > 1:
+                # We can get the max_time of one before the last to avoid outliers on rail particularly
+                max_time_direct = paths[-2].total_travel_time
+
+        if max_connections == 0:
+            return paths, 0
+
         # Priority queue to store flights to be explored, ordered by total travel time
         # Add first nodes to start exploring the graph
         pq = []
@@ -217,25 +261,33 @@ class Network:
         # Heapify the priority queue using the wrapper function
         heapq.heapify(pq)
 
+        # Number of departures from origin
         n_nodes_explored = 0
 
         while pq:
             # total_time, path, current_airport
             p = heapq.heappop(pq)
-            n_nodes_explored += 1
+
+            # Check if it's already arrived
+            if p.arrived:
+                if (((max_time_direct is not None) and (len(paths) >= npaths) and
+                      (p.total_travel_time <= max_time_direct)) or (max_time_direct is None) or (len(paths) < npaths)):
+                    paths += [p]
+
+                if (((len(paths) >= npaths) and max_time_direct is None) or
+                        ((max_time_direct is not None) and (p.total_travel_time > max_time_direct) and
+                         (len(paths) >= npaths))):
+                    return paths, n_nodes_explored
 
             # Check if target node is reached --> first if current node layer is in destination layers
-            if ((p.current_layer_id in dict_destination_nodes_layers.keys()) and
+            elif ((p.current_layer_id in dict_destination_nodes_layers.keys()) and
                     (p.current_node in dict_destination_nodes_layers[p.current_layer_id])):
                 egress_time = self.dict_layers[p.current_layer_id].get_egress_time(p.current_node, destination)
                 p.egress_time = egress_time
                 p.total_travel_time += egress_time
-
-                paths += [p]
-
-                # Check if we have found all the paths we wanted
-                if len(paths) == npaths:
-                    return paths, n_nodes_explored  # dict_best_to_reach
+                p.expected_minimum_travel_time = p.total_travel_time
+                p.arrived = True
+                heapq.heappush(pq, p)
 
             # Explore all flights from current airport
             elif len(p.path) <= max_connections:
@@ -254,13 +306,17 @@ class Network:
                 for service in possible_following_services_same_layer:
                     # First edge in this path, so nothing to check, we just take it and add it to the list in the path.
                     if not p.path:
-                        new_total_time = p.access_time + service.arrival_time - service.departure_time
-                        new_path = [service]
-                        heapq.heappush(pq, Path(path=new_path,
-                                                current_node=service.destination,
-                                                total_travel_time=new_total_time,
-                                                layer_id=p.current_layer_id,
-                                                access_time=p.access_time))
+                        # Check that we're not reaching the final destination already as this would be a direct
+                        # service and we have already consider these outside the loop
+                        if ((p.current_layer_id not in dict_destination_nodes_layers.keys()) or
+                                (service.destination not in dict_destination_nodes_layers[p.current_layer_id])):
+                            new_total_time = p.access_time + service.arrival_time - service.departure_time
+                            new_path = [service]
+                            heapq.heappush(pq, Path(path=new_path,
+                                                    current_node=service.destination,
+                                                    total_travel_time=new_total_time,
+                                                    layer_id=p.current_layer_id,
+                                                    access_time=p.access_time))
 
                     else:
                         # Avoid going back to an airport already visited
@@ -365,6 +421,8 @@ class Path:
             self.egress_time = timedelta(minutes=0)
 
         self.expected_minimum_travel_time = total_travel_time
+
+        self.arrived = False
 
         for key, value in kwargs.items():
             setattr(self, key, value)

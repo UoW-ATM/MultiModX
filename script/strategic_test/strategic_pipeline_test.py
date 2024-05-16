@@ -521,13 +521,10 @@ if __name__ == '__main__':
                    compute_simplified=args.compute_simplified)
 
     df_paths.to_csv(Path(network_paths_config['output']['output_folder']) /
-                    network_paths_config['output']['output_df_file'])
+                    network_paths_config['output']['output_df_file'], index=False)
 
     # Improvements
     # TODO: day in rail
-    # TODO: all direct services to be provided (note that now it might find all direct air before rail,
-    #       even if rail shorter, to check why)
     # TODO: don't change trains that go to the same destination on the same route
     # TODO: heuristic on rail to speed up search
-    # TODO: factor of worsening w.r.t. fastest
 
