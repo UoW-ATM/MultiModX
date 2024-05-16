@@ -30,6 +30,7 @@ class NetworkLayer:
                  custom_mct_func=None,
                  custom_heuristic_func=None,
                  custom_initialisation=None,
+                 custom_services_from_after_func=None,
                  **kwargs):
 
         self.id = network_id
@@ -46,6 +47,8 @@ class NetworkLayer:
 
         self._custom_mct_function = custom_mct_func
         self._custom_heuristic_function = custom_heuristic_func
+
+        self._custom_services_from_after_function = custom_services_from_after_func
 
         self.dict_mode_access = {}
         self.dict_mode_egress = {}
@@ -75,7 +78,6 @@ class NetworkLayer:
             return df['service'].tolist()
         else:
             return None
-
 
     def get_initial_nodes(self, origin):
         initial_nodes = []
@@ -110,12 +112,27 @@ class NetworkLayer:
     def get_services_from(self, node):
         return self.dict_s_departing.get(node, set())
 
-    def get_services_from_after(self, node, time):
+    def _get_services_from_after_function(self):
+        # Check if custom function is provided, otherwise use default function
+        if self._custom_services_from_after_function:
+            return self._custom_services_from_after_function
+        else:
+            def wrapper(obj, node, time, *args, **kwargs):
+                return obj._default_services_from_after_function(node, time)
+
+            return wrapper
+
+    def _default_services_from_after_function(self, node, time):
         services = self.df_services[(self.df_services.origin == node) & (self.df_services.departure_time >= time)]
         if len(services) > 0:
             return set(services.service)
         else:
             return set()
+
+
+    def get_services_from_after(self, node, time, from_service=None):
+        return self._get_services_from_after_function()(self, node, time, from_service)
+
 
     def _default_mct_function(self, service_from, service_to):
         # Return value that depends only on airport of connection
@@ -215,8 +232,10 @@ class Network:
         dict_direct_services = {}
         for layer in layers_considered:
             if (layer in dict_destination_nodes_layers.keys()) and (layer in dict_initial_nodes_layers.keys()):
-                dict_direct_services[layer] = self.dict_layers[layer].get_services_between(dict_initial_nodes_layers[layer],
+                direct_services = self.dict_layers[layer].get_services_between(dict_initial_nodes_layers[layer],
                                                                                            dict_destination_nodes_layers[layer])
+                if direct_services is not None:
+                    dict_direct_services[layer] = direct_services
 
         max_time_direct = None
         if len(dict_direct_services) > 0:
@@ -267,6 +286,7 @@ class Network:
         while pq:
             # total_time, path, current_airport
             p = heapq.heappop(pq)
+            n_nodes_explored += 1
 
             # Check if it's already arrived
             if p.arrived:
@@ -289,7 +309,7 @@ class Network:
                 p.arrived = True
                 heapq.heappush(pq, p)
 
-            # Explore all flights from current airport
+            # Explore all services from current node
             elif len(p.path) <= max_connections:
 
                 # Check first on same layer
@@ -301,13 +321,13 @@ class Network:
                     # We have already some elements in the path, check which services (edges) are available
                     # on the same layer after this one.
                     possible_following_services_same_layer = self.dict_layers[p.current_layer_id].get_services_from_after(
-                        p.current_node, p.path[-1].arrival_time)
+                        p.current_node, p.path[-1].arrival_time, p.path[-1])
 
                 for service in possible_following_services_same_layer:
                     # First edge in this path, so nothing to check, we just take it and add it to the list in the path.
                     if not p.path:
                         # Check that we're not reaching the final destination already as this would be a direct
-                        # service and we have already consider these outside the loop
+                        # service and we have already consider these outside the loop. If not then save in heap.
                         if ((p.current_layer_id not in dict_destination_nodes_layers.keys()) or
                                 (service.destination not in dict_destination_nodes_layers[p.current_layer_id])):
                             new_total_time = p.access_time + service.arrival_time - service.departure_time
