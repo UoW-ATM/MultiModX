@@ -84,7 +84,8 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     return anl
 
 
-def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_considered=None, df_ra_rail=None):
+def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_considered=None, df_ra_rail=None,
+                      keep_only_fastest_service=False):
 
     # Regions access -- Create dictionary
     regions_access_rail = None
@@ -144,6 +145,12 @@ def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_cons
     rail_services_df = pd.DataFrame(rail_services,
                                     columns=['service_id', 'origin', 'destination', 'departure_time', 'arrival_time',
                                              'cost', 'provider', 'alliance', 'service'])
+
+    # Keep only fastest services if requested to do so
+    if keep_only_fastest_service:
+        rail_services_df['duration'] = rail_services_df['arrival_time'] - rail_services_df['departure_time']
+        # Group by 'origin' and 'destination', then keep only the first row of each group
+        rail_services_df = rail_services_df.groupby(['origin', 'destination']).apply(lambda x: x.sort_values('duration').iloc[0])
 
     nl_rail = NetworkLayer('rail', rail_services_df, regions_access=regions_access_rail,
                            custom_mct_func=mct_rail_network)
@@ -220,13 +227,11 @@ def create_networks(path_network_dict, compute_simplified=False):
             if len(df_ra_rail) == 0:
                 df_ra_rail = None
 
-        if compute_simplified:
-            # TODO: rail_layer_simp
-            pass
 
         rail_layer = create_rail_layer(df_stop_times, date_considered='12/09/2014',
                                        df_stops_considered=df_stops_considered,
-                                       df_ra_rail=df_ra_rail)
+                                       df_ra_rail=df_ra_rail,
+                                       keep_only_fastest_service=compute_simplified)
 
         layers += [rail_layer]
 
@@ -517,5 +522,4 @@ if __name__ == '__main__':
     # TODO: don't change trains that go to the same destination on the same route
     # TODO: heuristic on rail to speed up search
     # TODO: factor of worsening w.r.t. fastest
-    # TODO: simplify rail layer to find graph of alternatives regardless of services times
 
