@@ -193,7 +193,6 @@ def create_networks(path_network_dict, compute_simplified=False):
         air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air, keep_only_fastest_service=only_fastest)
         layers += [air_layer]
 
-
     if 'rail_network' in path_network_dict.keys():
         # TODO: fix rail dates
         date_rail = '20230503'
@@ -254,6 +253,135 @@ def read_origin_demand_matrix(path_demand):
     return df_demand
 
 
+def process_outcome(dict_paths):
+    options = []
+    origins = []
+    destinations = []
+    total_travel_time = []
+    access = []
+    egress = []
+    nservices = []
+    n_modes_p = []
+    total_waiting_p = []
+
+    n_legs = 0
+    for dp in dict_paths.values():
+        for p in dp:
+            if n_legs < len(p.path):
+                n_legs = len(p.path)
+
+    dict_legs_info = {}
+    for ln in range(n_legs):
+        dict_legs_info['service_id_' + str(ln)] = []
+        dict_legs_info['origin_' + str(ln)] = []
+        dict_legs_info['destination_' + str(ln)] = []
+        dict_legs_info['provider_' + str(ln)] = []
+        dict_legs_info['alliance_' + str(ln)] = []
+        dict_legs_info['mode_' + str(ln)] = []
+        dict_legs_info['departure_time_' + str(ln)] = []
+        dict_legs_info['arrival_time_' + str(ln)] = []
+        dict_legs_info['travel_time_' + str(ln)] = []
+        if ln > 0:
+            dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)] = []
+            dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)] = []
+            dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)] = []
+
+        dict_legs_info['cost_' + str(ln)] = []
+        dict_legs_info['emissions_' + str(ln)] = []
+
+        ln += 1
+
+    for od in dict_paths.keys():
+        origin = od[0]
+        destination = od[1]
+        option = 0
+        for p in dict_paths[od]:
+            origins.append(origin)
+            destinations.append(destination)
+            options.append(option)
+            total_travel_time.append(p.total_travel_time.total_seconds() / 60)
+            access.append(p.access_time.total_seconds() / 60)
+            egress.append(p.egress_time.total_seconds() / 60)
+            nservices.append(len(p.path))
+            ln = 0
+            prev_arrival_time = None
+            prev_mode = None
+            total_waiting = None
+            n_modes = 0
+            for s in p.path:
+                dict_legs_info['service_id_' + str(ln)].append(s.id)
+                dict_legs_info['origin_' + str(ln)].append(s.origin)
+                dict_legs_info['destination_' + str(ln)].append(s.destination)
+                dict_legs_info['provider_' + str(ln)].append(s.provider)
+                dict_legs_info['alliance_' + str(ln)].append(s.alliance)
+                if p.layers_used[ln - 1] != prev_mode:
+                    prev_mode = p.layers_used[ln - 1]
+                    n_modes += 1
+                dict_legs_info['mode_' + str(ln)].append(p.layers_used[ln - 1])
+                dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
+                dict_legs_info['arrival_time_' + str(ln)].append(s.arrival_time)
+                dict_legs_info['travel_time_' + str(ln)].append(s.duration.total_seconds() / 60)
+                if ln > 0:
+                    dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)].append(
+                        p.mcts[ln - 1].total_seconds() / 60)
+                    dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)].append(
+                        (s.departure_time - prev_arrival_time).total_seconds() / 60)
+                    dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)].append(
+                        (s.departure_time - prev_arrival_time).total_seconds() / 60 -
+                        p.mcts[ln - 1].total_seconds() / 60)
+                    if total_waiting is None:
+                        total_waiting = (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
+                            ln - 1].total_seconds() / 60
+                    else:
+                        total_waiting += (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
+                            ln - 1].total_seconds() / 60
+
+                dict_legs_info['cost_' + str(ln)].append(s.cost)
+                dict_legs_info['emissions_' + str(ln)].append(None)
+
+                prev_arrival_time = s.arrival_time
+
+                ln += 1
+
+            for lni in range(ln, n_legs):
+                dict_legs_info['service_id_' + str(lni)].append(None)
+                dict_legs_info['origin_' + str(lni)].append(None)
+                dict_legs_info['destination_' + str(lni)].append(None)
+                dict_legs_info['provider_' + str(lni)].append(None)
+                dict_legs_info['alliance_' + str(lni)].append(None)
+                dict_legs_info['mode_' + str(lni)].append(None)
+                dict_legs_info['departure_time_' + str(lni)].append(None)
+                dict_legs_info['arrival_time_' + str(lni)].append(None)
+                dict_legs_info['travel_time_' + str(lni)].append(None)
+                if lni > 0:
+                    dict_legs_info['mct_time_' + str(lni - 1) + "_" + str(lni)].append(None)
+                    dict_legs_info['connecting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
+                    dict_legs_info['waiting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
+                dict_legs_info['cost_' + str(lni)].append(s.cost)
+                dict_legs_info['emissions_' + str(lni)].append(None)
+
+            n_modes_p.append(n_modes)
+            total_waiting_p.append(total_waiting)
+
+            option += 1
+
+    dict_it = {'origin': origins,
+               'destination': destinations,
+               'option': options,
+               'total_travel_time': total_travel_time,
+               'nservices': nservices,
+               'total_waiting_time': total_waiting_p,
+               'nmodes': n_modes_p,
+               'access_time': access,
+               'egress_time': egress}
+
+    dict_elements = {**dict_it, **dict_legs_info}
+
+    df = pd.DataFrame(dict_elements)
+
+    return df
+
+
 def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allow_mixed_operators=False,
         compute_simplified=False):
 
@@ -285,12 +413,15 @@ def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allo
 
     print("Paths computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
 
-    print(dict_paths)
+    df_paths = process_outcome(dict_paths)
+    df_paths.to_csv('./test_paths.csv')
+
+    print(df_paths)
 
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Stragetic pipeline test', add_help=True)
+    parser = argparse.ArgumentParser(description='Strategic pipeline test', add_help=True)
 
     parser.add_argument('-tf', '--toml_file', help='TOML defining the network', required=True)
     parser.add_argument('-pc', '--n_proc', help='Number of processors', required=False)
@@ -318,5 +449,5 @@ if __name__ == '__main__':
 
     run(network_paths_config['network_definition'],
         network_paths_config['demand']['demand'], pc=pc, allow_mixed_operators=args.allow_mixed_operators,
-        n_path=int(args.num_paths), max_connections=args.max_connections, compute_simplified=args.compute_simplified)
+        n_path=int(args.num_paths), max_connections=int(args.max_connections), compute_simplified=args.compute_simplified)
 

@@ -349,10 +349,12 @@ class Path:
         self.current_layer_id = layer_id
         self.current_node = current_node
         self.total_travel_time = total_travel_time
-        self.nodes_visited = []
         self.layers_used = [self.current_layer_id]
+        self.nodes_visited = []
         for s in path:
             self.nodes_visited += [s.origin, s.destination]
+
+        self.mcts = []
 
         self.access_time = access_time
         if access_time is None:
@@ -368,6 +370,7 @@ class Path:
 
     def add_service_path(self, s, heuristic_time=None, layer_id=None, time_from_path=True, mct=None):
         self.path += [s]
+        self.mcts += [mct]
         self.nodes_visited += [s.origin, s.destination]
         self.current_node = s.destination
         if time_from_path:
