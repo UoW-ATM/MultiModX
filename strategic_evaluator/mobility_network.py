@@ -5,7 +5,7 @@ from datetime import timedelta
 
 class Service:
     def __init__(self, service_id, origin, destination, departure_time, arrival_time, cost, provider, alliance,
-                 **kwargs):
+                 emissions=None, **kwargs):
         self.id = service_id
         self.origin = origin
         self.destination = destination
@@ -15,6 +15,7 @@ class Service:
         self.cost = cost
         self.provider = provider
         self.alliance = alliance
+        self.emissions = emissions
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -27,6 +28,7 @@ class Service:
 
 class NetworkLayer:
     def __init__(self, network_id, df_services, dict_mct=None, regions_access=None,
+                 dict_dist_origin_destination=None,
                  custom_mct_func=None,
                  custom_heuristic_func=None,
                  custom_initialisation=None,
@@ -35,6 +37,9 @@ class NetworkLayer:
 
         self.id = network_id
         self.df_services = df_services
+
+        # List of destinations in layer:
+        self.list_destinations = list(self.df_services['destination'].drop_duplicates())
 
         self.dict_s_departing = {}
         for s in self.df_services['service']:
@@ -65,6 +70,11 @@ class NetworkLayer:
                         self.dict_mode_access[(a['station'], r)] = a['access']
                     if 'egress' in a:
                         self.dict_mode_egress[(a['station'], r)] = a['egress']
+
+        if dict_dist_origin_destination is None:
+            self.dict_dist_origin_destination = {}
+        else:
+            self.dict_dist_origin_destination = dict_dist_origin_destination
 
         for key, value in kwargs.items():
             setattr(self, key, value)

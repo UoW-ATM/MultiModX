@@ -11,7 +11,11 @@ sys.path.insert(1, '../..')
 
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
-                                                                  initialise_air_network, mct_rail_network)
+                                                                  initialise_air_network, mct_rail_network,
+                                                                  services_from_after_function_rail,
+                                                                  initialise_rail_network,
+                                                                  fastest_rail_time_heuristic,
+                                                                  fastest_precomputed_distance_time_heuristic)
 from libs.gtfs import get_stop_times_on_date
 
 
@@ -41,7 +45,9 @@ def create_region_access_dict(df_ra_air):
     return regions_access_air
 
 
-def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_service=0):
+def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_service=0,
+                     dict_dist_origin_destination=None,
+                     heuristic_precomputed_distance=None):
 
     # Regions access -- Create dictionary
     regions_access_air = None
@@ -54,10 +60,7 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     dict_mct_domestic = dict(zip(df_mct['icao_id'], df_mct['domestic']))
     dict_mct = {'std': dict_mct_std, 'int': dict_mct_international, 'dom': dict_mct_domestic}
 
-    # Create Services for flights (one per flight in the dataframe)
-    df_fs['cost'] = 0
-    df_fs['service'] = df_fs.apply(lambda x: Service(x.service_id, x.origin, x.destination, x.sobt, x.sibt,  x.cost,
-                                                     x.provider, x.alliance, gcdistance=x.gcdistance), axis=1)
+    # Rename sobt and sibt
     df_fs.rename(columns={'sobt': 'departure_time', 'sibt': 'arrival_time'}, inplace=True)
 
     if keep_only_fastest_service > 0:
@@ -70,22 +73,40 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
         # Keep only one fastest regardless of airline/alliance
         df_fs.drop_duplicates(subset=['origin', 'destination'], keep='first', inplace=True)
 
+    # Create Services for flights (one per flight in the dataframe)
+    df_fs['service'] = df_fs.apply(lambda x: Service(x.service_id, x.origin, x.destination,
+                                                     x.departure_time, x.arrival_time, x.cost,
+                                                     x.provider, x.alliance, x.emissions,
+                                                     gcdistance=x.gcdistance), axis=1)
+
+    # Use precomputed distance vs time function or default air
+    if heuristic_precomputed_distance is not None:
+        heuristic_func = fastest_precomputed_distance_time_heuristic
+    else:
+        heuristic_func = fastest_air_time_heuristic
+
     # Create network
     anl = NetworkLayer('air',
                        df_fs[['service_id', 'origin', 'destination', 'departure_time', 'arrival_time', 'cost',
                               'provider', 'alliance', 'service']].copy(),
                        dict_mct, regions_access=regions_access_air,
                        custom_mct_func=mct_air_network,
-                       custom_heuristic_func=fastest_air_time_heuristic,
+                       custom_heuristic_func=heuristic_func,
                        custom_initialisation=initialise_air_network,
-                       airport_coordinates=df_as.copy(),
-                       keep_only_fastest_service=keep_only_fastest_service)
+                       keep_only_fastest_service=keep_only_fastest_service,
+                       nodes_coordinates=df_as.copy().rename({'icao_id': 'node'}, axis=1),
+                       dict_dist_origin_destination=dict_dist_origin_destination,
+                       heuristic_precomputed_distance=heuristic_precomputed_distance
+                       )
 
     return anl
 
 
 def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_considered=None, df_ra_rail=None,
-                      keep_only_fastest_service=False):
+                      keep_only_fastest_service=False,
+                      df_stops=None,
+                      dict_dist_origin_destination=None,
+                      heuristic_precomputed_distance=None):
 
     # Regions access -- Create dictionary
     regions_access_rail = None
@@ -152,12 +173,30 @@ def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_cons
         # Group by 'origin' and 'destination', then keep only the first row of each group
         rail_services_df = rail_services_df.groupby(['origin', 'destination']).apply(lambda x: x.sort_values('duration').iloc[0])
 
+    if df_stops is not None:
+        df_stops = df_stops.copy().rename({'stop_id': 'node', 'stop_lat': 'lat', 'stop_lon': 'lon'},
+                                          axis=1)[['node', 'lat', 'lon']]
+        df_stops['node'] = df_stops['node'].astype(str)
+
+
+    # Use precomputed distance vs time function or default air
+    if heuristic_precomputed_distance is not None:
+        heuristic_func = fastest_precomputed_distance_time_heuristic
+    else:
+        heuristic_func = fastest_rail_time_heuristic
+
     nl_rail = NetworkLayer('rail', rail_services_df, regions_access=regions_access_rail,
-                           custom_mct_func=mct_rail_network)
+                           custom_initialisation=initialise_rail_network,
+                           custom_mct_func=mct_rail_network,
+                           custom_services_from_after_func=services_from_after_function_rail,
+                           nodes_coordinates=df_stops,
+                           heuristic_precomputed_distance=heuristic_precomputed_distance,
+                           custom_heuristic_func=heuristic_func)
+
     return nl_rail
 
 
-def create_networks(path_network_dict, compute_simplified=False):
+def create_networks(path_network_dict, compute_simplified=False, heuristics_precomputed_path=None):
     df_ra = None
     df_transitions = None
     layers = []
@@ -167,22 +206,47 @@ def create_networks(path_network_dict, compute_simplified=False):
         df_ra = pd.read_csv(Path(path_network_dict['regions_access']['regions_access']))
 
     if 'air_network' in path_network_dict.keys():
+        # Read airport data (needed for the heuristic to compute GCD and
+        # estimate time needed from current node to destination)
+        df_as = pd.read_csv(Path(path_network_dict['air_network']['airports_static']))
+
         df_fs = pd.read_csv(Path(path_network_dict['air_network']['flight_schedules']), keep_default_na=False)
         df_fs.replace('', None, inplace=True)
         df_fs['alliance'].fillna(df_fs['provider'], inplace=True)
+        df_fs = df_fs.merge(df_as[['icao_id','lat','lon']], left_on='origin', right_on='icao_id')
+        df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='destination', right_on='icao_id',
+                            suffixes=('_orig','_dest'))
+
+        dict_dist_origin_destination = {}
         if 'gcdistance' not in df_fs.columns:
-            df_fs['gcdistance'] = None
+            from libs.uow_tool_belt.general_tools import haversine
+            # Initialise dictionary of o-d distance
+            for odr in df_fs[['origin', 'destination']].drop_duplicates().iterrows():
+                lat_orig = df_as[df_as.icao_id == odr[1].origin].iloc[0].lat
+                lon_orig = df_as[df_as.icao_id == odr[1].origin].iloc[0].lon
+                lat_dest = df_as[df_as.icao_id == odr[1].destination].iloc[0].lat
+                lon_dest = df_as[df_as.icao_id == odr[1].destination].iloc[0].lon
+                dict_dist_origin_destination[(odr[1].origin, odr[1].destination)] = haversine(lon_orig, lat_orig,
+                                                                                              lon_dest, lat_dest)
+            df_fs['gcdistance'] = df_fs.apply(lambda x: dict_dist_origin_destination[x['origin'], x['destination']],
+                                              axis=1)
+        else:
+            for odr in df_fs[['origin', 'destination', 'gcdistance']].drop_duplicates().iterrows():
+                dict_dist_origin_destination[(odr[1].origin, odr[1].destination)] = odr[1].gcdistance
+
         if 'provider' not in df_fs.columns:
             df_fs['provider'] = None
         if 'alliance' not in df_fs.columns:
             df_fs['alliance'] = None
+        if 'cost' not in df_fs.columns:
+            df_fs['cost'] = 0
+        if 'seats' not in df_fs.columns:
+            df_fs['seats'] = 140
+        if 'emissions' not in df_fs.columns:
+            df_fs['emissions'] = 0
 
         df_fs['sobt'] = pd.to_datetime(df_fs['sobt'],  format='%Y-%m-%d %H:%M:%S')
         df_fs['sibt'] = pd.to_datetime(df_fs['sibt'],  format='%Y-%m-%d %H:%M:%S')
-
-        # Read airport data (needed for the heuristic to compute GCD and
-        # estimate time needed from current node to destination)
-        df_as = pd.read_csv(Path(path_network_dict['air_network']['airports_static']))
 
         # Read MCTs between air services
         df_mct = pd.read_csv(Path(path_network_dict['air_network']['mct_air']))
@@ -197,7 +261,22 @@ def create_networks(path_network_dict, compute_simplified=False):
         if compute_simplified:
             only_fastest = 2
 
-        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air, keep_only_fastest_service=only_fastest)
+        # Initialise costs, seats and emissions if not provided in data read
+        # TODO
+
+        df_heuristic_air = None
+        # If heuristics passed use those
+        if heuristics_precomputed_path is not None:
+            p_heuristic_air = Path(heuristics_precomputed_path) / 'air_time_heuristics.csv'
+            if p_heuristic_air.exists():
+                # We have the file for air time heuristics
+                df_heuristic_air = pd.read_csv(p_heuristic_air)
+
+
+        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air,
+                                     keep_only_fastest_service=only_fastest,
+                                     dict_dist_origin_destination=dict_dist_origin_destination,
+                                     heuristic_precomputed_distance=df_heuristic_air)
         layers += [air_layer]
 
     if 'rail_network' in path_network_dict.keys():
@@ -227,11 +306,27 @@ def create_networks(path_network_dict, compute_simplified=False):
             if len(df_ra_rail) == 0:
                 df_ra_rail = None
 
+        df_heuristic_rail = None
+        # If heuristics passed use those
+        if heuristics_precomputed_path is not None:
+            p_heuristic_rail = Path(heuristics_precomputed_path) / 'air_time_heuristics.csv'
+            if p_heuristic_rail.exists():
+                # We have the file for air time heuristics
+                df_heuristic_rail = pd.read_csv(p_heuristic_rail)
+            # Need the stops to have its coordinates
+            df_stops = pd.read_csv(Path(path_network_dict['rail_network']['gtfs']) / 'stops.txt')
+        else:
+            df_stops = None
+
+        dict_dist_origin_destination = {}
 
         rail_layer = create_rail_layer(df_stop_times, date_considered='12/09/2014',
                                        df_stops_considered=df_stops_considered,
                                        df_ra_rail=df_ra_rail,
-                                       keep_only_fastest_service=compute_simplified)
+                                       keep_only_fastest_service=compute_simplified,
+                                       df_stops=df_stops,
+                                       dict_dist_origin_destination=dict_dist_origin_destination,
+                                       heuristic_precomputed_distance=df_heuristic_rail)
 
         layers += [rail_layer]
 
@@ -417,7 +512,7 @@ def compute_paths(od_paths, network, n_path=10, max_connections=2, allow_mixed_o
         end_time_od = time.time()
         print("Paths for", od.origin, "-", od.destination,
               ", computed in, ", (end_time_od - start_time_od), " seconds, exploring:", n_explored,
-              "found", len(paths), "paths.\n")
+              "nodes. Found", len(paths), "paths.\n")
 
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -428,9 +523,11 @@ def compute_paths(od_paths, network, n_path=10, max_connections=2, allow_mixed_o
 
 
 def run(path_network_dict, path_demand, pc=1, n_path=50, max_connections=2, allow_mixed_operators=False,
-        compute_simplified=False):
+        compute_simplified=False, heuristics_precomputed_path=None):
 
-    network = create_networks(path_network_dict, compute_simplified=compute_simplified)
+    network = create_networks(path_network_dict,
+                              compute_simplified=compute_simplified,
+                              heuristics_precomputed_path=heuristics_precomputed_path)
 
     demand_matrix = read_origin_demand_matrix(path_demand)
 
@@ -499,6 +596,10 @@ if __name__ == '__main__':
     parser.add_argument('-cs', '--compute_simplified', help='Compute simplified network', required=False,
                         action='store_true')
 
+    parser.add_argument('-hpcd', '--heuristics_precomputed_distance', help='Use heuristics precomputed '
+                                                                          'based on distance (path folder heuristics)',
+                        required=False)
+
     # Parse parameters
     args = parser.parse_args()
 
@@ -518,13 +619,12 @@ if __name__ == '__main__':
     df_paths = run(network_paths_config['network_definition'],
                    network_paths_config['demand']['demand'], pc=pc, allow_mixed_operators=args.allow_mixed_operators,
                    n_path=int(args.num_paths), max_connections=int(args.max_connections),
-                   compute_simplified=args.compute_simplified)
+                   compute_simplified=args.compute_simplified,
+                   heuristics_precomputed_path=args.heuristics_precomputed_distance)
 
     df_paths.to_csv(Path(network_paths_config['output']['output_folder']) /
                     network_paths_config['output']['output_df_file'], index=False)
 
     # Improvements
     # TODO: day in rail
-    # TODO: don't change trains that go to the same destination on the same route
-    # TODO: heuristic on rail to speed up search
-
+    # TODO: save format schedules and timetables as services dataframe
