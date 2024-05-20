@@ -1,20 +1,20 @@
 [network_definition]
+    network_path = "../../data/example_strategic/es/"
+    processed_folder = "processed"
     [network_definition.air_network]
-        flight_schedules = "../../data/example_strategic/es/flight_schedules.csv"
-        airports_static = "../../data/example_strategic/es/airports_static.csv"
-		mct_air = "../../data/example_strategic/es/mct_air.csv"
+        flight_schedules = "flight_schedules.csv"
+        airports_static = "airports_static.csv"
+		mct_air = "mct_air.csv"
     [network_definition.rail_network]
-        gtfs = "../../data/example_strategic/es/gtfs_es/"
-        rail_stations_considered = "../../data/example_strategic/es/rail_stations_considered.csv"
+        gtfs = "gtfs_es"
+        rail_stations_considered = "rail_stations_considered.csv"
     [network_definition.multimodal]
-        air_rail_transitions = "../../data/example_strategic/es/air_rail_transitions.csv"
+        air_rail_transitions = "air_rail_transitions.csv"
 	[network_definition.regions_access]
-		regions_access = "../../data/example_strategic/es/regions_access.csv"
-
+		regions_access = "regions_access.csv"
 
 [demand]
 	demand = "../../data/example_strategic/es/pax_demand.csv"
 
 [output]
-	output_folder = "../../data/example_strategic/output/"
-    output_df_file = "df_paths.csv"
+	output_folder = "../../data/example_strategic/es/processed/possible_paths/"
