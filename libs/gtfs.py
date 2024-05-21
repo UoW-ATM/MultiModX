@@ -1,4 +1,4 @@
-
+import pandas as pd
 
 def get_stop_times_on_date(date, calendar, calendar_dates, trips, stop_times, drop_same_trip_short_name=True):
 
@@ -24,3 +24,13 @@ def get_stop_times_on_date(date, calendar, calendar_dates, trips, stop_times, dr
 
     # Output the filtered stop times
     return stop_times_on_given_day
+
+def add_date_and_handle_overflow(time_str, date):
+    hour, minute, second = map(int, time_str.split(':'))
+    if hour >= 24:
+        # If time exceeds 24 hours, add a day to the date component and adjust the time
+        date_adjusted = date + pd.Timedelta(days=1)
+        hour %= 24
+    else:
+        date_adjusted = date
+    return date_adjusted + pd.Timedelta(hours=hour, minutes=minute, seconds=second)
