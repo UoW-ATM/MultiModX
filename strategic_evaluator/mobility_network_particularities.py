@@ -21,9 +21,6 @@ def mct_air_network(obj, service_from, service_to):
     return timedelta(minutes=dict_type_connection.get(connecting_at, obj.dict_mct['std'].get(connecting_at, 30)))
 
 
-
-
-
 def initialise_air_network(obj):
     obj.distance_origin_destination = {}
     for s in obj.df_services.service:

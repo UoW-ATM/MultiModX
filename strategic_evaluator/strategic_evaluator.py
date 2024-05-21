@@ -11,7 +11,8 @@ from strategic_evaluator.mobility_network_particularities import (mct_air_networ
                                                                   initialise_rail_network,
                                                                   fastest_rail_time_heuristic,
                                                                   fastest_precomputed_distance_time_heuristic)
-from libs.gtfs import get_stop_times_on_date
+
+from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
 
 
 def create_region_access_dict(df_ra_air):
@@ -123,18 +124,8 @@ def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_cons
 
     df_sorted = df_stop_times.sort_values(by=['trip_id', 'stop_sequence'])
 
-    def add_date_and_handle_overflow(time_str):
-        hour, minute, second = map(int, time_str.split(':'))
-        if hour >= 24:
-            # If time exceeds 24 hours, add a day to the date component and adjust the time
-            date_adjusted = date + pd.Timedelta(days=1)
-            hour %= 24
-        else:
-            date_adjusted = date
-        return date_adjusted + pd.Timedelta(hours=hour, minutes=minute, seconds=second)
-
-    df_sorted['arrival_time'] = df_sorted['arrival_time'].apply(add_date_and_handle_overflow)
-    df_sorted['departure_time'] = df_sorted['departure_time'].apply(add_date_and_handle_overflow)
+    df_sorted['arrival_time'] = df_sorted['arrival_time'].apply(lambda x: add_date_and_handle_overflow(x, date))
+    df_sorted['departure_time'] = df_sorted['departure_time'].apply(lambda x: add_date_and_handle_overflow(x, date))
 
     grouped = df_sorted.groupby('trip_id')
 
