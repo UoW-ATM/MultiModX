@@ -5,7 +5,7 @@ from datetime import timedelta
 
 class Service:
     def __init__(self, service_id, origin, destination, departure_time, arrival_time, cost, provider, alliance,
-                 emissions=None, **kwargs):
+                 emissions=None, seats=None, **kwargs):
         self.id = service_id
         self.origin = origin
         self.destination = destination
@@ -16,6 +16,7 @@ class Service:
         self.provider = provider
         self.alliance = alliance
         self.emissions = emissions
+        self.seats = seats
 
         for key, value in kwargs.items():
             setattr(self, key, value)

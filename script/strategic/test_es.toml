@@ -8,6 +8,7 @@
     [network_definition.rail_network]
         gtfs = "gtfs_es"
         rail_stations_considered = "rail_stations_considered.csv"
+        create_rail_layer_from = 'gtfs' #gtfs / services
     [network_definition.multimodal]
         air_rail_transitions = "air_rail_transitions.csv"
 	[network_definition.regions_access]

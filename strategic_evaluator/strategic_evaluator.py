@@ -98,10 +98,18 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     return anl
 
 
-def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_considered=None, df_ra_rail=None,
+def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_stops_considered=None, df_ra_rail=None,
                       keep_only_fastest_service=False,
                       df_stops=None,
                       heuristic_precomputed_distance=None):
+
+    if from_gtfs:
+        # Process GTFS to create services
+        if type(date_considered) is str:
+            date_considered = pd.to_datetime(date_considered, format='%Y%m%d')
+        rail_services_df = pre_process_rail_gtfs_to_services(df_rail, date_considered)
+    else:
+        rail_services_df = df_rail
 
     # Regions access -- Create dictionary
     regions_access_rail = None
@@ -109,48 +117,15 @@ def create_rail_layer(df_stop_times, date_considered='01/01/2024', df_stops_cons
         regions_access_rail = create_region_access_dict(df_ra_rail)
 
     if df_stops_considered is not None:
-        df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)].copy()
+        rail_services_df = rail_services_df[(rail_services_df.origin.isin(df_stops_considered.stop_id)) &
+                                            (rail_services_df.destination.isin(df_stops_considered.stop_id))].copy()
 
-    n_stops_trip = df_stop_times.groupby('trip_id').count().reset_index()
+    # Create Service objects
+    rail_services_df['service'] = rail_services_df.apply(lambda x:
+                                                         Service(x.service_id, x.origin, x.destination,
+                                                                 x.departure_time, x.arrival_time,
+                                                                 x.cost, x.provider, x.alliance, x.emissions, x.seats), axis=1)
 
-    # Keep trips with at least two stops of interest in the trip
-    df_stop_times = df_stop_times[
-        df_stop_times.trip_id.isin(n_stops_trip[n_stops_trip.arrival_time > 1].trip_id)].copy()
-
-    date = pd.to_datetime(date_considered, format='%d/%m/%Y')
-
-    # Create rail services as all possible segments in the trips
-    rail_services = []
-
-    df_sorted = df_stop_times.sort_values(by=['trip_id', 'stop_sequence'])
-
-    df_sorted['arrival_time'] = df_sorted['arrival_time'].apply(lambda x: add_date_and_handle_overflow(x, date))
-    df_sorted['departure_time'] = df_sorted['departure_time'].apply(lambda x: add_date_and_handle_overflow(x, date))
-
-    grouped = df_sorted.groupby('trip_id')
-
-    for trip_id, group_df in grouped:
-        stop_ids = group_df['stop_id'].tolist()
-        stop_sequences = group_df['stop_sequence'].tolist()
-        for i, j in combinations(range(len(stop_ids)), 2):
-            service_id = f"{trip_id}_{stop_sequences[i]}_{stop_sequences[j]}"
-            origin = str(stop_ids[i])
-            destination = str(stop_ids[j])
-            departure_time = group_df.iloc[i]['departure_time']
-            arrival_time = group_df.iloc[j]['arrival_time']
-
-            # Create Service object and add it to the list of services
-            service = Service(service_id, origin, destination, departure_time, arrival_time, cost=0,
-                              provider='renfe',
-                              alliance='renfe')
-            service_df_row = (
-                service_id, str(origin), str(destination), departure_time, arrival_time, 0, 'renfe', 'renfe', service)
-
-            rail_services.append(service_df_row)
-
-    rail_services_df = pd.DataFrame(rail_services,
-                                    columns=['service_id', 'origin', 'destination', 'departure_time', 'arrival_time',
-                                             'cost', 'provider', 'alliance', 'service'])
 
     # Keep only fastest services if requested to do so
     if keep_only_fastest_service:
@@ -226,6 +201,7 @@ def pre_process_rail_layer(path_network, rail_network, processed_folder, pre_pro
     df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
 
     # TODO: fix rail dates
+    # TODO: filter by parent stations
     date_rail = '20230503'
     date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
     df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
@@ -235,19 +211,71 @@ def pre_process_rail_layer(path_network, rail_network, processed_folder, pre_pro
         df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)]
 
     # TODO: add provider, cost, emissions...
+    rail_provider = 'renfe'
+    rail_alliance = 'renfe'
     if 'provider' not in df_stop_times.columns:
-        df_stop_times['provider'] = None
+        df_stop_times['provider'] = rail_provider
     if 'alliance' not in df_stop_times.columns:
-        df_stop_times['alliance'] = None
-    if 'cost' not in df_stop_times.columns:
-        df_stop_times['cost'] = 0
-    if 'seats' not in df_stop_times.columns:
-        df_stop_times['seats'] = 140
-    if 'emissions' not in df_stop_times.columns:
-        df_stop_times['emissions'] = 0
+        df_stop_times['alliance'] = rail_alliance
 
-    frail = 'rail_timetable_proc_'+str(pre_processed_version)+'.csv'
+    frail = 'rail_timetable_proc_gtfs_'+str(pre_processed_version)+'.csv'
+    # Save information in GTFS form
     df_stop_times.to_csv(Path(path_network) / processed_folder / frail, index=False)
+
+    # Keep processing to translate GTFS form to 'Services' form
+    pre_process_rail_gtfs_to_services(df_stop_times, date_rail, (Path(path_network) / processed_folder),
+                                      pre_processed_version, save_services=True)
+
+
+def pre_process_rail_gtfs_to_services(df_stop_times, date_rail, path_folder=None, pre_processed_version=0, save_services=False):
+
+    n_stops_trip = df_stop_times.groupby('trip_id').count().reset_index()
+
+    # Keep trips with at least two stops of interest in the trip
+    df_stop_times = df_stop_times[
+        df_stop_times.trip_id.isin(n_stops_trip[n_stops_trip.arrival_time > 1].trip_id)].copy()
+
+    # Create rail services as all possible segments in the trips
+    rail_services = []
+
+    df_sorted = df_stop_times.sort_values(by=['trip_id', 'stop_sequence'])
+
+    df_sorted['arrival_time'] = df_sorted['arrival_time'].apply(lambda x: add_date_and_handle_overflow(x, date_rail))
+    df_sorted['departure_time'] = df_sorted['departure_time'].apply(lambda x: add_date_and_handle_overflow(x,
+                                                                                                           date_rail))
+
+    grouped = df_sorted.groupby('trip_id')
+    rail_cost = None
+    rail_seats = None
+    rail_emissions = None
+
+    for trip_id, group_df in grouped:
+        stop_ids = group_df['stop_id'].tolist()
+        stop_sequences = group_df['stop_sequence'].tolist()
+        for i, j in combinations(range(len(stop_ids)), 2):
+            service_id = f"{trip_id}_{stop_sequences[i]}_{stop_sequences[j]}"
+            origin = str(stop_ids[i])
+            destination = str(stop_ids[j])
+            departure_time = group_df.iloc[i]['departure_time']
+            arrival_time = group_df.iloc[j]['arrival_time']
+            rail_provider = group_df.iloc[i]['provider']
+            rail_alliance = group_df.iloc[i]['alliance']
+
+            service_df_row = (
+                service_id, str(origin), str(destination), departure_time, arrival_time, rail_provider, rail_alliance,
+                rail_cost, rail_seats, rail_emissions)
+
+            rail_services.append(service_df_row)
+
+    rail_services_df = pd.DataFrame(rail_services,
+                                    columns=['service_id', 'origin', 'destination', 'departure_time', 'arrival_time',
+                                             'provider', 'alliance', 'cost', 'seats', 'emissions'])
+
+    if save_services:
+        frail = ('rail_timetable_proc_') + str(pre_processed_version) + '.csv'
+        rail_services_df.to_csv(path_folder / frail, index=False)
+
+    return rail_services_df
 
 
 def create_network(path_network_dict, compute_simplified=False, use_heuristics_precomputed=False,
@@ -328,9 +356,49 @@ def create_network(path_network_dict, compute_simplified=False, use_heuristics_p
         layers += [air_layer]
 
     if 'rail_network' in path_network_dict.keys():
-        fstops_filename = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
-        df_stop_times = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                    fstops_filename, keep_default_na=False)
+        # TODO: deal with date_considered
+        date_rail_str = '20140912'
+        date_rail = pd.to_datetime(date_rail_str, format='%Y%m%d')
+
+        if path_network_dict['rail_network'].get('create_rail_layer_from') == 'gtfs':
+            # Create the services file (regarless if it exists or not) and then process downstream as from services
+            fstops_filename = 'rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'
+            df_stop_times = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
+                                       fstops_filename, keep_default_na=False, na_values=[''])
+
+            df_rail_data = pre_process_rail_gtfs_to_services(df_stop_times, date_rail,
+                                              (Path(path_network_dict['network_path']) / path_network_dict['processed_folder']),
+                                              pre_processed_version=pre_processed_version, save_services=True)
+
+        else:
+            fstops_filename = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
+
+            df_rail_data = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
+                                       fstops_filename, keep_default_na=False, na_values=[''])
+
+            df_rail_data = df_rail_data.applymap(lambda x: None if pd.isna(x) else x)
+
+            df_rail_data['departure_time'] = pd.to_datetime(df_rail_data['departure_time'])
+            df_rail_data['arrival_time'] = pd.to_datetime(df_rail_data['arrival_time'])
+            # Adjust date to date of rail_str (to match flights datetime)
+            most_frequent_arrival_date = df_rail_data['arrival_time'].dt.date.mode()[0]
+
+            df_rail_data['departure_time'] = df_rail_data['departure_time'].apply(lambda dt:
+                                                                                  dt.replace(year=date_rail.year,
+                                                                                             month=date_rail.month,
+                                                                                             day=date_rail.day) +
+                                                                                  pd.Timedelta(days=(dt.date() -
+                                                                                                     most_frequent_arrival_date).days))
+
+            df_rail_data['arrival_time'] = df_rail_data['arrival_time'].apply(lambda dt:
+                                                                              dt.replace(year=date_rail.year,
+                                                                                         month=date_rail.month,
+                                                                                         day=date_rail.day) +
+                                                                              pd.Timedelta(days=(dt.date() -
+                                                                                                 most_frequent_arrival_date).days))
+
+            df_rail_data['origin'] = df_rail_data['origin'].apply(lambda x: str(x))
+            df_rail_data['destination'] = df_rail_data['destination'].apply(lambda x: str(x))
 
         # Get regions access for rail
         df_ra_rail = None
@@ -352,7 +420,7 @@ def create_network(path_network_dict, compute_simplified=False, use_heuristics_p
         else:
             df_stops = None
 
-        rail_layer = create_rail_layer(df_stop_times, date_considered='12/09/2014',
+        rail_layer = create_rail_layer(df_rail_data, from_gtfs=False, date_considered=date_rail_str,
                                        df_ra_rail=df_ra_rail,
                                        keep_only_fastest_service=compute_simplified,
                                        df_stops=df_stops,
