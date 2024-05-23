@@ -536,17 +536,30 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
             path = None
             n_modes = 0
             for s in i.itinerary:
-                dict_legs_info['service_id_' + str(ln)].append(s.id)
+                if consider_times_constraints:
+                    dict_legs_info['service_id_' + str(ln)].append(s.id)
+                else:
+                    dict_legs_info['service_id_' + str(ln)].append(None)
                 dict_legs_info['origin_' + str(ln)].append(s.origin)
                 dict_legs_info['destination_' + str(ln)].append(s.destination)
-                dict_legs_info['provider_' + str(ln)].append(s.provider)
-                dict_legs_info['alliance_' + str(ln)].append(s.alliance)
+                # TODO consider_time_constarint but yes provider...
+                if consider_times_constraints:
+                    dict_legs_info['provider_' + str(ln)].append(s.provider)
+                    dict_legs_info['alliance_' + str(ln)].append(s.alliance)
+                else:
+                    dict_legs_info['provider_' + str(ln)].append(None)
+                    dict_legs_info['alliance_' + str(ln)].append(None)
+
                 if i.layers_used[ln] != prev_mode:
                     prev_mode = i.layers_used[ln]
                     n_modes += 1
                 dict_legs_info['mode_' + str(ln)].append(i.layers_used[ln])
-                dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
-                dict_legs_info['arrival_time_' + str(ln)].append(s.arrival_time)
+                if consider_times_constraints:
+                    dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
+                    dict_legs_info['arrival_time_' + str(ln)].append(s.arrival_time)
+                else:
+                    dict_legs_info['departure_time_' + str(ln)].append(None)
+                    dict_legs_info['arrival_time_' + str(ln)].append(None)
                 dict_legs_info['travel_time_' + str(ln)].append(s.duration.total_seconds() / 60)
                 if path is None:
                     path = [s.origin, s.destination]
@@ -624,7 +637,11 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
 
     df = pd.DataFrame(dict_elements)
 
-    return df
+    columns_to_keep_regardless_none = ['total_cost', 'total_emissions', 'total_waiting_time']
+    columns_to_keep_or_not_all_none = [col for col in df.columns if col in columns_to_keep_regardless_none
+                                       or df[col].notna().any()]
+
+    return df[columns_to_keep_or_not_all_none]
 
 
 def compute_possible_itineraries_network(network, o_d, pc=1, n_itineraries=10, max_connections=2,
@@ -678,3 +695,48 @@ def compute_possible_itineraries_network(network, o_d, pc=1, n_itineraries=10, m
     df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints)
     print("In total", len(df_itineraries), " itineraries computed")
     return df_itineraries
+
+
+def compute_avg_paths_from_itineraries(df_itineraries):
+    df_paths = df_itineraries.copy()
+    prefixes = ['service_id', 'provider', 'alliance', 'departure_time', 'arrival_time']
+    columns_drop = [col for col in df_paths.columns if any(col.startswith(prefix) for prefix in prefixes)]
+    df_paths = df_itineraries.drop(columns=columns_drop)
+    df_paths['path'] = df_paths['path'].apply(str)
+
+    exclude_columns = [col for col in df_paths.columns if col.startswith('origin') or col.startswith('destination')
+                       or  col.startswith('mode')]
+
+    df_paths_avg = df_paths.groupby(['origin', 'destination', 'path'], as_index=False).agg(lambda x: x.mean() if x.name not in exclude_columns else x.iloc[0])
+
+    df_paths_avg = df_paths_avg.groupby(['origin', 'destination']).apply(lambda x: x.sort_values(by='total_travel_time', ascending=True)).reset_index(drop=True)
+
+    df_paths_avg['option'] = df_paths_avg.groupby(['origin', 'destination']).cumcount()
+
+    df_paths_avg['path'] = df_paths_avg['path'].apply(eval)
+
+    def update_column_name(column_name):
+        if column_name.startswith('total_'):
+            return 'total_avg_' + column_name.split('total_')[1]
+        elif column_name.startswith('travel_time_'):
+            return 'travel_avg_time_' + column_name.split('travel_time_')[1]
+        elif column_name.startswith('access_'):
+            return 'access_avg_' + column_name.split('access_')[1]
+        elif column_name.startswith('egress_'):
+            return 'egress_avg_' + column_name.split('egress_')[1]
+        elif column_name.startswith('mct_'):
+            return 'mct_avg_' + column_name.split('mct_')[1]
+        elif column_name.startswith('connecting_'):
+            return 'connecting_avg_' + column_name.split('connecting_')[1]
+        elif column_name.startswith('waiting_'):
+            return 'waiting_avg_' + column_name.split('waiting_')[1]
+        elif column_name.startswith('cost_'):
+            return 'cost_avg_' + column_name.split('cost_')[1]
+        else:
+            return column_name
+
+    # Apply the function to update column names
+    df_paths_avg = df_paths_avg.rename(columns={col: update_column_name(col) for col in df_paths_avg.columns})
+
+    return df_paths_avg
+

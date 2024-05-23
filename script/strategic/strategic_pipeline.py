@@ -7,7 +7,8 @@ import sys
 sys.path.insert(1, '../..')
 
 from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
-                                                     compute_possible_itineraries_network)
+                                                     compute_possible_itineraries_network,
+                                                     compute_avg_paths_from_itineraries)
 
 
 def read_origin_demand_matrix(path_demand):
@@ -43,9 +44,16 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
     if consider_time_constraints:
         ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     else:
-        ofp = 'potential_itineraries_' + str(pre_processed_version) + '.csv'
+        ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
 
     df_itineraries.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+
+    if consider_time_constraints:
+        # Compute average paths from possible itineraries
+        df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries)
+        ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
+        df_avg_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+
 
 
 if __name__ == '__main__':
