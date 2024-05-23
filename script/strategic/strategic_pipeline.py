@@ -38,7 +38,10 @@ def run(network_paths_config, pc=1, n_paths=10, max_connections=1, pre_processed
                                               allow_mixed_operators=allow_mixed_operators,
                                               consider_times_constraints=consider_time_constraints)
 
-    ofp = 'possible_paths_'+str(pre_processed_version)+'.csv'
+    if compute_simplified:
+        ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
+    else:
+        ofp = 'possible_paths_'+str(pre_processed_version)+'.csv'
     df_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
 
 
