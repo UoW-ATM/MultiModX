@@ -484,9 +484,10 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
     access = []
     egress = []
     nservices = []
-    n_modes_p = []
-    total_waiting_p = []
-    total_cost_p = []
+    n_modes_i = []
+    paths_i = []
+    total_waiting_i = []
+    total_cost_i = []
     total_emissions_p = []
 
     n_legs = 0
@@ -532,6 +533,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
             prev_arrival_time = None
             prev_mode = None
             total_waiting = None
+            path = None
             n_modes = 0
             for s in i.itinerary:
                 dict_legs_info['service_id_' + str(ln)].append(s.id)
@@ -546,6 +548,11 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
                 dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
                 dict_legs_info['arrival_time_' + str(ln)].append(s.arrival_time)
                 dict_legs_info['travel_time_' + str(ln)].append(s.duration.total_seconds() / 60)
+                if path is None:
+                    path = [s.origin, s.destination]
+                else:
+                    path += [s.origin, s.destination]
+
                 if ln > 0:
                     dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)].append(
                         i.mcts[ln - 1].total_seconds() / 60)
@@ -591,10 +598,12 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
                 dict_legs_info['cost_' + str(lni)].append(None)
                 dict_legs_info['emissions_' + str(lni)].append(None)
 
-            n_modes_p.append(n_modes)
-            total_waiting_p.append(total_waiting)
-            total_cost_p.append(None)
+            n_modes_i.append(n_modes)
+            total_waiting_i.append(total_waiting)
+            paths_i.append([v for i, v in enumerate(path) if i == 0 or v != path[i-1]]) # remove consecutive same node
+            total_cost_i.append(None)
             total_emissions_p.append(None)
+
 
             option += 1
 
@@ -602,11 +611,12 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
                'destination': destinations,
                'option': options,
                'nservices': nservices,
+               'path': paths_i,
                'total_travel_time': total_travel_time,
-               'total_cost': total_cost_p,
+               'total_cost': total_cost_i,
                'total_emissions': total_emissions_p,
-               'total_waiting_time': total_waiting_p,
-               'nmodes': n_modes_p,
+               'total_waiting_time': total_waiting_i,
+               'nmodes': n_modes_i,
                'access_time': access,
                'egress_time': egress}
 
