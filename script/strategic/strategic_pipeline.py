@@ -6,7 +6,8 @@ import pandas as pd
 import sys
 sys.path.insert(1, '../..')
 
-from strategic_evaluator.strategic_evaluator import create_network, preprocess_input, compute_possible_paths_network
+from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
+                                                     compute_possible_itineraries_network)
 
 
 def read_origin_demand_matrix(path_demand):
@@ -15,34 +16,36 @@ def read_origin_demand_matrix(path_demand):
     return df_demand
 
 
-def run(network_paths_config, pc=1, n_paths=10, max_connections=1, pre_processed_version=0,
+def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_processed_version=0,
         allow_mixed_operators=False,
-        consider_time_constraints=True):
+        consider_time_constraints=True, use_heuristics_precomputed=False):
 
     # Preprocess input
     preprocess_input(network_paths_config['network_definition'])
 
     # Create network
     network = create_network(network_paths_config['network_definition'],
-                             compute_simplified=args.compute_simplified,
-                             use_heuristics_precomputed=args.use_heuristics_precomputed,
+                             compute_simplified=not consider_time_constraints,
+                             use_heuristics_precomputed=use_heuristics_precomputed,
                              pre_processed_version=pre_processed_version)
 
     # Read demand
     demand_matrix = read_origin_demand_matrix(network_paths_config['demand']['demand'])
 
-    # Compute possible paths based on demand
+    # Compute possible itineraries based on demand
     o_d = demand_matrix[['origin', 'destination']].drop_duplicates()
 
-    df_paths = compute_possible_paths_network(network, o_d, pc, n_paths=n_paths, max_connections=max_connections,
-                                              allow_mixed_operators=allow_mixed_operators,
-                                              consider_times_constraints=consider_time_constraints)
+    df_itineraries = compute_possible_itineraries_network(network, o_d, pc, n_itineraries=n_itineraries,
+                                                          max_connections=max_connections,
+                                                          allow_mixed_operators=allow_mixed_operators,
+                                                          consider_times_constraints=consider_time_constraints)
 
-    if compute_simplified:
-        ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
+    if consider_time_constraints:
+        ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     else:
-        ofp = 'possible_paths_'+str(pre_processed_version)+'.csv'
-    df_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+        ofp = 'potential_itineraries_' + str(pre_processed_version) + '.csv'
+
+    df_itineraries.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
 
 
 if __name__ == '__main__':
@@ -53,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('-df', '--demand_file', help='Pax demand file', required=False)
     parser.add_argument('-mo', '--allow_mixed_operators', help='Allow mix operators',
                         required=False, action='store_true')
-    parser.add_argument('-np', '--num_paths', help='Number of paths to find', required=False, default=50)
+    parser.add_argument('-ni', '--num_itinearies', help='Number of itineraries to find', required=False, default=50)
     parser.add_argument('-mc', '--max_connections', help='Number of connections allowed', required=False,
                         default=1)
     parser.add_argument('-cs', '--compute_simplified', help='Compute simplified network', required=False,
@@ -82,9 +85,10 @@ if __name__ == '__main__':
     if args.compute_simplified:
         args.allow_mixed_operators = True
 
-    run(network_paths_config, pc=pc, n_paths=int(args.num_paths), max_connections=int(args.max_connections),
+    run(network_paths_config, pc=pc, n_itineraries=int(args.num_itinearies), max_connections=int(args.max_connections),
         pre_processed_version=int(args.preprocessed_version),
-        allow_mixed_operators=args.allow_mixed_operators, consider_time_constraints=not args.compute_simplified)
+        allow_mixed_operators=args.allow_mixed_operators, consider_time_constraints=not args.compute_simplified,
+        use_heuristics_precomputed=args.use_heuristics_precomputed)
 
     # Improvements
     # TODO: day in rail

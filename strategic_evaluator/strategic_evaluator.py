@@ -447,35 +447,36 @@ def create_network(path_network_dict, compute_simplified=False, use_heuristics_p
     return network
 
 
-def compute_paths(od_paths, network, n_paths=10,
-                  max_connections=2, allow_mixed_operators=False, consider_times_constraints=True):
-    dict_paths = {}
+def compute_itineraries(od_itineraries, network, n_itineraries=10,
+                        max_connections=2, allow_mixed_operators=False, consider_times_constraints=True):
+    dict_itineraries = {}
     start_time = time.time()
 
     n_explored_total = 0
-    for i, od in od_paths.iterrows():
+    for i, od in od_itineraries.iterrows():
         start_time_od = time.time()
         same_operators = not allow_mixed_operators
-        paths, n_explored = network.find_paths(origin=od.origin, destination=od.destination, npaths=n_paths,
-                                               max_connections=max_connections,
-                                               consider_operators_connections=same_operators,
-                                               consider_times_constraints=consider_times_constraints)
-        dict_paths[(od.origin, od.destination)] = paths
+        itineraries, n_explored = network.find_itineraries(origin=od.origin, destination=od.destination,
+                                                           nitineraries=n_itineraries,
+                                                           max_connections=max_connections,
+                                                           consider_operators_connections=same_operators,
+                                                           consider_times_constraints=consider_times_constraints)
+        dict_itineraries[(od.origin, od.destination)] = itineraries
         n_explored_total += n_explored
         end_time_od = time.time()
-        print("Paths for", od.origin, "-", od.destination,
+        print("Itineraries for", od.origin, "-", od.destination,
               ", computed in, ", (end_time_od - start_time_od), " seconds, exploring:", n_explored,
-              "nodes. Found", len(paths), "paths.\n")
+              "nodes. Found", len(itineraries), "itineraries.\n")
 
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    print("Paths computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
+    print("Itineraries computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
 
-    return dict_paths
+    return dict_itineraries
 
 
-def process_dict_paths(dict_paths, consider_times_constraints=True):
+def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
     options = []
     origins = []
     destinations = []
@@ -489,10 +490,10 @@ def process_dict_paths(dict_paths, consider_times_constraints=True):
     total_emissions_p = []
 
     n_legs = 0
-    for dp in dict_paths.values():
-        for p in dp:
-            if n_legs < len(p.path):
-                n_legs = len(p.path)
+    for di in dict_itineraries.values():
+        for i in di:
+            if n_legs < len(i.itinerary):
+                n_legs = len(i.itinerary)
 
     dict_legs_info = {}
     for ln in range(n_legs):
@@ -515,39 +516,39 @@ def process_dict_paths(dict_paths, consider_times_constraints=True):
 
         ln += 1
 
-    for od in dict_paths.keys():
+    for od in dict_itineraries.keys():
         origin = od[0]
         destination = od[1]
         option = 0
-        for p in dict_paths[od]:
+        for i in dict_itineraries[od]:
             origins.append(origin)
             destinations.append(destination)
             options.append(option)
-            total_travel_time.append(p.total_travel_time.total_seconds() / 60)
-            access.append(p.access_time.total_seconds() / 60)
-            egress.append(p.egress_time.total_seconds() / 60)
-            nservices.append(len(p.path))
+            total_travel_time.append(i.total_travel_time.total_seconds() / 60)
+            access.append(i.access_time.total_seconds() / 60)
+            egress.append(i.egress_time.total_seconds() / 60)
+            nservices.append(len(i.itinerary))
             ln = 0
             prev_arrival_time = None
             prev_mode = None
             total_waiting = None
             n_modes = 0
-            for s in p.path:
+            for s in i.itinerary:
                 dict_legs_info['service_id_' + str(ln)].append(s.id)
                 dict_legs_info['origin_' + str(ln)].append(s.origin)
                 dict_legs_info['destination_' + str(ln)].append(s.destination)
                 dict_legs_info['provider_' + str(ln)].append(s.provider)
                 dict_legs_info['alliance_' + str(ln)].append(s.alliance)
-                if p.layers_used[ln] != prev_mode:
-                    prev_mode = p.layers_used[ln]
+                if i.layers_used[ln] != prev_mode:
+                    prev_mode = i.layers_used[ln]
                     n_modes += 1
-                dict_legs_info['mode_' + str(ln)].append(p.layers_used[ln])
+                dict_legs_info['mode_' + str(ln)].append(i.layers_used[ln])
                 dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
                 dict_legs_info['arrival_time_' + str(ln)].append(s.arrival_time)
                 dict_legs_info['travel_time_' + str(ln)].append(s.duration.total_seconds() / 60)
                 if ln > 0:
                     dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)].append(
-                        p.mcts[ln - 1].total_seconds() / 60)
+                        i.mcts[ln - 1].total_seconds() / 60)
 
                     if not consider_times_constraints:
                         dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)].append(None)
@@ -558,12 +559,12 @@ def process_dict_paths(dict_paths, consider_times_constraints=True):
                             (s.departure_time - prev_arrival_time).total_seconds() / 60)
                         dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)].append(
                             (s.departure_time - prev_arrival_time).total_seconds() / 60 -
-                            p.mcts[ln - 1].total_seconds() / 60)
+                            i.mcts[ln - 1].total_seconds() / 60)
                         if total_waiting is None:
-                            total_waiting = (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
+                            total_waiting = (s.departure_time - prev_arrival_time).total_seconds() / 60 - i.mcts[
                                 ln - 1].total_seconds() / 60
                         else:
-                            total_waiting += (s.departure_time - prev_arrival_time).total_seconds() / 60 - p.mcts[
+                            total_waiting += (s.departure_time - prev_arrival_time).total_seconds() / 60 - i.mcts[
                                 ln - 1].total_seconds() / 60
 
                 dict_legs_info['cost_' + str(ln)].append(s.cost)
@@ -616,24 +617,24 @@ def process_dict_paths(dict_paths, consider_times_constraints=True):
     return df
 
 
-def compute_possible_paths_network(network, o_d, pc=1, n_paths=10, max_connections=2,
-                                   allow_mixed_operators=False, consider_times_constraints=True):
+def compute_possible_itineraries_network(network, o_d, pc=1, n_itineraries=10, max_connections=2,
+                                         allow_mixed_operators=False, consider_times_constraints=True):
     if pc == 1:
-        dict_paths = compute_paths(o_d,
-                                   network,
-                                   n_paths=n_paths,
-                                   max_connections=max_connections,
-                                   allow_mixed_operators=allow_mixed_operators,
-                                   consider_times_constraints=consider_times_constraints)
+        dict_itinearies = compute_itineraries(o_d,
+                                              network,
+                                              n_itineraries=n_itineraries,
+                                              max_connections=max_connections,
+                                              allow_mixed_operators=allow_mixed_operators,
+                                              consider_times_constraints=consider_times_constraints)
     else:
-        # Parallel computation of paths between o-d pairs
+        # Parallel computation of itineraries between o-d pairs
         prev_i = 0
         n_od_per_section = max(1, round(len(o_d) / pc))
         if n_od_per_section == 1:
             pc = len(o_d)
         i = n_od_per_section
 
-        path_computation_param = []
+        itineraries_computation_param = []
         for nr in range(pc):
             if nr == pc - 1:
                 i = len(o_d)
@@ -641,29 +642,29 @@ def compute_possible_paths_network(network, o_d, pc=1, n_paths=10, max_connectio
             d = o_d.iloc[prev_i:i].copy().reset_index(drop=True)
 
             if nr == 0:
-                path_computation_param = [[d, network, n_paths, max_connections, allow_mixed_operators,
+                itineraries_computation_param = [[d, network, n_itineraries, max_connections, allow_mixed_operators,
                                            consider_times_constraints]]
             else:
                 if len(d) > 0:
-                    path_computation_param.append([d, network, n_paths, max_connections, allow_mixed_operators,
+                    itineraries_computation_param.append([d, network, n_itineraries, max_connections, allow_mixed_operators,
                                                    consider_times_constraints])
 
             prev_i = i
             i = i + n_od_per_section
 
-        pool = mp.Pool(processes=min(pc, len(path_computation_param)))
+        pool = mp.Pool(processes=min(pc, len(itineraries_computation_param)))
 
-        print("   Launching parallel o-d path finding")
+        print("   Launching parallel o-d itinearies finding")
 
-        res = pool.starmap(compute_paths, path_computation_param)
+        res = pool.starmap(compute_itineraries, itineraries_computation_param)
 
         pool.close()
         pool.join()
 
-        dict_paths = {}
+        dict_itinearies = {}
         for dictionary in res:
-            dict_paths.update(dictionary)
+            dict_itinearies.update(dictionary)
 
-    df_paths = process_dict_paths(dict_paths, consider_times_constraints=consider_times_constraints)
-    print("In total", len(df_paths), " paths computed")
-    return df_paths
+    df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints)
+    print("In total", len(df_itineraries), " itineraries computed")
+    return df_itineraries
