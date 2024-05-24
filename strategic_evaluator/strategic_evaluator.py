@@ -613,7 +613,10 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
 
             n_modes_i.append(n_modes)
             total_waiting_i.append(total_waiting)
-            paths_i.append([v for i, v in enumerate(path) if i == 0 or v != path[i-1]]) # remove consecutive same node
+            if path is not None:
+                paths_i.append([v for i, v in enumerate(path) if i == 0 or v != path[i-1]]) # remove consecutive same node
+            else:
+                paths_i.append(None)
             total_cost_i.append(None)
             total_emissions_p.append(None)
 
@@ -699,21 +702,47 @@ def compute_possible_itineraries_network(network, o_d, pc=1, n_itineraries=10, m
 
 def compute_avg_paths_from_itineraries(df_itineraries):
     df_paths = df_itineraries.copy()
-    prefixes = ['service_id', 'provider', 'alliance', 'departure_time', 'arrival_time']
-    columns_drop = [col for col in df_paths.columns if any(col.startswith(prefix) for prefix in prefixes)]
-    df_paths = df_itineraries.drop(columns=columns_drop)
+
     df_paths['path'] = df_paths['path'].apply(str)
 
-    exclude_columns = [col for col in df_paths.columns if col.startswith('origin') or col.startswith('destination')
-                       or  col.startswith('mode')]
+    df_paths['earliest_departure_time'] = df_paths.groupby(['origin', 'destination', 'path'])['departure_time_0'].transform('min')
+    arrival_cols = [col for col in df_paths.columns if col.startswith('arrival_time_')]
+    df_paths['latest_arrival_time'] = df_paths[arrival_cols].max(axis=1)
 
+    prefixes = ['service_id', 'provider', 'alliance', 'departure_time', 'arrival_time']
+    columns_drop = [col for col in df_paths.columns if any(col.startswith(prefix) for prefix in prefixes)]
+    df_paths = df_paths.drop(columns=columns_drop)
+
+
+    exclude_columns = [col for col in df_paths.columns if col.startswith('origin') or col.startswith('destination')
+                       or col.startswith('mode') or col.startswith('earliest_departure_time') or
+                       col.startswith('latest_arrival_time')]
+
+    df_paths['path'] = df_paths['path'].apply(str)
     df_paths_avg = df_paths.groupby(['origin', 'destination', 'path'], as_index=False).agg(lambda x: x.mean() if x.name not in exclude_columns else x.iloc[0])
 
     df_paths_avg = df_paths_avg.groupby(['origin', 'destination']).apply(lambda x: x.sort_values(by='total_travel_time', ascending=True)).reset_index(drop=True)
 
     df_paths_avg['option'] = df_paths_avg.groupby(['origin', 'destination']).cumcount()
 
-    df_paths_avg['path'] = df_paths_avg['path'].apply(eval)
+    df_paths_avg.insert(0, 'path_id', range(len(df_paths_avg)))
+
+    df_paths_avg['n_itineraries'] = df_paths_avg.groupby(['origin', 'destination'])['path_id'].transform('count')
+
+    # Move n_itineraries to be the second column
+    cols = df_paths_avg.columns.tolist()
+    cols.insert(1, cols.pop(cols.index('n_itineraries')))
+    df_paths_avg = df_paths_avg[cols]
+
+
+    cols = df_paths_avg.columns.tolist()
+    cols.insert(12, cols.pop(cols.index('earliest_departure_time')))
+    df_paths_avg = df_paths_avg[cols]
+
+    cols = df_paths_avg.columns.tolist()
+    cols.insert(13, cols.pop(cols.index('latest_arrival_time')))
+    df_paths_avg = df_paths_avg[cols]
+
 
     def update_column_name(column_name):
         if column_name.startswith('total_'):
@@ -737,6 +766,36 @@ def compute_avg_paths_from_itineraries(df_itineraries):
 
     # Apply the function to update column names
     df_paths_avg = df_paths_avg.rename(columns={col: update_column_name(col) for col in df_paths_avg.columns})
+
+    # Find the fastest and slowest options
+    group_cols = ['origin', 'destination', 'path']
+    min_cols = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time'] + [f'travel_time_{i}' for i
+                                                                                               in range(10)] + [
+                   f'cost_{i}' for i in range(10)] + [f'connecting_time_{i}_{i + 1}' for i in range(10)] + [
+                   f'waiting_time_{i}_{i + 1}' for i in range(10)]
+    min_cols = [col for col in min_cols if col in df_itineraries.columns]
+
+    df_paths_time = df_itineraries.copy()
+    df_paths_time['path'] = df_paths_time['path'].apply(str)
+
+    df_min = df_paths_time.loc[df_paths_time.groupby(group_cols)['total_travel_time'].idxmin(), group_cols + min_cols]
+    df_max = df_paths_time.loc[df_paths_time.groupby(group_cols)['total_travel_time'].idxmax(), group_cols + min_cols]
+
+    df_min = df_min.rename(columns={col: col + '_min' for col in min_cols})
+
+    df_max = df_max.rename(columns={col: col + '_max' for col in min_cols})
+
+    df_paths_avg = df_paths_avg.merge(df_min, on=group_cols, how='left').merge(df_max, on=group_cols, how='left')
+
+    cols = df_paths_avg.columns.tolist()
+    cols.insert(8, cols.pop(cols.index('total_travel_time_min')))
+    df_paths_avg = df_paths_avg[cols]
+
+    cols = df_paths_avg.columns.tolist()
+    cols.insert(9, cols.pop(cols.index('total_travel_time_max')))
+    df_paths_avg = df_paths_avg[cols]
+
+    df_paths_avg['path'] = df_paths_avg['path'].apply(eval)
 
     return df_paths_avg
 
