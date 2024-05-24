@@ -727,13 +727,14 @@ def compute_avg_paths_from_itineraries(df_itineraries):
 
     df_paths_avg.insert(0, 'path_id', range(len(df_paths_avg)))
 
-    df_paths_avg['n_itineraries'] = df_paths_avg.groupby(['origin', 'destination'])['path_id'].transform('count')
+    grouped_itineraries = df_paths.groupby(['origin', 'destination', 'path']).size().reset_index(name='n_itineraries')
+
+    df_paths_avg = df_paths_avg.merge(grouped_itineraries, on=['origin', 'destination', 'path'])
 
     # Move n_itineraries to be the second column
     cols = df_paths_avg.columns.tolist()
     cols.insert(1, cols.pop(cols.index('n_itineraries')))
     df_paths_avg = df_paths_avg[cols]
-
 
     cols = df_paths_avg.columns.tolist()
     cols.insert(12, cols.pop(cols.index('earliest_departure_time')))
@@ -742,7 +743,6 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     cols = df_paths_avg.columns.tolist()
     cols.insert(13, cols.pop(cols.index('latest_arrival_time')))
     df_paths_avg = df_paths_avg[cols]
-
 
     def update_column_name(column_name):
         if column_name.startswith('total_'):
