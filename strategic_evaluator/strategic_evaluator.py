@@ -172,7 +172,6 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
 def preprocess_air_layer(path_network, air_network, processed_folder, pre_processed_version=0):
     df_fs = pd.read_csv(Path(path_network) / air_network['flight_schedules'], keep_default_na=False)
     df_fs.replace('', None, inplace=True)
-    df_fs['alliance'].fillna(df_fs['provider'], inplace=True)
 
     if 'provider' not in df_fs.columns:
         df_fs['provider'] = None
@@ -185,6 +184,16 @@ def preprocess_air_layer(path_network, air_network, processed_folder, pre_proces
     if 'emissions' not in df_fs.columns:
         df_fs['emissions'] = 0
 
+    df_fs['alliance'].fillna(df_fs['provider'], inplace=True)
+
+    if 'alliances' in air_network.keys():
+        # Replace alliance for the alliances defined in the alliances.csv file
+        df_alliances = pd.read_csv(Path(path_network) / air_network['alliances'])
+        df_fs = df_fs.merge(df_alliances, how='left', on='provider', suffixes=("","_alliance"))
+        df_fs.loc[~df_fs.alliance_alliance.isna(), 'alliance'] = df_fs.loc[~df_fs.alliance_alliance.isna()]['alliance_alliance']
+        df_fs = df_fs.drop(['alliance_alliance'], axis=1)
+
+    print(df_fs)
     fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
     df_fs.to_csv(Path(path_network) / processed_folder / fflights, index=False)
 
