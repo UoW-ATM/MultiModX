@@ -2,6 +2,8 @@ from pathlib import Path
 import argparse
 import tomli
 import pandas as pd
+from collections import defaultdict
+import ast
 
 import sys
 sys.path.insert(1, '../..')
@@ -19,7 +21,7 @@ def read_origin_demand_matrix(path_demand):
 
 def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_processed_version=0,
         allow_mixed_operators=False,
-        consider_time_constraints=True, use_heuristics_precomputed=False):
+        consider_time_constraints=True, use_heuristics_precomputed=False, use_potential_paths=False):
 
     # Preprocess input
     preprocess_input(network_paths_config['network_definition'])
@@ -36,7 +38,24 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
     # Compute possible itineraries based on demand
     o_d = demand_matrix[['origin', 'destination']].drop_duplicates()
 
-    df_itineraries = compute_possible_itineraries_network(network, o_d, pc, n_itineraries=n_itineraries,
+    # If use_potential_paths then read potential paths and create dictionary
+    dict_o_d_routes = None
+    if use_potential_paths:
+        # Read path of potential paths:
+        df_pp = pd.read_csv((Path(network_paths_config['network_definition']['network_path'])/
+               network_paths_config['network_definition']['potential_paths']))
+
+        df_pp['path'] = df_pp['path'].apply(ast.literal_eval)
+        dict_o_d_routes = defaultdict(list)
+
+        for _, row in df_pp.iterrows():
+            key = (row['origin'], row['destination'])
+            dict_o_d_routes[key].append(row['path'])
+
+        dict_o_d_routes = dict(dict_o_d_routes)
+
+    df_itineraries = compute_possible_itineraries_network(network, o_d, dict_o_d_routes=dict_o_d_routes,
+                                                          pc=pc, n_itineraries=n_itineraries,
                                                           max_connections=max_connections,
                                                           allow_mixed_operators=allow_mixed_operators,
                                                           consider_times_constraints=consider_time_constraints)
@@ -69,13 +88,14 @@ if __name__ == '__main__':
                         default=1)
     parser.add_argument('-cs', '--compute_simplified', help='Compute simplified network', required=False,
                         action='store_true')
-
     parser.add_argument('-hpc', '--use_heuristics_precomputed', help='Use heuristics precomputed based'
                                                                      ' on distance',
                         action='store_true', required=False)
-
     parser.add_argument('-ppv', '--preprocessed_version', help='Preprocessed version of schedules to use',
                         required=False, default=0)
+    parser.add_argument('-upp', '--use_potential_paths', help='Compute itineraries from list of potential '
+                                                              'paths only',
+                        required=False, action='store_true')
 
     # Parse parameters
     args = parser.parse_args()
@@ -96,7 +116,8 @@ if __name__ == '__main__':
     run(network_paths_config, pc=pc, n_itineraries=int(args.num_itinearies), max_connections=int(args.max_connections),
         pre_processed_version=int(args.preprocessed_version),
         allow_mixed_operators=args.allow_mixed_operators, consider_time_constraints=not args.compute_simplified,
-        use_heuristics_precomputed=args.use_heuristics_precomputed)
+        use_heuristics_precomputed=args.use_heuristics_precomputed,
+        use_potential_paths=args.use_potential_paths)
 
     # Improvements
     # TODO: day in rail

@@ -1,6 +1,7 @@
 import heapq
 import copy
 from datetime import timedelta
+from collections import defaultdict
 
 
 class Service:
@@ -82,6 +83,10 @@ class NetworkLayer:
 
         if custom_initialisation is not None:
             custom_initialisation(self)
+
+    def is_node_in_layer(self, node):
+        return len(self.df_services[(self.df_services.origin == node) |
+                                    (self.df_services.destination == node)]) > 0
 
     def get_services_between(self, origins, destinations):
         df = self.df_services[(self.df_services.origin.isin(origins) & self.df_services.destination.isin(destinations))]
@@ -206,11 +211,53 @@ class Network:
     def get_connecting_time_btw_layers(self, mct):
         return timedelta(minutes=mct.get('all', 0))
 
-    def find_itineraries(self, origin, destination, nitineraries=1, max_connections=1, layers_ids=None,
+    def find_layer_node(self, node):
+        found_layer = False
+        j = -1
+        layers = list(self.dict_layers.values())
+        while not found_layer and j < len(layers):
+            j += 1
+            found_layer = layers[j].is_node_in_layer(node)
+
+        if found_layer:
+            return layers[j]
+        else:
+            return None
+
+    def find_itineraries(self, origin, destination, routes=None, nitineraries=1, max_connections=1, layers_ids=None,
                          allow_transitions_layers=True, consider_operators_connections=True,
-                         consider_times_constraints=True, do_until_all_one_legs_found=True):
+                         consider_times_constraints=True):
+
+        def remove_consecutive_duplicates(elements):
+            return [elements[i] for i in range(len(elements)) if i == 0 or elements[i] != elements[i - 1]]
+
         # Store solutions
         itineraries = []
+
+        dict_next_valid_nodes = None
+        if routes is not None:
+            # Dictionary to store the possible next stops
+            dict_next_valid_nodes = defaultdict(list)
+
+            # Iterate through each path
+            for path in routes:
+                # Iterate through each segment of the path
+                for i in range(len(path) - 1):
+                    # Create the key as a tuple of the sub-path up to the current segment
+                    key = tuple(path[:i + 1])
+                    # The next stop is the element right after the current segment
+                    next_stop = path[i + 1]
+                    # Append the next stop to the list of possible next stops for this key
+                    if next_stop not in dict_next_valid_nodes[key]:
+                        dict_next_valid_nodes[key].append(next_stop)
+                # Also add the full path as a key
+                full_path_key = tuple(path)
+                if full_path_key not in dict_next_valid_nodes:
+                    dict_next_valid_nodes[full_path_key] = []
+
+            # Algorithm to find all posssible itineraries between origin-destination using routes provided
+            #return self.find_itineraries_in_route(origin, destination, routes, consider_operators_connections,
+            #                                      consider_times_constraints)
 
         if layers_ids is None:
             layers_considered = self.dict_layers.keys()
@@ -283,10 +330,12 @@ class Network:
 
         for layer, origins in dict_initial_nodes_layers.items():
             for o in origins:
-                access_time = self.dict_layers[layer].get_access_time(o, origin)
-                i = Itinerary(itinerary=[], current_node=o, total_travel_time=access_time,
-                              layer_id=layer, access_time=access_time)
-                pq += [i]
+                # Either we don't have a dictionary of valid nodes or the origin is in the keys of the dictionary
+                if (dict_next_valid_nodes is None) or (tuple([o]) in dict_next_valid_nodes.keys()) > 0:
+                    access_time = self.dict_layers[layer].get_access_time(o, origin)
+                    i = Itinerary(itinerary=[], current_node=o, total_travel_time=access_time,
+                                  layer_id=layer, access_time=access_time)
+                    pq += [i]
 
         # Heapify the priority queue using the wrapper function
         heapq.heapify(pq)
@@ -341,13 +390,17 @@ class Network:
                         # service and we have already considered these outside the loop. If not then save in heap.
                         if ((i.current_layer_id not in dict_destination_nodes_layers.keys()) or
                                 (service.destination not in dict_destination_nodes_layers[i.current_layer_id])):
-                            new_total_time = i.access_time + service.arrival_time - service.departure_time
-                            new_itinerary = [service]
-                            heapq.heappush(pq, Itinerary(itinerary=new_itinerary,
-                                                         current_node=service.destination,
-                                                         total_travel_time=new_total_time,
-                                                         layer_id=i.current_layer_id,
-                                                         access_time=i.access_time))
+                            # Either not have list of routes to follow or path in possible paths
+                            if ((dict_next_valid_nodes is None) or
+                                    (tuple([service.origin, service.destination]) in dict_next_valid_nodes.keys())):
+                                new_total_time = i.access_time + service.arrival_time - service.departure_time
+                                new_itinerary = [service]
+                                it = Itinerary(itinerary=new_itinerary,
+                                                             current_node=service.destination,
+                                                             total_travel_time=new_total_time,
+                                                             layer_id=i.current_layer_id,
+                                                             access_time=i.access_time)
+                                heapq.heappush(pq, it)
 
                     else:
                         # Avoid going back to an airport already visited
@@ -358,32 +411,38 @@ class Network:
                                 # extra connection possible. This is to avoid opening an edge which will require
                                 # another connection when no more connections are possible.
 
-                                if ((service.provider == i.itinerary[-1].provider) or
-                                        (service.alliance == i.itinerary[-1].alliance) or
-                                        (not consider_operators_connections)):
-                                    # Checking that the providers are compatible.
-                                    # If consider_operators_connections=False, this check is not taken into account
+                                # Either not have list of routes to follow or path in possible paths
+                                if ((dict_next_valid_nodes is None) or
+                                        (tuple(remove_consecutive_duplicates(i.nodes_visited + [service.destination]))
+                                         in dict_next_valid_nodes.keys())):
 
-                                    # Get the MCT between the two services: previous service (i.itinerary[-1]), new service
-                                    mct = self.dict_layers[i.current_layer_id].get_mct(i.itinerary[-1], service)
-                                    if (mct is not None) or (not consider_times_constraints):
-                                        # If there is no MCT we cannot connect between them. Probably shouldn't
-                                        # already have been part of possible_following_services_same_layer
+                                    if ((service.provider == i.itinerary[-1].provider) or
+                                            (service.alliance == i.itinerary[-1].alliance) or
+                                            (not consider_operators_connections)):
+                                        # Checking that the providers are compatible.
+                                        # If consider_operators_connections=False, this check is not taken into account
 
-                                        if ((service.departure_time >= i.itinerary[-1].arrival_time + mct) or
-                                                (not consider_times_constraints)):
-                                            # Checked that the departure and arrival times of the services are
-                                            # compatible
-                                            # or we don't consider mct times constraints. Allow connecting even
-                                            # if in reality not possible due to times.
+                                        # Get the MCT between the two services: previous service (i.itinerary[-1]), new service
+                                        mct = self.dict_layers[i.current_layer_id].get_mct(i.itinerary[-1], service)
+                                        if (mct is not None) or (not consider_times_constraints):
+                                            # If there is no MCT we cannot connect between them. Probably shouldn't
+                                            # already have been part of possible_following_services_same_layer
 
-                                            new_path = copy.deepcopy(i)
-                                            ht = self.dict_layers[i.current_layer_id].get_heuristic(service.destination,
-                                                                                                    destination_nodes)
-                                            new_path.add_service_itinerary(service, heuristic_time=ht,
-                                                                           time_from_path=consider_times_constraints,
-                                                                           mct=mct)
-                                            heapq.heappush(pq, new_path)
+                                            if ((service.departure_time >= i.itinerary[-1].arrival_time + mct) or
+                                                    (not consider_times_constraints)):
+                                                # Checked that the departure and arrival times of the services are
+                                                # compatible
+                                                # or we don't consider mct times constraints. Allow connecting even
+                                                # if in reality not possible due to times.
+
+                                                new_path = copy.deepcopy(i)
+                                                ht = self.dict_layers[i.current_layer_id].get_heuristic(service.destination,
+                                                                                                        destination_nodes)
+
+                                                new_path.add_service_itinerary(service, heuristic_time=ht,
+                                                                               time_from_path=consider_times_constraints,
+                                                                               mct=mct)
+                                                heapq.heappush(pq, new_path)
 
                 # Check now if we can do a transition to another layer
                 if (len(i.itinerary) > 0 and
@@ -419,13 +478,17 @@ class Network:
                                     # extra connection possible. This is to avoid opening an edge which will require
                                     # another connection when no more connections are possible.
 
-                                    new_path = copy.deepcopy(i)
-                                    ht = self.dict_layers[pt['layer_id']].get_heuristic(service.destination,
-                                                                                        destination_nodes)
-                                    new_path.add_service_itinerary(service, heuristic_time=ht, layer_id=pt['layer_id'],
-                                                                   time_from_path=consider_times_constraints,
-                                                                   mct=connecting_time_btw_layers)
-                                    heapq.heappush(pq, new_path)
+                                    # Either not have list of routes to follow or path in possible paths
+                                    if ((dict_next_valid_nodes is None) or
+                                            (tuple(remove_consecutive_duplicates(i.nodes_visited+[service.origin, service.destination]))
+                                             in dict_next_valid_nodes.keys())):
+                                        new_path = copy.deepcopy(i)
+                                        ht = self.dict_layers[pt['layer_id']].get_heuristic(service.destination,
+                                                                                            destination_nodes)
+                                        new_path.add_service_itinerary(service, heuristic_time=ht, layer_id=pt['layer_id'],
+                                                                       time_from_path=consider_times_constraints,
+                                                                       mct=connecting_time_btw_layers)
+                                        heapq.heappush(pq, new_path)
 
         # If target airport is not reachable or not all itineraries requested found
         return itineraries, n_nodes_explored

@@ -193,7 +193,6 @@ def preprocess_air_layer(path_network, air_network, processed_folder, pre_proces
         df_fs.loc[~df_fs.alliance_alliance.isna(), 'alliance'] = df_fs.loc[~df_fs.alliance_alliance.isna()]['alliance_alliance']
         df_fs = df_fs.drop(['alliance_alliance'], axis=1)
 
-    print(df_fs)
     fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
     df_fs.to_csv(Path(path_network) / processed_folder / fflights, index=False)
 
@@ -456,16 +455,26 @@ def create_network(path_network_dict, compute_simplified=False, use_heuristics_p
     return network
 
 
-def compute_itineraries(od_itineraries, network, n_itineraries=10,
+def compute_itineraries(od_itineraries, network, dict_o_d_routes=None, n_itineraries=10,
                         max_connections=2, allow_mixed_operators=False, consider_times_constraints=True):
     dict_itineraries = {}
     start_time = time.time()
+
+    # default_od_routes sos that if dict_o_d_routes is provided then it will return {} instead of None
+    if dict_o_d_routes is None:
+        dict_o_d_routes = {}
+        default_od_routes = None
+    else:
+        default_od_routes = {}
 
     n_explored_total = 0
     for i, od in od_itineraries.iterrows():
         start_time_od = time.time()
         same_operators = not allow_mixed_operators
+        print("Computing it for:", od.origin, od.destination)
         itineraries, n_explored = network.find_itineraries(origin=od.origin, destination=od.destination,
+                                                           routes=dict_o_d_routes.get((od.origin, od.destination),
+                                                                                      default_od_routes),
                                                            nitineraries=n_itineraries,
                                                            max_connections=max_connections,
                                                            consider_operators_connections=same_operators,
@@ -656,11 +665,14 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
     return df[columns_to_keep_or_not_all_none]
 
 
-def compute_possible_itineraries_network(network, o_d, pc=1, n_itineraries=10, max_connections=2,
-                                         allow_mixed_operators=False, consider_times_constraints=True):
+def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=1, n_itineraries=10,
+                                         max_connections=2, allow_mixed_operators=False,
+                                         consider_times_constraints=True):
+
     if pc == 1:
         dict_itinearies = compute_itineraries(o_d,
                                               network,
+                                              dict_o_d_routes,
                                               n_itineraries=n_itineraries,
                                               max_connections=max_connections,
                                               allow_mixed_operators=allow_mixed_operators,
@@ -681,12 +693,12 @@ def compute_possible_itineraries_network(network, o_d, pc=1, n_itineraries=10, m
             d = o_d.iloc[prev_i:i].copy().reset_index(drop=True)
 
             if nr == 0:
-                itineraries_computation_param = [[d, network, n_itineraries, max_connections, allow_mixed_operators,
-                                           consider_times_constraints]]
+                itineraries_computation_param = [[d, network, dict_o_d_routes, n_itineraries, max_connections,
+                                                  allow_mixed_operators, consider_times_constraints]]
             else:
                 if len(d) > 0:
-                    itineraries_computation_param.append([d, network, n_itineraries, max_connections, allow_mixed_operators,
-                                                   consider_times_constraints])
+                    itineraries_computation_param.append([d, network, dict_o_d_routes, n_itineraries, max_connections,
+                                                          allow_mixed_operators, consider_times_constraints])
 
             prev_i = i
             i = i + n_od_per_section
