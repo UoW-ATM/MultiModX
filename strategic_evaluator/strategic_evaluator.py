@@ -492,7 +492,7 @@ def compute_itineraries(od_itineraries, network, dict_o_d_routes=None, n_itinera
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    logger.important_info("Itineraries computed in: "+str(elapsed_time)+" seconds, exploring: "+str(n_explored_total))
+    logger.info("Itineraries computed in: "+str(elapsed_time)+" seconds, exploring: "+str(n_explored_total))
 
     return dict_itineraries
 
@@ -672,6 +672,7 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
                                          max_connections=2, allow_mixed_operators=False,
                                          consider_times_constraints=True):
 
+    start_time_itineraries = time.time()
     if pc == 1:
         dict_itinearies = compute_itineraries(o_d,
                                               network,
@@ -720,7 +721,9 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
             dict_itinearies.update(dictionary)
 
     df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints)
-    logger.important_info("In total "+str(len(df_itineraries))+" itineraries computed")
+    end_time_itineraries = time.time()
+    logger.important_info("In total "+str(len(df_itineraries))+" itineraries computed in, "
+                          +str(end_time_itineraries - start_time_itineraries)+" seconds.")
     return df_itineraries
 
 
