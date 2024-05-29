@@ -174,7 +174,7 @@ if __name__ == '__main__':
                                                                              'and then itineraries on those paths',
                         action='store_true', required=False)
     parser.add_argument('-np', '--num_paths', help='Number of paths to compute if computing potential paths',
-                        required=False, default=15)
+                        required=False, default=30)
     parser.add_argument('-v', '--verbose', action='count', default=0, help="increase output verbosity")
 
 
