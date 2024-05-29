@@ -3,6 +3,7 @@ import pandas as pd
 from itertools import combinations
 import multiprocessing as mp
 import time
+import logging
 
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
@@ -14,6 +15,8 @@ from strategic_evaluator.mobility_network_particularities import (mct_air_networ
 
 from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
 
+
+logger = logging.getLogger(__name__)
 
 def create_region_access_dict(df_ra_air):
     regions_access_air = {}
@@ -471,7 +474,7 @@ def compute_itineraries(od_itineraries, network, dict_o_d_routes=None, n_itinera
     for i, od in od_itineraries.iterrows():
         start_time_od = time.time()
         same_operators = not allow_mixed_operators
-        print("Computing it for:", od.origin, od.destination)
+        logger.info("Computing it for: "+od.origin+" "+od.destination)
         itineraries, n_explored = network.find_itineraries(origin=od.origin, destination=od.destination,
                                                            routes=dict_o_d_routes.get((od.origin, od.destination),
                                                                                       default_od_routes),
@@ -482,14 +485,14 @@ def compute_itineraries(od_itineraries, network, dict_o_d_routes=None, n_itinera
         dict_itineraries[(od.origin, od.destination)] = itineraries
         n_explored_total += n_explored
         end_time_od = time.time()
-        print("Itineraries for", od.origin, "-", od.destination,
-              ", computed in, ", (end_time_od - start_time_od), " seconds, exploring:", n_explored,
-              "nodes. Found", len(itineraries), "itineraries.\n")
+        logger.info("Itineraries for "+od.origin+"-"+od.destination+
+                    ", computed in, "+str(end_time_od - start_time_od)+" seconds, exploring: "+str(n_explored)+
+                    "nodes. Found "+str(len(itineraries))+" itineraries.")
 
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    print("Itineraries computed in:", elapsed_time, "seconds, exploring:", n_explored_total)
+    logger.important_info("Itineraries computed in: "+str(elapsed_time)+" seconds, exploring: "+str(n_explored_total))
 
     return dict_itineraries
 
@@ -705,7 +708,7 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
 
         pool = mp.Pool(processes=min(pc, len(itineraries_computation_param)))
 
-        print("   Launching parallel o-d itinearies finding")
+        logger.important_info("   Launching parallel o-d itinearies finding")
 
         res = pool.starmap(compute_itineraries, itineraries_computation_param)
 
@@ -717,7 +720,7 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
             dict_itinearies.update(dictionary)
 
     df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints)
-    print("In total", len(df_itineraries), " itineraries computed")
+    logger.important_info("In total "+str(len(df_itineraries))+" itineraries computed")
     return df_itineraries
 
 

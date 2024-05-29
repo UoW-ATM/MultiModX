@@ -4,13 +4,25 @@ import tomli
 import pandas as pd
 from collections import defaultdict
 import ast
-
+import logging
 import sys
 sys.path.insert(1, '../..')
 
-from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
-                                                     compute_possible_itineraries_network,
-                                                     compute_avg_paths_from_itineraries)
+
+# Define custom logging levels
+IMPORTANT_INFO = 25  # Between INFO (20) and WARNING (30)
+
+
+def important_info(self, message, *args, **kwargs):
+    if self.isEnabledFor(IMPORTANT_INFO):
+        self._log(IMPORTANT_INFO, message, args, **kwargs)
+
+
+def setup_logging(verbosity):
+    levels = [logging.WARNING, IMPORTANT_INFO, logging.INFO, logging.DEBUG]
+    level = levels[min(len(levels) - 1, verbosity)]  # Ensure the level does not exceed DEBUG
+    logging.basicConfig(level=level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+    logging.debug(f"Logging level set to {logging.getLevelName(level)}")
 
 
 def read_origin_demand_matrix(path_demand):
@@ -97,8 +109,22 @@ if __name__ == '__main__':
                                                               'paths only',
                         required=False, action='store_true')
 
+    parser.add_argument('-v', '--verbose', action='count', default=0, help="increase output verbosity")
+
     # Parse parameters
     args = parser.parse_args()
+
+    logging.addLevelName(IMPORTANT_INFO, "IMPORTANT_INFO")
+    logging.Logger.important_info = important_info
+
+    setup_logging(args.verbose)
+
+    logger = logging.getLogger(__name__)
+
+    # Loading functions here so that logging setting is inherited
+    from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
+                                                         compute_possible_itineraries_network,
+                                                         compute_avg_paths_from_itineraries)
 
     with open(Path(args.toml_file), mode="rb") as fp:
         network_paths_config = tomli.load(fp)
