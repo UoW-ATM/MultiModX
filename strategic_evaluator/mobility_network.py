@@ -544,8 +544,24 @@ class Itinerary:
             self.current_layer_id = layer_id
 
     def __lt__(self, i):
-        # return self.total_travel_time < i.total_travel_time # len(self.path)<len(i.itinerary) #
-        return self.expected_minimum_travel_time < i.expected_minimum_travel_time  # len(self.path)<len(i.itinerary) #
+        # return self.total_travel_time < i.total_travel_time # len(self.path)<len(i.itinerary)
+        if self.expected_minimum_travel_time != i.expected_minimum_travel_time:
+            # First check minimum expected travel time (which is travel so far + heuristic)
+            return self.expected_minimum_travel_time < i.expected_minimum_travel_time
+        elif len(self.itinerary) != len(i.itinerary):
+            # If travel times are the same then check if one has a shorter itinerary than the other
+            return len(self.itinerary) < len(i.itinerary)
+        elif len(self.nodes_visited) > 0:
+            # If both itineraries are same length and we have visited some nodes
+            if str(self.nodes_visited) != str(i.nodes_visited):
+                # If the list of nodes visited are different compare these
+                return str(self.nodes_visited) < str(i.nodes_visited)
+            else:
+                # If the list of nodes visited are the same keep the one departing first
+                return self.itinerary[0].departure_time < i.itinerary[0].departure_time
+        else:
+            # We don't have any node visited so return True
+            return True
 
     def __repr__(self):
         return f"Path {self.itinerary} --> Travel time: {self.total_travel_time}"
