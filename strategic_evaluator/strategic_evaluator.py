@@ -217,10 +217,6 @@ def pre_process_rail_layer(path_network, rail_network, processed_folder, pre_pro
     date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
     df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
-    if 'rail_stations_considered' in rail_network.keys():
-        df_stops_considered = pd.read_csv(Path(path_network) / rail_network['rail_stations_considered'])
-        df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)]
-
     # TODO: add provider, cost, emissions...
     rail_provider = 'renfe'
     rail_alliance = 'renfe'
@@ -228,6 +224,15 @@ def pre_process_rail_layer(path_network, rail_network, processed_folder, pre_pro
         df_stop_times['provider'] = rail_provider
     if 'alliance' not in df_stop_times.columns:
         df_stop_times['alliance'] = rail_alliance
+
+    # Save GTFS with all rail stations for the day
+    frail = 'rail_timetable_all_gtfs_' + str(pre_processed_version) + '.csv'
+    df_stop_times.to_csv(Path(path_network) / processed_folder / frail, index=False)
+
+    # Filter GTFS to keep only rail stations considered
+    if 'rail_stations_considered' in rail_network.keys():
+        df_stops_considered = pd.read_csv(Path(path_network) / rail_network['rail_stations_considered'])
+        df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)]
 
     frail = 'rail_timetable_proc_gtfs_'+str(pre_processed_version)+'.csv'
     # Save information in GTFS form

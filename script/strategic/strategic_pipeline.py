@@ -36,7 +36,7 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
         consider_time_constraints=True, use_heuristics_precomputed=False, use_potential_paths=False):
 
     # Preprocess input
-    preprocess_input(network_paths_config['network_definition'])
+    preprocess_input(network_paths_config['network_definition'], pre_processed_version=pre_processed_version)
 
     # Create network
     network = create_network(network_paths_config['network_definition'],
@@ -93,7 +93,7 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
 
     # Preprocess input
     logger.info("Pre-processing input")
-    preprocess_input(network_paths_config['network_definition'])
+    preprocess_input(network_paths_config['network_definition'], pre_processed_version=pre_processed_version)
 
     # Read demand
     logger.info("Reading demand")
@@ -177,11 +177,9 @@ if __name__ == '__main__':
                         required=False, default=30)
     parser.add_argument('-v', '--verbose', action='count', default=0, help="increase output verbosity")
 
-
     parser.add_argument('-pc', '--n_proc', help='Number of processors', required=False)
     parser.add_argument('-df', '--demand_file', help='Pax demand file instead of the one in the toml_file',
                         required=False)
-
 
     parser.add_argument('-mo', '--allow_mixed_operators', help='Allow mix operators',
                         required=False, action='store_true')
@@ -204,7 +202,7 @@ if __name__ == '__main__':
     # potential paths defined in toml to guide search
 
     # python ./strategic_pipeline.py -tf ../../data/es_full_AW/es_full_AW.toml -ni 50 -np 20 -mc 3 -cpci -hpc -pc 20 -v
-    # Compute the files from es_full_AW.toml, first compute 20 potential routes and then use that to compute 50 itineraries
+    # Compute the files from es_full_AW.toml, first compute 20 potential routes and then use that to compute 50 itineras
     # with up to 3 connections, using heuristics
 
     # Parse parameters
