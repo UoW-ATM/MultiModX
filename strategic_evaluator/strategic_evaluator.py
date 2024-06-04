@@ -65,12 +65,16 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     if keep_only_fastest_service > 0:
         df_fs['duration'] = None
         df_fs['duration'] = df_fs.apply(lambda x: x.arrival_time - x.departure_time, axis=1)
-        df_s_min_duration = df_fs.groupby(['origin', 'destination'])['duration'].min().reset_index()
-        df_fs = pd.merge(df_s_min_duration, df_fs, on=['origin', 'destination', 'duration'], how='inner')
+
+    if keep_only_fastest_service == 1:
+        # Keep only the fastest service considering alliance
+        df_fs = df_fs.groupby(['origin', 'destination', 'alliance']).apply(lambda x: x.sort_values('duration').iloc[0]).copy()
+        df_fs = df_fs.reset_index(drop=True)
 
     if keep_only_fastest_service == 2:
         # Keep only one fastest regardless of airline/alliance
-        df_fs.drop_duplicates(subset=['origin', 'destination'], keep='first', inplace=True)
+        df_fs = df_fs.groupby(['origin', 'destination']).apply(lambda x: x.sort_values('duration').iloc[0]).copy()
+        df_fs = df_fs.reset_index(drop=True)
 
     # Create Services for flights (one per flight in the dataframe)
     df_fs['service'] = df_fs.apply(lambda x: Service(x.service_id, x.origin, x.destination,
@@ -102,7 +106,7 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
 
 
 def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_stops_considered=None, df_ra_rail=None,
-                      keep_only_fastest_service=False,
+                      keep_only_fastest_service=0,
                       df_stops=None,
                       heuristic_precomputed_distance=None):
 
@@ -131,7 +135,13 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
 
 
     # Keep only fastest services if requested to do so
-    if keep_only_fastest_service:
+    if keep_only_fastest_service == 1:
+        rail_services_df['duration'] = rail_services_df['arrival_time'] - rail_services_df['departure_time']
+        # Group by 'origin' and 'destination', then keep only the first row of each group
+        rail_services_df = rail_services_df.groupby(['origin', 'destination', 'alliance']).apply(lambda x:
+                                                                                     x.sort_values('duration').iloc[0])
+        rail_services_df = rail_services_df.reset_index(drop=True)
+    elif keep_only_fastest_service == 2:
         rail_services_df['duration'] = rail_services_df['arrival_time'] - rail_services_df['departure_time']
         # Group by 'origin' and 'destination', then keep only the first row of each group
         rail_services_df = rail_services_df.groupby(['origin', 'destination']).apply(lambda x:
@@ -294,7 +304,8 @@ def pre_process_rail_gtfs_to_services(df_stop_times, date_rail, path_folder=None
     return rail_services_df
 
 
-def create_network(path_network_dict, compute_simplified=False, use_heuristics_precomputed=False,
+def create_network(path_network_dict, compute_simplified=False, allow_mixed_operators=True,
+                   use_heuristics_precomputed=False,
                    pre_processed_version=0):
     df_regions_access = None
     df_transitions = None
@@ -354,6 +365,8 @@ def create_network(path_network_dict, compute_simplified=False, use_heuristics_p
 
         only_fastest = 0
         if compute_simplified:
+            only_fastest = 1
+        if compute_simplified and allow_mixed_operators:
             only_fastest = 2
 
         df_heuristic_air = None
@@ -436,9 +449,15 @@ def create_network(path_network_dict, compute_simplified=False, use_heuristics_p
         else:
             df_stops = None
 
+        only_fastest = 0
+        if compute_simplified:
+            only_fastest = 1
+        if compute_simplified and allow_mixed_operators:
+            only_fastest = 2
+
         rail_layer = create_rail_layer(df_rail_data, from_gtfs=False, date_considered=date_rail_str,
                                        df_ra_rail=df_ra_rail,
-                                       keep_only_fastest_service=compute_simplified,
+                                       keep_only_fastest_service=only_fastest,
                                        df_stops=df_stops,
                                        heuristic_precomputed_distance=df_heuristic_rail)
 
@@ -502,7 +521,7 @@ def compute_itineraries(od_itineraries, network, dict_o_d_routes=None, n_itinera
     return dict_itineraries
 
 
-def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
+def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, allow_mixed_operators=False):
     options = []
     origins = []
     destinations = []
@@ -568,8 +587,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True):
                     dict_legs_info['service_id_' + str(ln)].append(None)
                 dict_legs_info['origin_' + str(ln)].append(s.origin)
                 dict_legs_info['destination_' + str(ln)].append(s.destination)
-                # TODO consider_time_constarint but yes provider...
-                if consider_times_constraints:
+                if consider_times_constraints or not allow_mixed_operators:
                     dict_legs_info['provider_' + str(ln)].append(s.provider)
                     dict_legs_info['alliance_' + str(ln)].append(s.alliance)
                 else:
@@ -725,7 +743,8 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
         for dictionary in res:
             dict_itinearies.update(dictionary)
 
-    df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints)
+    df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints,
+                                              allow_mixed_operators=allow_mixed_operators)
     end_time_itineraries = time.time()
     logger.important_info("In total "+str(len(df_itineraries))+" itineraries computed in, "
                           +str(end_time_itineraries - start_time_itineraries)+" seconds.")

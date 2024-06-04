@@ -41,6 +41,7 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
     # Create network
     network = create_network(network_paths_config['network_definition'],
                              compute_simplified=not consider_time_constraints,
+                             allow_mixed_operators=allow_mixed_operators,
                              use_heuristics_precomputed=use_heuristics_precomputed,
                              pre_processed_version=pre_processed_version)
 
@@ -108,6 +109,7 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     logger.info("Create network simplified to compute paths")
     network = create_network(network_paths_config['network_definition'],
                              compute_simplified=True,
+                             allow_mixed_operators=allow_mixed_operators_itineraries,
                              use_heuristics_precomputed=use_heuristics_precomputed,
                              pre_processed_version=pre_processed_version)
 
@@ -115,7 +117,7 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     logger.info("Computing potential paths")
     df_potential_paths = compute_possible_itineraries_network(network, o_d, pc=pc, n_itineraries=n_paths,
                                                           max_connections=max_connections,
-                                                          allow_mixed_operators=True,
+                                                          allow_mixed_operators=allow_mixed_operators_itineraries,
                                                           consider_times_constraints=False)
 
     ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
@@ -126,7 +128,11 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     logger.info("Create dictionary of potential routes to use by itineraries")
     dict_o_d_routes = defaultdict(list)
 
-    for _, row in df_potential_paths.iterrows():
+    df_potential_paths['path'] = df_potential_paths['path'].apply(tuple)
+    df_potential_paths_unique = df_potential_paths[['origin', 'destination', 'path']].drop_duplicates()
+    df_potential_paths_unique['path'] = df_potential_paths_unique['path'].apply(list)
+
+    for _, row in df_potential_paths_unique.iterrows():
         key = (row['origin'], row['destination'])
         dict_o_d_routes[key].append(row['path'])
 
@@ -181,7 +187,7 @@ if __name__ == '__main__':
     parser.add_argument('-df', '--demand_file', help='Pax demand file instead of the one in the toml_file',
                         required=False)
 
-    parser.add_argument('-mo', '--allow_mixed_operators', help='Allow mix operators',
+    parser.add_argument('-amo', '--allow_mixed_operators', help='Allow mix operators',
                         required=False, action='store_true')
 
     parser.add_argument('-cpp', '--compute_potential_paths', help='Compute only potential paths',
@@ -202,8 +208,8 @@ if __name__ == '__main__':
     # potential paths defined in toml to guide search
 
     # python ./strategic_pipeline.py -tf ../../data/es_full_AW/es_full_AW.toml -ni 50 -np 20 -mc 3 -cpci -hpc -pc 20 -v
-    # Compute the files from es_full_AW.toml, first compute 20 potential routes and then use that to compute 50 itineras
-    # with up to 3 connections, using heuristics
+    # Compute the files from es_full_AW.toml, first compute 20 potential routes and then use that to compute 50
+    # itineraries with up to 3 connections, using heuristics
 
     # Parse parameters
     args = parser.parse_args()
@@ -231,14 +237,10 @@ if __name__ == '__main__':
     if args.n_proc is not None:
         pc = int(args.n_proc)
 
-
     if not args.compute_potential_and_itineraries:
-        if args.compute_potential_paths:
-            args.allow_mixed_operators = True
 
         if args.compute_potential_paths:
             logger.important_info("Running only computation of potential paths")
-            logger.important_info("Note potential paths doesn't look into operators compatibility!")
         else:
             logger.important_info("Running only computation of itineraries")
 
@@ -254,7 +256,6 @@ if __name__ == '__main__':
             use_potential_paths=args.use_potential_paths)
     else:
         logger.important_info("Running first potential paths and then itineraries")
-        logger.important_info("Note potential paths doesn't look into operators compatibility!")
         run_two_step(network_paths_config, pc=pc, n_paths=int(args.num_paths), n_itineraries=int(args.num_itineraries),
                      max_connections=int(args.max_connections), pre_processed_version=int(args.preprocessed_version),
                      allow_mixed_operators_itineraries=args.allow_mixed_operators,
@@ -262,4 +263,3 @@ if __name__ == '__main__':
 
     # Improvements
     # TODO: day in rail
-    # TODO: potential paths considering operators compatiblitily...
