@@ -253,7 +253,9 @@ def pre_process_rail_layer(path_network, rail_network, processed_folder, pre_pro
                                       pre_processed_version, save_services=True)
 
 
-def pre_process_rail_gtfs_to_services(df_stop_times, date_rail, path_folder=None, pre_processed_version=0, save_services=False):
+def pre_process_rail_gtfs_to_services(
+    df_stop_times, date_rail, path_folder=None, pre_processed_version=0, save_services=False
+):
 
     n_stops_trip = df_stop_times.groupby('trip_id').count().reset_index()
 

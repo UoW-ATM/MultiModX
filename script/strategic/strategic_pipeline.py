@@ -6,6 +6,9 @@ from collections import defaultdict
 import ast
 import logging
 import sys
+
+from strategic_evaluator.path_assignment import assign_passenger_to_itinerary
+
 sys.path.insert(1, '../..')
 
 
@@ -39,11 +42,13 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
     preprocess_input(network_paths_config['network_definition'], pre_processed_version=pre_processed_version)
 
     # Create network
-    network = create_network(network_paths_config['network_definition'],
-                             compute_simplified=not consider_time_constraints,
-                             allow_mixed_operators=allow_mixed_operators,
-                             use_heuristics_precomputed=use_heuristics_precomputed,
-                             pre_processed_version=pre_processed_version)
+    network = create_network(
+        network_paths_config['network_definition'],
+        compute_simplified=not consider_time_constraints,
+        allow_mixed_operators=allow_mixed_operators,
+        use_heuristics_precomputed=use_heuristics_precomputed,
+        pre_processed_version=pre_processed_version
+    )
 
     # Read demand
     demand_matrix = read_origin_demand_matrix(network_paths_config['demand']['demand'])
@@ -78,7 +83,9 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
     else:
         ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
 
-    df_itineraries.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_itineraries.to_csv(
+        Path(network_paths_config['output']['output_folder']) / ofp, index=False
+    )
 
     if consider_time_constraints:
         # Compute average paths from possible itineraries
@@ -86,6 +93,22 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
         ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
         df_avg_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
 
+    # Compute costs for itineraries
+    logger.info("Computing costs for itineraries")
+    df_itineraries_with_costs = compute_costs(
+        df_itineraries,
+        network_paths_config['network_definition']
+    )
+    df_itineraries_with_costs.to_csv(Path(
+        network_paths_config['output']['output_folder']
+    ) / f"possible_itineraries_with_costs_{str(pre_processed_version) + '.csv'}", index=False)
+
+
+    # Assign passengers to itineraries
+    logger.info("Assigning passengers to itineraries")
+    passengers_per_itineraries = assign_passenger_to_itinerary(
+        df_itineraries_with_costs, network_paths_config['demand']
+    )
 
 def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
                      max_connections=1, pre_processed_version=0,
@@ -107,11 +130,12 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     # First compute potential paths
     # Create network
     logger.info("Create network simplified to compute paths")
-    network = create_network(network_paths_config['network_definition'],
-                             compute_simplified=True,
-                             allow_mixed_operators=allow_mixed_operators_itineraries,
-                             use_heuristics_precomputed=use_heuristics_precomputed,
-                             pre_processed_version=pre_processed_version)
+    network = create_network(
+        network_paths_config['network_definition'], compute_simplified=True,
+        allow_mixed_operators=allow_mixed_operators_itineraries,
+        use_heuristics_precomputed=use_heuristics_precomputed,
+        pre_processed_version=pre_processed_version
+    )
 
     # Compute potential paths
     logger.info("Computing potential paths")
@@ -162,7 +186,12 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
     df_avg_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
 
-
+    # Compute costs for itineraries
+    logging.info("Computing costs for itineraries")
+    df_itineraries_with_costs = compute_costs(
+        df_itineraries,
+        network_paths_config['network_definition']
+    )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Strategic pipeline test', add_help=True)
@@ -226,6 +255,7 @@ if __name__ == '__main__':
     from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
                                                          compute_possible_itineraries_network,
                                                          compute_avg_paths_from_itineraries)
+    from strategic_evaluator.cost_computation import compute_costs
 
     with open(Path(args.toml_file), mode="rb") as fp:
         network_paths_config = tomli.load(fp)
