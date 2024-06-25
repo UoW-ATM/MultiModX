@@ -36,10 +36,11 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
         consider_time_constraints=True, use_heuristics_precomputed=False, use_potential_paths=False):
 
     # Preprocess input
-    preprocess_input(network_paths_config['network_definition'], pre_processed_version=pre_processed_version)
+    network_definition = network_paths_config['network_definition']
+    preprocess_input(network_definition, pre_processed_version=pre_processed_version)
 
     # Create network
-    network = create_network(network_paths_config['network_definition'],
+    network = create_network(network_definition,
                              compute_simplified=not consider_time_constraints,
                              allow_mixed_operators=allow_mixed_operators,
                              use_heuristics_precomputed=use_heuristics_precomputed,
@@ -55,8 +56,7 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
     dict_o_d_routes = None
     if use_potential_paths:
         # Read path of potential paths:
-        df_pp = pd.read_csv((Path(network_paths_config['network_definition']['network_path'])/
-               network_paths_config['network_definition']['potential_paths']))
+        df_pp = pd.read_csv((Path(network_definition['network_path'])/network_definition['potential_paths']))
 
         df_pp['path'] = df_pp['path'].apply(ast.literal_eval)
         dict_o_d_routes = defaultdict(list)
@@ -103,11 +103,12 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     # Compute possible itineraries based on demand
     o_d = demand_matrix[['origin', 'destination']].drop_duplicates()
 
+    network_definition = network_paths_config['network_definition']
 
     # First compute potential paths
     # Create network
     logger.info("Create network simplified to compute paths")
-    network = create_network(network_paths_config['network_definition'],
+    network = create_network(network_definition,
                              compute_simplified=True,
                              allow_mixed_operators=allow_mixed_operators_itineraries,
                              use_heuristics_precomputed=use_heuristics_precomputed,
@@ -140,7 +141,7 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
 
     # Create network
     logger.info("Create network to compute itineraries")
-    network = create_network(network_paths_config['network_definition'],
+    network = create_network(network_definition,
                              compute_simplified=False,
                              use_heuristics_precomputed=use_heuristics_precomputed,
                              pre_processed_version=pre_processed_version)

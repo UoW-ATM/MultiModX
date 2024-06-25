@@ -1,0 +1,25 @@
+[network_definition]
+    network_path = "../../data/es_full_AW/"
+    processed_folder = "processed"
+    #potential_paths = "processed/paths_itineraries/possible_paths_avg_0_prev.csv"
+    potential_paths = "processed/paths_itineraries/potential_paths_0.csv"
+    [[network_definition.air_network]]
+        flight_schedules = "flight_schedules.csv"
+        airports_static = "infrastructure/airports_static.csv"
+        mct_air = "infrastructure/mct_air.csv"
+        alliances = "air_alliances.csv"
+    [[network_definition.rail_network]]
+        gtfs = "gtfs_es"
+        rail_stations_considered = "infrastructure/rail_stations_considered.csv"
+        create_rail_layer_from = 'gtfs' #gtfs / services
+        country = "LE"
+    [[network_definition.multimodal]]
+        air_rail_transitions = "infrastructure/air_rail_transitions_all.csv"
+	[[network_definition.regions_access]]
+		regions_access = "infrastructure/regions_access_all.csv"
+
+[demand]
+	demand = "../../data/es_full_AW/demand_from_AW.csv"
+
+[output]
+	output_folder = "../../data/es_full_AW/processed/paths_itineraries/"
