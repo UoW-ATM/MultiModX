@@ -80,7 +80,11 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     df_fs['service'] = df_fs.apply(lambda x: Service(x.service_id, x.origin, x.destination,
                                                      x.departure_time, x.arrival_time, x.cost,
                                                      x.provider, x.alliance, x.emissions,
-                                                     gcdistance=x.gcdistance), axis=1)
+                                                     gcdistance=x.gcdistance,
+                                                     country_origin=x.country_origin,
+                                                     country_destination=x.country_destination,
+                                                     coordinates_origin=(x.lat_orig, x.lon_orig),
+                                                     coordinates_destination=(x.lat_dest, x.lon_dest)), axis=1)
 
     # Use precomputed distance vs time function or default air
     if heuristic_precomputed_distance is not None:
@@ -128,10 +132,45 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                             (rail_services_df.destination.isin(df_stops_considered.stop_id))].copy()
 
     # Create Service objects
+
+    if df_stops is not None:
+        df_stops = df_stops.copy().rename({'stop_id': 'node', 'stop_lat': 'lat', 'stop_lon': 'lon'},
+                                          axis=1)[['node', 'lat', 'lon']]
+        df_stops['node'] = df_stops['node'].astype(str)
+
+    rail_services_df = rail_services_df.merge(df_stops, left_on=['origin'], right_on=['node'], how='left')
+    rail_services_df.rename(columns={'lat': 'lat_orig', 'lon': 'lon_orig'}, inplace=True)
+    rail_services_df.drop(columns='node', inplace=True)
+    rail_services_df = rail_services_df.merge(df_stops, left_on=['destination'], right_on=['node'], how='left')
+    rail_services_df.rename(columns={'lat': 'lat_dest', 'lon': 'lon_dest'}, inplace=True)
+    rail_services_df.drop(columns='node', inplace=True)
+
+    if 'gcdistance' not in rail_services_df.columns:
+        dict_dist_origin_destination = {}
+        from libs.uow_tool_belt.general_tools import haversine
+        # Initialise dictionary of o-d distance
+        for odr in rail_services_df[['origin', 'destination', 'lat_orig', 'lon_orig',
+                                     'lat_dest', 'lon_dest']].drop_duplicates().iterrows():
+            lat_orig = odr[1].lat_orig
+            lon_orig = odr[1].lon_orig
+            lat_dest = odr[1].lat_dest
+            lon_dest = odr[1].lon_dest
+            dict_dist_origin_destination[(odr[1].origin, odr[1].destination)] = haversine(lon_orig, lat_orig,
+                                                                                          lon_dest, lat_dest)
+
+        rail_services_df['gcdistance'] = rail_services_df.apply(lambda x: dict_dist_origin_destination[x['origin'],
+                                                                                            x['destination']], axis=1)
+
     rail_services_df['service'] = rail_services_df.apply(lambda x:
                                                          Service(x.service_id, x.origin, x.destination,
                                                                  x.departure_time, x.arrival_time,
-                                                                 x.cost, x.provider, x.alliance, x.emissions, x.seats), axis=1)
+                                                                 x.cost, x.provider, x.alliance, x.emissions, x.seats,
+                                                                 gcdistance=x.gcdistance,
+                                                                 country_origin=x.country,
+                                                                 country_destination=x.country,
+                                                                 coordinates_origin=(x.lat_orig, x.lon_orig),
+                                                                 coordinates_destination=(x.lat_dest, x.lon_dest)),
+                                                         axis=1)
 
 
     # Keep only fastest services if requested to do so
@@ -148,10 +187,6 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                                                                      x.sort_values('duration').iloc[0])
         rail_services_df = rail_services_df.reset_index(drop=True)
 
-    if df_stops is not None:
-        df_stops = df_stops.copy().rename({'stop_id': 'node', 'stop_lat': 'lat', 'stop_lon': 'lon'},
-                                          axis=1)[['node', 'lat', 'lon']]
-        df_stops['node'] = df_stops['node'].astype(str)
 
     # Use precomputed distance vs time function or default air
     if heuristic_precomputed_distance is not None:
@@ -226,6 +261,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         df_trips = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'trips.txt')
         df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
         df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
+        df_agency = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'agency.txt')
 
         df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
         df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
@@ -238,20 +274,25 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
         df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
-        # TODO: add provider, cost, emissions...
-        rail_provider = 'renfe'
-        rail_alliance = 'renfe'
+        # Note that country is set for both stops when in reality the trip could be accross countries...
+        # TODO improve country identification of stops in rail, for now just got from the toml file
+        country = rail_network['country']
+
+        # TODO: cost, emissions...
+        rail_provider = df_agency.iloc[0].agency_name
+        rail_alliance = df_agency.iloc[0].agency_name
         if 'provider' not in df_stop_times.columns:
             df_stop_times['provider'] = rail_provider
         if 'alliance' not in df_stop_times.columns:
             df_stop_times['alliance'] = rail_alliance
 
+        df_stop_times['country'] = country
         df_stop_times_alls += [df_stop_times]
 
         # Filter GTFS to keep only rail stations considered
         if 'rail_stations_considered' in rail_network.keys():
             df_stops_considered = pd.read_csv(Path(path_network) / rail_network['rail_stations_considered'])
-            df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)]
+            df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)].copy()
 
         df_stop_timess += [df_stop_times]
 
@@ -311,16 +352,20 @@ def pre_process_rail_gtfs_to_services(df_stop_times, date_rail):
             arrival_time = group_df.iloc[j]['arrival_time']
             rail_provider = group_df.iloc[i]['provider']
             rail_alliance = group_df.iloc[i]['alliance']
+            country = None
+            if 'country' in group_df.iloc[i]:
+                country = group_df.iloc[i]['country']
 
             service_df_row = (
                 service_id, str(origin), str(destination), departure_time, arrival_time, rail_provider, rail_alliance,
-                rail_cost, rail_seats, rail_emissions)
+                rail_cost, rail_seats, rail_emissions, country)
 
             rail_services.append(service_df_row)
 
-    rail_services_df = pd.DataFrame(rail_services,
-                                    columns=['service_id', 'origin', 'destination', 'departure_time', 'arrival_time',
-                                             'provider', 'alliance', 'cost', 'seats', 'emissions'])
+    columns_interest = ['service_id', 'origin', 'destination', 'departure_time', 'arrival_time',
+                        'provider', 'alliance', 'cost', 'seats', 'emissions', 'country']
+
+    rail_services_df = pd.DataFrame(rail_services, columns=columns_interest)
 
     return rail_services_df
 
@@ -423,6 +468,10 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_ra_air = pd.concat(df_ra_airl, ignore_index=True)
         if len(df_heuristic_airl) > 0:
             df_heuristic_air = pd.concat(df_heuristic_airl, ignore_index=True)
+
+        # Use first two letters of airport ICAO codes for country origin and destination
+        df_fs['country_origin'] = df_fs['origin'].str[:2]
+        df_fs['country_destination'] = df_fs['destination'].str[:2]
 
         air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air,
                                      keep_only_fastest_service=only_fastest,
