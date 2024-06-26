@@ -435,7 +435,7 @@ class Network:
                                                 # or we don't consider mct times constraints. Allow connecting even
                                                 # if in reality not possible due to times.
 
-                                                new_path = copy.deepcopy(i)
+                                                new_path = i.shallow_copy()# copy.deepcopy(i)
                                                 ht = self.dict_layers[i.current_layer_id].get_heuristic(service.destination,
                                                                                                         destination_nodes)
 
@@ -482,7 +482,7 @@ class Network:
                                     if ((dict_next_valid_nodes is None) or
                                             (tuple(remove_consecutive_duplicates(i.nodes_visited+[service.origin, service.destination]))
                                              in dict_next_valid_nodes.keys())):
-                                        new_path = copy.deepcopy(i)
+                                        new_path = i.shallow_copy() #copy.deepcopy(i)
                                         ht = self.dict_layers[pt['layer_id']].get_heuristic(service.destination,
                                                                                             destination_nodes)
                                         new_path.add_service_itinerary(service, heuristic_time=ht, layer_id=pt['layer_id'],
@@ -562,6 +562,36 @@ class Itinerary:
         else:
             # We don't have any node visited so return True
             return True
+
+    def shallow_copy(self):
+        # Copy the basic attributes
+        new_itinerary = Itinerary(
+            itinerary=self.itinerary[:],  # Shallow copy of the itinerary list
+            current_node=self.current_node,
+            total_travel_time=self.total_travel_time,
+            layer_id=self.current_layer_id,
+            access_time=self.access_time,
+            egress_time=self.egress_time
+        )
+
+        # Shallow copy lists
+        new_itinerary.layers_used = self.layers_used[:]
+        new_itinerary.nodes_visited = self.nodes_visited[:]
+        new_itinerary.mcts = self.mcts[:]
+
+        # Copy remaining attributes
+        new_itinerary.expected_minimum_travel_time = self.expected_minimum_travel_time
+        new_itinerary.arrived = self.arrived
+
+        # Copy any additional attributes set by kwargs
+        for key in self.__dict__.keys():
+            if key not in ['itinerary', 'layers_used', 'nodes_visited', 'mcts', 'current_layer_id', 'current_node',
+                           'total_travel_time', 'access_time', 'egress_time', 'expected_minimum_travel_time',
+                           'arrived']:
+                setattr(new_itinerary, key, copy.copy(getattr(self, key)))
+
+        return new_itinerary
+
 
     def __repr__(self):
         return f"Path {self.itinerary} --> Travel time: {self.total_travel_time}"
