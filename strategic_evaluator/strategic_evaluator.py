@@ -731,6 +731,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
     egress = []
     nservices = []
     n_modes_i = []
+    type_journey_i = []
     paths_i = []
     total_waiting_i = []
     total_cost_i = []
@@ -783,6 +784,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             total_emissions = None
             path = None
             n_modes = 0
+            type_journey = None
             for s in i.itinerary:
                 if consider_times_constraints:
                     dict_legs_info['service_id_' + str(ln)].append(s.id)
@@ -800,6 +802,10 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 if i.layers_used[ln] != prev_mode:
                     prev_mode = i.layers_used[ln]
                     n_modes += 1
+                    if n_modes > 1:
+                        type_journey = 'multimodal'
+                    else:
+                        type_journey = i.layers_used[ln]
                 dict_legs_info['mode_' + str(ln)].append(i.layers_used[ln])
                 if consider_times_constraints:
                     dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
@@ -868,6 +874,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 dict_legs_info['emissions_' + str(lni)].append(None)
 
             n_modes_i.append(n_modes)
+            type_journey_i.append(type_journey)
             total_waiting_i.append(total_waiting)
             if path is not None:
                 paths_i.append([v for i, v in enumerate(path) if i == 0 or v != path[i-1]]) # remove consecutive same node
@@ -888,6 +895,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                'total_emissions': total_emissions_p,
                'total_waiting_time': total_waiting_i,
                'nmodes': n_modes_i,
+               'type_journey': type_journey_i,
                'access_time': access,
                'egress_time': egress}
 
