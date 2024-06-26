@@ -4,6 +4,20 @@ from datetime import timedelta
 def mct_rail_network(*args, **kwargs):
     return timedelta(minutes=10)
 
+
+def get_mct_hub(dict_mct, coming_from, hub, going_to):
+    if (coming_from[0:2] == going_to[0:2]) and (hub[0:2] == coming_from[0:2]):
+        # All domestic (looking at country by first two letters of origin, destination, connecting code (hub)
+        # TODO could be improved, e.g. Canary islands to Peninsular Spain, different origin code same country.
+        dict_type_connection = dict_mct['dom']
+    elif (coming_from[0:2] != going_to[0:2]) and ((hub[0:2] == coming_from[0:2]) or (hub[0:2] == going_to[0:2])):
+        # Coming and going are in different countries and hub is in country of one of them
+        dict_type_connection = dict_mct['std']
+    else:
+        dict_type_connection = dict_mct['int']
+    return timedelta(minutes=dict_type_connection.get(hub, 30))
+
+
 def mct_air_network(obj, service_from, service_to):
     if service_from.destination != service_to.origin:
         # Something wrong, destination previous flight should be same as origin next one
@@ -12,13 +26,7 @@ def mct_air_network(obj, service_from, service_to):
     connecting_at = service_to.origin
     going_to = service_to.destination
 
-    if (coming_from[0:2] == going_to[0:2]) and (connecting_at[0:2] == coming_from[0:2]):
-        # All domestic (looking at country by first two letters of origin, destination, connecting code,
-        # TODO could be improved, e.g. Canary islands to Peninsular Spain, different origin code same country.
-        dict_type_connection = obj.dict_mct['dom']
-    else:
-        dict_type_connection = obj.dict_mct['int']
-    return timedelta(minutes=dict_type_connection.get(connecting_at, obj.dict_mct['std'].get(connecting_at, 30)))
+    return get_mct_hub(obj.dict_mct, coming_from, connecting_at, going_to)
 
 
 def initialise_air_network(obj):
