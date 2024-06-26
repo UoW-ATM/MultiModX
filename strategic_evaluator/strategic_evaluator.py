@@ -14,6 +14,8 @@ from strategic_evaluator.mobility_network_particularities import (mct_air_networ
                                                                   fastest_precomputed_distance_time_heuristic)
 
 from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
+from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_flights, compute_costs_air,
+                                              compute_emissions_rail, compute_costs_rail)
 
 
 logger = logging.getLogger(__name__)
@@ -215,7 +217,25 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
 
 
 def compute_cost_emissions_air(df_fs):
+    df_fs['emissions'] = df_fs.apply(lambda row:
+                                     compute_emissions_pax_short_mid_flights(row['gcdistance'], row['seats'])
+                                     if pd.isnull(row['emissions']) else row['emissions'], axis=1)
+
+    df_fs['cost'] = df_fs.apply(lambda row: compute_costs_air(row['gcdistance'])
+                                            if pd.isnull(row['cost']) else row['cost'], axis=1)
+
     return df_fs
+
+
+def compute_cost_emissions_rail(df_rs):
+    df_rs['emissions'] = df_rs.apply(lambda row:
+                                     compute_emissions_rail(row['gcdistance'], row['country'])
+                                     if pd.isnull(row['emissions']) else row['emissions'], axis=1)
+
+    df_rs['cost'] = df_rs.apply(lambda row: compute_costs_rail(row['gcdistance'], row['country'])
+                                            if pd.isnull(row['cost']) else row['cost'], axis=1)
+
+    return df_rs
 
 
 def preprocess_air_layer(path_network, air_networks, processed_folder, pre_processed_version=0):
@@ -323,8 +343,10 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
 
         df_rss += [df_rs]
 
-    # Save rail services
     df_rs = pd.concat(df_rss, ignore_index=True)
+    df_rs = compute_cost_emissions_rail(df_rs)
+
+    # Save rail services
     frail = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
     df_rs.to_csv((Path(path_network) / processed_folder) / frail, index=False)
 
@@ -590,6 +612,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 df_rail_data_l += [df_rail_data]
 
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
+        df_rail_data = compute_cost_emissions_rail(df_rail_data)
 
         if need_save:
             frail = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'

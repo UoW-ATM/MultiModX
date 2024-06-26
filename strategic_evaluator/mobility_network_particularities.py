@@ -36,6 +36,9 @@ def initialise_air_network(obj):
 
     obj.dict_heuristics_explored = {}
 
+    # Create dictionary of coordinates
+    obj.dict_coordinates = {row['node']: {'lat': row['lat'], 'lon': row['lon']} for _, row in obj.nodes_coordinates.iterrows()}
+
 
 def initialise_rail_network(obj):
     obj.df_services['service_id_generic'] = obj.df_services['service_id'].apply(lambda x: x.split("_")[0])
@@ -58,6 +61,9 @@ def initialise_rail_network(obj):
     obj.dict_min_duration_o_d = obj.df_services.groupby(['origin', 'destination'])['duration'].min().to_dict()
 
     obj.dict_heuristics_explored = {}
+
+    # Create dictionary of coordinates
+    obj.dict_coordinates = {row['node']: {'lat': row['lat'], 'lon': row['lon']} for _, row in obj.nodes_coordinates.iterrows()}
 
 
 def services_from_after_function_rail(obj, node, time, service):
