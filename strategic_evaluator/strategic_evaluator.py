@@ -221,6 +221,8 @@ def compute_cost_emissions_air(df_fs):
                                      compute_emissions_pax_short_mid_flights(row['gcdistance'], row['seats'])
                                      if pd.isnull(row['emissions']) else row['emissions'], axis=1)
 
+    df_fs['emissions'] = pd.to_numeric(df_fs['emissions'], errors='coerce')
+
     df_fs['cost'] = df_fs.apply(lambda row: compute_costs_air(row['gcdistance'])
                                             if pd.isnull(row['cost']) else row['cost'], axis=1)
 
@@ -777,6 +779,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             prev_arrival_time = None
             prev_mode = None
             total_waiting = None
+            total_cost = None
+            total_emissions = None
             path = None
             n_modes = 0
             for s in i.itinerary:
@@ -831,7 +835,16 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                                 ln - 1].total_seconds() / 60
 
                 dict_legs_info['cost_' + str(ln)].append(s.cost)
-                dict_legs_info['emissions_' + str(ln)].append(None)
+                dict_legs_info['emissions_' + str(ln)].append(s.emissions)
+                if total_cost is None:
+                    total_cost = s.cost
+                else:
+                    total_cost += s.cost
+                if s.emissions is not None:
+                    if total_emissions is None:
+                        total_emissions = float(s.emissions)
+                    else:
+                        total_emissions += float(s.emissions)
 
                 prev_arrival_time = s.arrival_time
 
@@ -860,9 +873,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 paths_i.append([v for i, v in enumerate(path) if i == 0 or v != path[i-1]]) # remove consecutive same node
             else:
                 paths_i.append(None)
-            total_cost_i.append(None)
-            total_emissions_p.append(None)
-
+            total_cost_i.append(total_cost)
+            total_emissions_p.append(total_emissions)
 
             option += 1
 
@@ -947,6 +959,7 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
     end_time_itineraries = time.time()
     logger.important_info("In total "+str(len(df_itineraries))+" itineraries computed in, "
                           +str(end_time_itineraries - start_time_itineraries)+" seconds.")
+
     return df_itineraries
 
 
@@ -963,15 +976,19 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     columns_drop = [col for col in df_paths.columns if any(col.startswith(prefix) for prefix in prefixes)]
     df_paths = df_paths.drop(columns=columns_drop)
 
-
     exclude_columns = [col for col in df_paths.columns if col.startswith('origin') or col.startswith('destination')
                        or col.startswith('mode') or col.startswith('earliest_departure_time') or
-                       col.startswith('latest_arrival_time')]
+                       col.startswith('latest_arrival_time') or col.startswith('path')]
+
+    for col in df_paths.columns:
+        if col not in exclude_columns:
+            df_paths[col] = pd.to_numeric(df_paths[col], errors='coerce')
 
     df_paths['path'] = df_paths['path'].apply(str)
     df_paths_avg = df_paths.groupby(['origin', 'destination', 'path'], as_index=False).agg(lambda x: x.mean() if x.name not in exclude_columns else x.iloc[0])
 
-    df_paths_avg = df_paths_avg.groupby(['origin', 'destination']).apply(lambda x: x.sort_values(by='total_travel_time', ascending=True)).reset_index(drop=True)
+    df_paths_avg = df_paths_avg.groupby(['origin', 'destination']).apply(lambda x: x.sort_values(by='total_travel_time',
+                                                                                                 ascending=True)).reset_index(drop=True)
 
     df_paths_avg['option'] = df_paths_avg.groupby(['origin', 'destination']).cumcount()
 
