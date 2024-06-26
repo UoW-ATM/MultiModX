@@ -83,8 +83,9 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
                                                      gcdistance=x.gcdistance,
                                                      country_origin=x.country_origin,
                                                      country_destination=x.country_destination,
-                                                     coordinates_origin=(x.lat_orig, x.lon_orig),
-                                                     coordinates_destination=(x.lat_dest, x.lon_dest)), axis=1)
+                                                     #coordinates_origin=(x.lat_orig, x.lon_orig),
+                                                     #coordinates_destination=(x.lat_dest, x.lon_dest)
+                                                     ), axis=1)
 
     # Use precomputed distance vs time function or default air
     if heuristic_precomputed_distance is not None:
@@ -118,7 +119,7 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
         # Process GTFS to create services
         if type(date_considered) is str:
             date_considered = pd.to_datetime(date_considered, format='%Y%m%d')
-        rail_services_df = pre_process_rail_gtfs_to_services(df_rail, date_considered)
+        rail_services_df = pre_process_rail_gtfs_to_services(df_rail, date_considered, df_stops)
     else:
         rail_services_df = df_rail
 
@@ -138,25 +139,20 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                           axis=1)[['node', 'lat', 'lon']]
         df_stops['node'] = df_stops['node'].astype(str)
 
-    rail_services_df = rail_services_df.merge(df_stops, left_on=['origin'], right_on=['node'], how='left')
-    rail_services_df.rename(columns={'lat': 'lat_orig', 'lon': 'lon_orig'}, inplace=True)
-    rail_services_df.drop(columns='node', inplace=True)
-    rail_services_df = rail_services_df.merge(df_stops, left_on=['destination'], right_on=['node'], how='left')
-    rail_services_df.rename(columns={'lat': 'lat_dest', 'lon': 'lon_dest'}, inplace=True)
-    rail_services_df.drop(columns='node', inplace=True)
+        rail_services_df = rail_services_df.merge(df_stops, left_on=['origin'], right_on=['node'], how='left')
+        rail_services_df.rename(columns={'lat': 'lat_orig', 'lon': 'lon_orig'}, inplace=True)
+        rail_services_df.drop(columns='node', inplace=True)
+        rail_services_df = rail_services_df.merge(df_stops, left_on=['destination'], right_on=['node'], how='left')
+        rail_services_df.rename(columns={'lat': 'lat_dest', 'lon': 'lon_dest'}, inplace=True)
+        rail_services_df.drop(columns='node', inplace=True)
 
     if 'gcdistance' not in rail_services_df.columns:
-        dict_dist_origin_destination = {}
-        from libs.uow_tool_belt.general_tools import haversine
-        # Initialise dictionary of o-d distance
-        for odr in rail_services_df[['origin', 'destination', 'lat_orig', 'lon_orig',
-                                     'lat_dest', 'lon_dest']].drop_duplicates().iterrows():
-            lat_orig = odr[1].lat_orig
-            lon_orig = odr[1].lon_orig
-            lat_dest = odr[1].lat_dest
-            lon_dest = odr[1].lon_dest
-            dict_dist_origin_destination[(odr[1].origin, odr[1].destination)] = haversine(lon_orig, lat_orig,
-                                                                                          lon_dest, lat_dest)
+        dict_dist_origin_destination = create_dict_distance_origin_destination(rail_services_df[['origin',
+                                                                                                 'destination',
+                                                                                                 'lat_orig',
+                                                                                                 'lon_orig',
+                                                                                                 'lat_dest',
+                                                                                                 'lon_dest']].drop_duplicates())
 
         rail_services_df['gcdistance'] = rail_services_df.apply(lambda x: dict_dist_origin_destination[x['origin'],
                                                                                             x['destination']], axis=1)
@@ -168,8 +164,9 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                                                  gcdistance=x.gcdistance,
                                                                  country_origin=x.country,
                                                                  country_destination=x.country,
-                                                                 coordinates_origin=(x.lat_orig, x.lon_orig),
-                                                                 coordinates_destination=(x.lat_dest, x.lon_dest)),
+                                                                 #coordinates_origin=(x.lat_orig, x.lon_orig),
+                                                                 #coordinates_destination=(x.lat_dest, x.lon_dest)
+                                                                 ),
                                                          axis=1)
 
 
@@ -217,35 +214,59 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
                                pre_processed_version=pre_processed_version)
 
 
+def compute_cost_emissions_air(df_fs):
+    return df_fs
+
+
 def preprocess_air_layer(path_network, air_networks, processed_folder, pre_processed_version=0):
     df_fss = []
     for air_network in air_networks:
         df_fs = pd.read_csv(Path(path_network) / air_network['flight_schedules'], keep_default_na=False)
         df_fs.replace('', None, inplace=True)
 
+        if 'gcdistance' not in df_fs.columns:
+            # Read airport data (needed for the heuristic to compute GCD and
+            # estimate time needed from current node to destination)
+            df_as = pd.read_csv(Path(path_network) / air_network['airports_static'])
+
+            df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='origin', right_on='icao_id')
+            df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='destination', right_on='icao_id',
+                                suffixes=('_orig', '_dest'))
+            df_fs.drop(columns=['icao_id_orig', 'icao_id_dest'], inplace=True)
+
+            dict_dist_origin_destination = create_dict_distance_origin_destination(df_fs[['origin', 'destination',
+                                                                                          'lat_orig', 'lon_orig',
+                                                                                          'lat_dest',
+                                                                                          'lon_dest']].drop_duplicates())
+
+            df_fs['gcdistance'] = df_fs.apply(lambda x: dict_dist_origin_destination[x['origin'], x['destination']],
+                                              axis=1)
+
         if 'provider' not in df_fs.columns:
             df_fs['provider'] = None
         if 'alliance' not in df_fs.columns:
             df_fs['alliance'] = None
         if 'cost' not in df_fs.columns:
-            df_fs['cost'] = 0
+            df_fs['cost'] = None
         if 'seats' not in df_fs.columns:
-            df_fs['seats'] = 140
+            df_fs['seats'] = 180  # TODO hard coded number of seats
         if 'emissions' not in df_fs.columns:
-            df_fs['emissions'] = 0
+            df_fs['emissions'] = None
 
         df_fs['alliance'].fillna(df_fs['provider'], inplace=True)
 
         if 'alliances' in air_network.keys():
             # Replace alliance for the alliances defined in the alliances.csv file
             df_alliances = pd.read_csv(Path(path_network) / air_network['alliances'])
-            df_fs = df_fs.merge(df_alliances, how='left', on='provider', suffixes=("","_alliance"))
+            df_fs = df_fs.merge(df_alliances, how='left', on='provider', suffixes=("", "_alliance"))
             df_fs.loc[~df_fs.alliance_alliance.isna(), 'alliance'] = df_fs.loc[~df_fs.alliance_alliance.isna()]['alliance_alliance']
             df_fs = df_fs.drop(['alliance_alliance'], axis=1)
 
         df_fss += [df_fs]
 
     df_fs = pd.concat(df_fss, ignore_index=True)
+
+    df_fs = compute_cost_emissions_air(df_fs)
 
     fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
     df_fs.to_csv(Path(path_network) / processed_folder / fflights, index=False)
@@ -262,6 +283,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
         df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
         df_agency = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'agency.txt')
+        df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt')
 
         df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
         df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
@@ -297,7 +319,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         df_stop_timess += [df_stop_times]
 
         # Keep processing to translate GTFS form to 'Services' form
-        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_rail)
+        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops)
 
         df_rss += [df_rs]
 
@@ -317,10 +339,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
     df_stop_times.to_csv(Path(path_network) / processed_folder / frail, index=False)
 
 
-
-
-def pre_process_rail_gtfs_to_services(df_stop_times, date_rail):
-
+def pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops=None):
     n_stops_trip = df_stop_times.groupby('trip_id').count().reset_index()
 
     # Keep trips with at least two stops of interest in the trip
@@ -338,7 +357,7 @@ def pre_process_rail_gtfs_to_services(df_stop_times, date_rail):
 
     grouped = df_sorted.groupby('trip_id')
     rail_cost = None
-    rail_seats = None
+    rail_seats = 295  # TODO hard coded number of seats now (average Spain)
     rail_emissions = None
 
     for trip_id, group_df in grouped:
@@ -367,7 +386,46 @@ def pre_process_rail_gtfs_to_services(df_stop_times, date_rail):
 
     rail_services_df = pd.DataFrame(rail_services, columns=columns_interest)
 
+    if df_stops is not None:
+        df_stops = df_stops.copy().rename({'stop_id': 'node', 'stop_lat': 'lat', 'stop_lon': 'lon'},
+                                          axis=1)[['node', 'lat', 'lon']]
+        df_stops['node'] = df_stops['node'].astype(str)
+
+        rail_services_df = rail_services_df.merge(df_stops, left_on=['origin'], right_on=['node'], how='left')
+        rail_services_df.rename(columns={'lat': 'lat_orig', 'lon': 'lon_orig'}, inplace=True)
+        rail_services_df.drop(columns='node', inplace=True)
+        rail_services_df = rail_services_df.merge(df_stops, left_on=['destination'], right_on=['node'], how='left')
+        rail_services_df.rename(columns={'lat': 'lat_dest', 'lon': 'lon_dest'}, inplace=True)
+        rail_services_df.drop(columns='node', inplace=True)
+
+    if 'gcdistance' not in rail_services_df.columns:
+        dict_dist_origin_destination = create_dict_distance_origin_destination(rail_services_df[['origin',
+                                                                                                 'destination',
+                                                                                                 'lat_orig',
+                                                                                                 'lon_orig',
+                                                                                                 'lat_dest',
+                                                                                                 'lon_dest']].drop_duplicates())
+
+        rail_services_df['gcdistance'] = rail_services_df.apply(lambda x: dict_dist_origin_destination[x['origin'],
+        x['destination']], axis=1)
+
     return rail_services_df
+
+
+def create_dict_distance_origin_destination(origin_destination_df):
+    from libs.uow_tool_belt.general_tools import haversine
+
+    dict_dist_origin_destination = {}
+
+    for odr in origin_destination_df[['origin', 'destination', 'lat_orig', 'lon_orig',
+                                     'lat_dest', 'lon_dest']].drop_duplicates().iterrows():
+            lat_orig = odr[1].lat_orig
+            lon_orig = odr[1].lon_orig
+            lat_dest = odr[1].lat_dest
+            lon_dest = odr[1].lon_dest
+            dict_dist_origin_destination[(odr[1].origin, odr[1].destination)] = haversine(lon_orig, lat_orig,
+                                                                                          lon_dest, lat_dest)
+    return dict_dist_origin_destination
 
 
 def create_network(path_network_dict, compute_simplified=False, allow_mixed_operators=True,
@@ -413,22 +471,23 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                 fschedule_filename, keep_default_na=False)
 
             df_fs.replace('', None, inplace=True)
-            df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='origin', right_on='icao_id')
-            df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='destination', right_on='icao_id',
-                                suffixes=('_orig', '_dest'))
+
+            if 'lat_orig' not in df_fs.columns:
+                df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='origin', right_on='icao_id')
+                df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='destination', right_on='icao_id',
+                                    suffixes=('_orig', '_dest'))
 
             if 'gcdistance' not in df_fs.columns:
-                from libs.uow_tool_belt.general_tools import haversine
-                # Initialise dictionary of o-d distance
-                for odr in df_fs[['origin', 'destination']].drop_duplicates().iterrows():
-                    lat_orig = df_as[df_as.icao_id == odr[1].origin].iloc[0].lat
-                    lon_orig = df_as[df_as.icao_id == odr[1].origin].iloc[0].lon
-                    lat_dest = df_as[df_as.icao_id == odr[1].destination].iloc[0].lat
-                    lon_dest = df_as[df_as.icao_id == odr[1].destination].iloc[0].lon
-                    dict_dist_origin_destination[(odr[1].origin, odr[1].destination)] = haversine(lon_orig, lat_orig,
-                                                                                                  lon_dest, lat_dest)
+                dict_dist_origin_destination = create_dict_distance_origin_destination(df_fs[['origin', 'destination',
+                                                                                              'lat_orig', 'lon_orig',
+                                                                                              'lat_dest', 'lon_dest']].drop_duplicates())
+
                 df_fs['gcdistance'] = df_fs.apply(lambda x: dict_dist_origin_destination[x['origin'], x['destination']],
                                                   axis=1)
+
+                # Save the df_fs with the GCD computed now
+                df_fs.to_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
+                                fschedule_filename, index=False)
             else:
                 for odr in df_fs[['origin', 'destination', 'gcdistance']].drop_duplicates().iterrows():
                     dict_dist_origin_destination[(odr[1].origin, odr[1].destination)] = odr[1].gcdistance
@@ -493,7 +552,9 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 df_stop_times = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
                                            fstops_filename, keep_default_na=False, na_values=[''])
 
-                df_rail_data_l += [pre_process_rail_gtfs_to_services(df_stop_times, date_rail)]
+                df_stops = pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt')
+
+                df_rail_data_l += [pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops)]
                 need_save = True
 
             else:
