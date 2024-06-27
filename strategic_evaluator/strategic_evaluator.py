@@ -731,7 +731,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
     egress = []
     nservices = []
     n_modes_i = []
-    type_journey_i = []
+    journey_type_i = []
     paths_i = []
     total_waiting_i = []
     total_cost_i = []
@@ -784,7 +784,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             total_emissions = None
             path = None
             n_modes = 0
-            type_journey = None
+            journey_type = None
             for s in i.itinerary:
                 if consider_times_constraints:
                     dict_legs_info['service_id_' + str(ln)].append(s.id)
@@ -803,9 +803,9 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                     prev_mode = i.layers_used[ln]
                     n_modes += 1
                     if n_modes > 1:
-                        type_journey = 'multimodal'
+                        journey_type = 'multimodal'
                     else:
-                        type_journey = i.layers_used[ln]
+                        journey_type = i.layers_used[ln]
                 dict_legs_info['mode_' + str(ln)].append(i.layers_used[ln])
                 if consider_times_constraints:
                     dict_legs_info['departure_time_' + str(ln)].append(s.departure_time)
@@ -874,7 +874,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 dict_legs_info['emissions_' + str(lni)].append(None)
 
             n_modes_i.append(n_modes)
-            type_journey_i.append(type_journey)
+            journey_type_i.append(journey_type)
             total_waiting_i.append(total_waiting)
             if path is not None:
                 paths_i.append([v for i, v in enumerate(path) if i == 0 or v != path[i-1]]) # remove consecutive same node
@@ -895,7 +895,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                'total_emissions': total_emissions_p,
                'total_waiting_time': total_waiting_i,
                'nmodes': n_modes_i,
-               'type_journey': type_journey_i,
+               'journey_type': journey_type_i,
                'access_time': access,
                'egress_time': egress}
 
@@ -1073,4 +1073,78 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     df_paths_avg['path'] = df_paths_avg['path'].apply(eval)
 
     return df_paths_avg
+
+
+def cluster_options_itineraries(df_itineraries, kpis=None):
+    # Default KPIs if none are provided
+    if kpis is None:
+        kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time']
+
+    def filter_similar_options(group, kpis):
+        filtered_options = []
+        clusters = {}
+        group = group.dropna(subset=kpis)
+        for category in group['journey_type'].unique():
+            category_group = group[group['journey_type'] == category]
+
+            # Calculate data-driven thresholds
+            thresholds = {kpi: category_group[kpi].std() for kpi in kpis}
+
+            for _, option in category_group.iterrows():
+                similar = False
+                for idx, existing_option in enumerate(filtered_options):
+                    if (abs(option['total_travel_time'] - existing_option['total_travel_time']) <= thresholds[
+                        'total_travel_time'] and
+                            abs(option['total_cost'] - existing_option['total_cost']) <= thresholds['total_cost'] and
+                            abs(option['total_emissions'] - existing_option['total_emissions']) <= thresholds[
+                                'total_emissions'] and
+                            (option['total_waiting_time'] is None or existing_option['total_waiting_time'] is None or
+                             abs(option['total_waiting_time'] - existing_option['total_waiting_time']) <= thresholds[
+                                 'total_waiting_time'])):
+                        similar = True
+                        clusters[filtered_options[idx]['option']].append(option['option'])
+                        break
+                if not similar:
+                    filtered_options.append(option)
+                    clusters[option['option']] = [option['option']]
+
+        return [opt['option'] for opt in filtered_options], clusters
+
+    # Group by origin-destination and apply filtering
+    df_itineraries.loc[df_itineraries.total_waiting_time.isnull(), 'total_waiting_time'] = 0
+
+    result = df_itineraries.groupby(['origin', 'destination']).apply(lambda group: filter_similar_options(group, kpis)).reset_index()
+
+    result.columns = ['origin', 'destination', 'options_cluster']
+    result['filtered_options'] = result['options_cluster'].apply(lambda x: x[0])
+    result['clusters'] = result['options_cluster'].apply(lambda x: x[1])
+    result.drop(columns='options_cluster', inplace=True)
+
+    # Prepare the final DataFrame with clusters and averaged KPIs
+    final_clusters = []
+
+    for _, row in result.iterrows():
+        origin = row['origin']
+        destination = row['destination']
+        for cluster_id, options in row['clusters'].items():
+            cluster_data = df_itineraries[(df_itineraries['option'].isin(options)) &
+                                          (df_itineraries['origin'] == origin) &
+                                          (df_itineraries['destination'] == destination)]
+            journey_type = cluster_data.iloc[0]['journey_type']
+            avg_kpis = cluster_data[kpis+['nservices']].mean().to_dict()
+            final_clusters.append({
+                'origin': origin,
+                'destination': destination,
+                'journey_type': journey_type,
+                'cluster_id': cluster_id,
+                'options_in_cluster': options,
+                **avg_kpis
+            })
+
+    final_df = pd.DataFrame(final_clusters)
+
+    for k in kpis:
+        final_df[k] = final_df[k].apply(lambda x: round(x, 2))
+
+    return final_df
 

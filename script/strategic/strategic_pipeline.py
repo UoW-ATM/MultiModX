@@ -163,6 +163,14 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
     df_avg_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
 
+    # Filter options that are 'similar' from the df_itineraries
+    logger.important_info("   Filtering/Clustering itineraries options")
+    df_cluster_options = cluster_options_itineraries(df_itineraries, kpis=['total_travel_time', 'total_cost',
+                                                                           'total_emissions', 'total_waiting_time'])
+
+    ofp = 'possible_itineraries_clustered_' + str(pre_processed_version) + '.csv'
+    df_cluster_options.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+
 
 
 if __name__ == '__main__':
@@ -226,7 +234,8 @@ if __name__ == '__main__':
     # Loading functions here so that logging setting is inherited
     from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
                                                          compute_possible_itineraries_network,
-                                                         compute_avg_paths_from_itineraries)
+                                                         compute_avg_paths_from_itineraries,
+                                                         cluster_options_itineraries)
 
     with open(Path(args.toml_file), mode="rb") as fp:
         network_paths_config = tomli.load(fp)
