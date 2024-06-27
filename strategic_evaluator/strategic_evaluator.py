@@ -1148,3 +1148,37 @@ def cluster_options_itineraries(df_itineraries, kpis=None):
 
     return final_df
 
+
+def keep_pareto_equivalent_solutions(df, thresholds):
+    def is_equivalent(val1, val2, threshold):
+        return abs(val1 - val2) <= threshold
+
+    def dominates(option1, option2, thresholds):
+        better_in_any = False
+        for kpi, threshold in thresholds.items():
+            if not is_equivalent(option1[kpi], option2[kpi], threshold):
+                if option1[kpi] < option2[kpi]:
+                    better_in_any = True
+                else:
+                    return False
+        return better_in_any
+
+    def filter_pareto(group, thresholds):
+        pareto_options = []
+        options = group.to_dict('records')
+        for i, option1 in enumerate(options):
+            dominated = False
+            for j, option2 in enumerate(options):
+                if i != j and dominates(option2, option1, thresholds):
+                    dominated = True
+                    break
+            if not dominated:
+                pareto_options.append(option1)
+        return pd.DataFrame(pareto_options)
+
+    grouped = df.groupby(['origin', 'destination', 'journey_type'])
+    pareto_df = grouped.apply(lambda group: filter_pareto(group, thresholds)).reset_index(drop=True)
+
+    return pareto_df
+
+

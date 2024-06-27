@@ -164,12 +164,30 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     df_avg_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
 
     # Filter options that are 'similar' from the df_itineraries
-    logger.important_info("   Filtering/Clustering itineraries options")
+    logger.important_info("Filtering/Clustering itineraries options")
     df_cluster_options = cluster_options_itineraries(df_itineraries, kpis=['total_travel_time', 'total_cost',
                                                                            'total_emissions', 'total_waiting_time'])
 
+
     ofp = 'possible_itineraries_clustered_' + str(pre_processed_version) + '.csv'
     df_cluster_options.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+
+    # Pareto options from similar options
+    logger.important_info("Computing Pareto itineraries options")
+
+    thresholds = {
+        'total_travel_time': 15,
+        'total_cost': 10,
+        'total_emissions': 5,
+        'total_waiting_time': 30
+    }
+
+    # Apply the Pareto filtering
+    pareto_df = keep_pareto_equivalent_solutions(df_cluster_options, thresholds)
+
+    ofp = 'possible_itineraries_clustered_pareto_' + str(pre_processed_version) + '.csv'
+    pareto_df.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+
 
 
 
@@ -235,7 +253,8 @@ if __name__ == '__main__':
     from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
                                                          compute_possible_itineraries_network,
                                                          compute_avg_paths_from_itineraries,
-                                                         cluster_options_itineraries)
+                                                         cluster_options_itineraries,
+                                                         keep_pareto_equivalent_solutions)
 
     with open(Path(args.toml_file), mode="rb") as fp:
         network_paths_config = tomli.load(fp)
