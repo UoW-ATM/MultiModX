@@ -1075,20 +1075,22 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     return df_paths_avg
 
 
-def cluster_options_itineraries(df_itineraries, kpis=None):
+def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None):
     # Default KPIs if none are provided
     if kpis is None:
         kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time']
 
-    def filter_similar_options(group, kpis):
+    def filter_similar_options(group, kpis, thresholds=None):
         filtered_options = []
         clusters = {}
         group = group.dropna(subset=kpis)
         for category in group['journey_type'].unique():
             category_group = group[group['journey_type'] == category]
 
-            # Calculate data-driven thresholds
-            thresholds = {kpi: category_group[kpi].std() for kpi in kpis}
+            if thresholds is None:
+                # Calculate data-driven thresholds as std of group
+                # Else provide dictionary with values per KPI
+                thresholds = {kpi: category_group[kpi].std() for kpi in kpis}
 
             for _, option in category_group.iterrows():
                 similar = False
@@ -1113,7 +1115,8 @@ def cluster_options_itineraries(df_itineraries, kpis=None):
     # Group by origin-destination and apply filtering
     df_itineraries.loc[df_itineraries.total_waiting_time.isnull(), 'total_waiting_time'] = 0
 
-    result = df_itineraries.groupby(['origin', 'destination']).apply(lambda group: filter_similar_options(group, kpis)).reset_index()
+    result = df_itineraries.groupby(['origin', 'destination']).apply(lambda group: filter_similar_options(group, kpis,
+                                                                                                          thresholds)).reset_index()
 
     result.columns = ['origin', 'destination', 'options_cluster']
     result['filtered_options'] = result['options_cluster'].apply(lambda x: x[0])
@@ -1182,3 +1185,22 @@ def keep_pareto_equivalent_solutions(df, thresholds):
     return pareto_df
 
 
+def keep_itineraries_options(df_itineraries, pareto_df):
+    # Expand the `options_in_cluster` column
+    expanded_rows = []
+    for _, row in pareto_df.iterrows():
+        for option in row['options_in_cluster']:
+            expanded_rows.append({
+                'origin': row['origin'],
+                'destination': row['destination'],
+                'journey_type': row['journey_type'],
+                'cluster_id': row['cluster_id'],
+                'option': option
+            })
+
+    expanded_df = pd.DataFrame(expanded_rows)
+
+    # Filter the second dataframe using the expanded dataframe
+    filtered_df = df_itineraries.merge(expanded_df, on=['origin', 'destination', 'option'], how='inner')
+
+    return filtered_df

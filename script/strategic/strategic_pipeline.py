@@ -188,6 +188,12 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     ofp = 'possible_itineraries_clustered_pareto_' + str(pre_processed_version) + '.csv'
     pareto_df.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
 
+    df_itineraries_filtered = keep_itineraries_options(df_itineraries, pareto_df)
+
+    ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
+    df_itineraries_filtered.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+
+
 
 
 
@@ -254,7 +260,8 @@ if __name__ == '__main__':
                                                          compute_possible_itineraries_network,
                                                          compute_avg_paths_from_itineraries,
                                                          cluster_options_itineraries,
-                                                         keep_pareto_equivalent_solutions)
+                                                         keep_pareto_equivalent_solutions,
+                                                         keep_itineraries_options)
 
     with open(Path(args.toml_file), mode="rb") as fp:
         network_paths_config = tomli.load(fp)
