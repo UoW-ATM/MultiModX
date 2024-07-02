@@ -49,7 +49,7 @@ def load_data(path_train_schedule, path_flight_schedule, path_possible_itinerari
 
 
 def timetable_sync(itrys,services):
-    # generate new timetable(services) with an additional column 'change_time' to identify timetable change
+    # generate new timetable(services) with an additional column 'change_type' to identify timetable change
     # the new timetable is generated randomly for now 
     # service change type: fixed service-0, new service-1, cancelled service-2(completely canceled or partially), timetable shifted-3 (fixed route with new timetable), rerouted services-4 (partially fixed and partially new)
     services_new = services.copy()
