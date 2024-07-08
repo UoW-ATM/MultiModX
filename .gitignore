@@ -10,3 +10,5 @@ tests/
 .idea/
 
 __pycache__/
+
+.devcontainer/
