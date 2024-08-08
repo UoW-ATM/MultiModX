@@ -20,6 +20,7 @@ from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_fl
 
 logger = logging.getLogger(__name__)
 
+
 def create_region_access_dict(df_ra_air):
     regions_access_air = {}
     for i, r in df_ra_air.iterrows():
@@ -584,13 +585,12 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         layers += [air_layer]
 
     if 'rail_network' in path_network_dict.keys():
-        # TODO: deal with date_considered
-        date_rail_str = '20140912'
-        date_rail = pd.to_datetime(date_rail_str, format='%Y%m%d')
-
         df_rail_data_l = []
         need_save = False
         for rn in path_network_dict['rail_network']:
+            date_rail_str = rn['date_to_set_rail']
+            date_rail = pd.to_datetime(date_rail_str, format='%Y%m%d')
+
             if rn.get('create_rail_layer_from') == 'gtfs':
                 # Create the services file (regarless if it exists or not) and then process downstream as from services
                 fstops_filename = 'rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'
