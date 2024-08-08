@@ -367,6 +367,10 @@ class Network:
                 i.total_travel_time += egress_time
                 i.expected_minimum_travel_time = i.total_travel_time
                 i.arrived = True
+                #if len(i.itinerary) == 0:
+                #    # We have arrived to the destination but there's no service used, i.e. itinerary = []
+                #    i.itinerary = [i.current_node]
+
                 heapq.heappush(pq, i)
 
             # Explore all services from current node

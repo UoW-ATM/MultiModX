@@ -830,6 +830,26 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             path = None
             n_modes = 0
             journey_type = None
+            if len(i.itinerary) == 0:
+                # We don't use any mode of transport
+                # if len(i.itinerary) == 0:
+                #    # We have arrived to the destination but there's no service used, i.e. itinerary = []
+                #    i.itinerary = [i.current_node]
+                journey_type = 'none'
+                dict_legs_info['service_id_' + str(ln)].append(None)
+                dict_legs_info['origin_' + str(ln)].append(i.current_node)
+                dict_legs_info['destination_' + str(ln)].append(i.current_node)
+                dict_legs_info['provider_' + str(ln)].append(None)
+                dict_legs_info['alliance_' + str(ln)].append(None)
+                dict_legs_info['mode_' + str(ln)].append(i.layers_used[ln])
+                dict_legs_info['departure_time_' + str(ln)].append(None)
+                dict_legs_info['arrival_time_' + str(ln)].append(None)
+                dict_legs_info['travel_time_' + str(ln)].append(None)
+                dict_legs_info['cost_' + str(ln)].append(None)
+                dict_legs_info['emissions_' + str(ln)].append(None)
+                path = [i.current_node]
+                ln += 1
+
             for s in i.itinerary:
                 if consider_times_constraints:
                     dict_legs_info['service_id_' + str(ln)].append(s.id)
