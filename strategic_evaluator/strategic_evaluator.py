@@ -544,6 +544,11 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             df_fs['sobt'] = pd.to_datetime(df_fs['sobt'],  format='%Y-%m-%d %H:%M:%S')
             df_fs['sibt'] = pd.to_datetime(df_fs['sibt'],  format='%Y-%m-%d %H:%M:%S')
 
+            # Give timezones to SOBT and SIBT (by default UTC)
+            # TODO: we could change the default in the future based on input data)
+            df_fs['sobt'] = df_fs['sobt'].dt.tz_localize('UTC')
+            df_fs['sibt'] = df_fs['sibt'].dt.tz_localize('UTC')
+
             # Read MCTs between air services
             df_mct = pd.read_csv(Path(path_network_dict['network_path']) /
                                  an['mct_air'])
