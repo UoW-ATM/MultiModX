@@ -467,8 +467,26 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         # Read regions access to infrastructure if provided
         df_regions_accessl = []
         for ra in path_network_dict['regions_access']:
-            df_regions_accessl += [pd.read_csv(Path(path_network_dict['network_path']) /
-                                        ra['regions_access'])]
+            df_regions_acess_i = pd.read_csv(Path(path_network_dict['network_path']) /
+                                        ra['regions_access'])
+
+            if 'iata_icao_static' in ra:
+                df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
+                                        ra['iata_icao_static'])
+
+                # Deal wit the fact that some airports might be in IATA code instead of ICAO
+                df_regions_acess_i['len_station'] = df_regions_acess_i['station'].apply(lambda x: len(x))
+                if ((len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']) > 0) and
+                        (len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']['len_station'] == 3) > 0)):
+
+                    df_regions_acess_i = df_regions_acess_i.merge(df_iata_icao[['IATA','ICAO']], how='left',
+                                                                  left_on='station', right_on='IATA')
+
+                    df_regions_acess_i['ICAO'] = df_regions_acess_i['ICAO'].fillna(df_regions_acess_i['station'])
+
+                    df_regions_acess_i['station'] = df_regions_acess_i['ICAO']
+
+            df_regions_accessl += [df_regions_acess_i]
 
         df_regions_access = pd.concat(df_regions_accessl, ignore_index=True)
 
