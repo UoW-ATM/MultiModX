@@ -5,6 +5,8 @@ import multiprocessing as mp
 import time
 import logging
 
+from joblib import Parallel, delayed
+
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
                                                                   initialise_air_network, mct_rail_network,
@@ -16,6 +18,7 @@ from strategic_evaluator.mobility_network_particularities import (mct_air_networ
 from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
 from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_flights, compute_costs_air,
                                               compute_emissions_rail, compute_costs_rail)
+from libs.time_converstions import  convert_to_utc_vectorized
 
 
 logger = logging.getLogger(__name__)
@@ -636,6 +639,27 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
         df_rail_data = compute_cost_emissions_rail(df_rail_data)
+
+        # Compute departure and arrival times in UTC times
+        # Vectorized processing for departure times
+        df_rail_data[['departure_time_utc', 'departure_time_utc_tz',
+                      'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
+            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                for lon, lat, local_time in
+                                zip(df_rail_data['lon_orig'], df_rail_data['lat_orig'], df_rail_data['departure_time']))
+        )
+
+        # Vectorized processing for arrival times
+        df_rail_data[['arrival_time_utc', 'arrival_time_utc_tz',
+                      'arrival_time_local', 'arrival_time_local_tz']] = pd.DataFrame(
+            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                for lon, lat, local_time in
+                                zip(df_rail_data['lon_dest'], df_rail_data['lat_dest'], df_rail_data['arrival_time']))
+        )
+
+        # Move arrival and departure times to UTC
+        df_rail_data['arrival_time'] = df_rail_data['arrival_time_utc']
+        df_rail_data['departure_time'] = df_rail_data['departure_time_utc']
 
         if need_save:
             frail = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
