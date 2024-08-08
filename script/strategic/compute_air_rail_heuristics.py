@@ -115,6 +115,7 @@ if __name__ == '__main__':
         #create_air_heuristic(heuristic_config)
 
     if 'rail_heuristic' in heuristic_config.keys():
+        #pass
         create_rail_heuristic(heuristic_config)
 
 

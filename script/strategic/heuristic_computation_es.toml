@@ -1,16 +1,16 @@
 [air_heuristic]
-    network_path = "../../data/example_strategic/es/"
-    flight_schedules = "flight_schedules.csv"
-    airports_static = "airports_static.csv"
+    network_path = "../../data/CS-ES/v=0.2/"
+    flight_schedules = "flight_schedules_oag_es.csv"
+    airports_static = "infrastructure/airports_coordinates_updated.csv"
     dist_range = '[(0, 150, None), (150, 2000, 100), (2000, 99999, 500)]'
 
 [rail_heuristic]
-    gtfs_path = "../../data/example_strategic/es/gtfs_es"
-    #rail_stations_considered = '../../data/example_strategic/es/rail_stations_considered.csv'
-    rail_stations_considered_nuts = '../../output/data_analysis/nuts3_ES_filtered.csv'
+    gtfs_path = "../../data/CS-ES/v=0.2/gtfs_es_20220708"
+    rail_stations_considered = '../../data/CS-ES/v=0.2/infrastructure/rail_stations_considered.csv'
+    #rail_stations_considered_nuts = '../../output/data_analysis/nuts3_ES_filtered.csv'
     country = 'ES'
     date = '20230503'
     interval_range = 50
 
 [output]
-	output_folder = "../../data/example_strategic/es/processed/heuristics_computed/"
+	output_folder = "../../data/CS-ES/v=0.2/processed/heuristics_computed/"
