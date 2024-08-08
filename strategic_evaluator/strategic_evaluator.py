@@ -217,6 +217,7 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
 
 
 def compute_cost_emissions_air(df_fs):
+    # print(df_fs[df_fs.gcdistance==0])
     df_fs['emissions'] = df_fs.apply(lambda row:
                                      compute_emissions_pax_short_mid_flights(row['gcdistance'], row['seats'])
                                      if pd.isnull(row['emissions']) else row['emissions'], axis=1)
@@ -312,10 +313,12 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
 
         df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
 
-        # TODO: fix rail dates
         # TODO: filter by parent stations
-        date_rail = '20230503'
+        date_rail = rail_network['date_rail'] #'20230503'
+        date_to_set_rail = rail_network['date_to_set_rail']
         date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
+        date_to_set_rail = pd.to_datetime(date_to_set_rail, format='%Y%m%d')
+
         df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
         # Note that country is set for both stops when in reality the trip could be accross countries...
@@ -341,7 +344,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         df_stop_timess += [df_stop_times]
 
         # Keep processing to translate GTFS form to 'Services' form
-        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops)
+        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_to_set_rail, df_stops)
 
         df_rss += [df_rs]
 
