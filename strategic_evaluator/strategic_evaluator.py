@@ -45,7 +45,8 @@ def create_region_access_dict(df_ra_air):
             dict_info_access = {}
             dict_info_station[r.access_type] = dict_info_access
 
-        dict_info_access[r.pax_type] = r.avg_time
+        #dict_info_access[r.pax_type] = r.avg_time
+        dict_info_access[r.pax_type] = r.total_time
 
     return regions_access_air
 
