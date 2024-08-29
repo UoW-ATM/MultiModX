@@ -5,6 +5,8 @@ import multiprocessing as mp
 import time
 import logging
 
+from joblib import Parallel, delayed
+
 from strategic_evaluator.mobility_network import Service, NetworkLayer, Network
 from strategic_evaluator.mobility_network_particularities import (mct_air_network, fastest_air_time_heuristic,
                                                                   initialise_air_network, mct_rail_network,
@@ -16,9 +18,11 @@ from strategic_evaluator.mobility_network_particularities import (mct_air_networ
 from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
 from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_flights, compute_costs_air,
                                               compute_emissions_rail, compute_costs_rail)
+from libs.time_converstions import  convert_to_utc_vectorized
 
 
 logger = logging.getLogger(__name__)
+
 
 def create_region_access_dict(df_ra_air):
     regions_access_air = {}
@@ -41,7 +45,8 @@ def create_region_access_dict(df_ra_air):
             dict_info_access = {}
             dict_info_station[r.access_type] = dict_info_access
 
-        dict_info_access[r.pax_type] = r.avg_time
+        #dict_info_access[r.pax_type] = r.avg_time
+        dict_info_access[r.pax_type] = r.total_time
 
     return regions_access_air
 
@@ -217,6 +222,7 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
 
 
 def compute_cost_emissions_air(df_fs):
+    # print(df_fs[df_fs.gcdistance==0])
     df_fs['emissions'] = df_fs.apply(lambda row:
                                      compute_emissions_pax_short_mid_flights(row['gcdistance'], row['seats'])
                                      if pd.isnull(row['emissions']) else row['emissions'], axis=1)
@@ -314,10 +320,12 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
 
         df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
 
-        # TODO: fix rail dates
         # TODO: filter by parent stations
-        date_rail = '20220923'
+        date_rail = rail_network['date_rail'] #'20230503'
+        date_to_set_rail = rail_network['date_to_set_rail']
         date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
+        date_to_set_rail = pd.to_datetime(date_to_set_rail, format='%Y%m%d')
+
         df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
         # Note that country is set for both stops when in reality the trip could be accross countries...
@@ -343,7 +351,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         df_stop_timess += [df_stop_times]
 
         # Keep processing to translate GTFS form to 'Services' form
-        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops)
+        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_to_set_rail, df_stops)
 
         df_rss += [df_rs]
 
@@ -466,8 +474,26 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         # Read regions access to infrastructure if provided
         df_regions_accessl = []
         for ra in path_network_dict['regions_access']:
-            df_regions_accessl += [pd.read_csv(Path(path_network_dict['network_path']) /
-                                        ra['regions_access'])]
+            df_regions_acess_i = pd.read_csv(Path(path_network_dict['network_path']) /
+                                        ra['regions_access'])
+
+            if 'iata_icao_static' in ra:
+                df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
+                                        ra['iata_icao_static'])
+
+                # Deal wit the fact that some airports might be in IATA code instead of ICAO
+                df_regions_acess_i['len_station'] = df_regions_acess_i['station'].apply(lambda x: len(x))
+                if ((len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']) > 0) and
+                        (len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']['len_station'] == 3) > 0)):
+
+                    df_regions_acess_i = df_regions_acess_i.merge(df_iata_icao[['IATA','ICAO']], how='left',
+                                                                  left_on='station', right_on='IATA')
+
+                    df_regions_acess_i['ICAO'] = df_regions_acess_i['ICAO'].fillna(df_regions_acess_i['station'])
+
+                    df_regions_acess_i['station'] = df_regions_acess_i['ICAO']
+
+            df_regions_accessl += [df_regions_acess_i]
 
         df_regions_access = pd.concat(df_regions_accessl, ignore_index=True)
 
@@ -521,6 +547,11 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             df_fs['sobt'] = pd.to_datetime(df_fs['sobt'],  format='%Y-%m-%d %H:%M:%S')
             df_fs['sibt'] = pd.to_datetime(df_fs['sibt'],  format='%Y-%m-%d %H:%M:%S')
 
+            # Give timezones to SOBT and SIBT (by default UTC)
+            # TODO: we could change the default in the future based on input data)
+            df_fs['sobt'] = df_fs['sobt'].dt.tz_localize('UTC')
+            df_fs['sibt'] = df_fs['sibt'].dt.tz_localize('UTC')
+
             # Read MCTs between air services
             df_mct = pd.read_csv(Path(path_network_dict['network_path']) /
                                  an['mct_air'])
@@ -565,13 +596,12 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         layers += [air_layer]
 
     if 'rail_network' in path_network_dict.keys():
-        # TODO: deal with date_considered
-        date_rail_str = '20140912'
-        date_rail = pd.to_datetime(date_rail_str, format='%Y%m%d')
-
         df_rail_data_l = []
         need_save = False
         for rn in path_network_dict['rail_network']:
+            date_rail_str = rn['date_to_set_rail']
+            date_rail = pd.to_datetime(date_rail_str, format='%Y%m%d')
+
             if rn.get('create_rail_layer_from') == 'gtfs':
                 # Create the services file (regarless if it exists or not) and then process downstream as from services
                 fstops_filename = 'rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'
@@ -617,6 +647,27 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
         df_rail_data = compute_cost_emissions_rail(df_rail_data)
+
+        # Compute departure and arrival times in UTC times
+        # Vectorized processing for departure times
+        df_rail_data[['departure_time_utc', 'departure_time_utc_tz',
+                      'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
+            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                for lon, lat, local_time in
+                                zip(df_rail_data['lon_orig'], df_rail_data['lat_orig'], df_rail_data['departure_time']))
+        )
+
+        # Vectorized processing for arrival times
+        df_rail_data[['arrival_time_utc', 'arrival_time_utc_tz',
+                      'arrival_time_local', 'arrival_time_local_tz']] = pd.DataFrame(
+            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                for lon, lat, local_time in
+                                zip(df_rail_data['lon_dest'], df_rail_data['lat_dest'], df_rail_data['arrival_time']))
+        )
+
+        # Move arrival and departure times to UTC
+        df_rail_data['arrival_time'] = df_rail_data['arrival_time_utc']
+        df_rail_data['departure_time'] = df_rail_data['departure_time_utc']
 
         if need_save:
             frail = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
@@ -787,6 +838,26 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             path = None
             n_modes = 0
             journey_type = None
+            if len(i.itinerary) == 0:
+                # We don't use any mode of transport
+                # if len(i.itinerary) == 0:
+                #    # We have arrived to the destination but there's no service used, i.e. itinerary = []
+                #    i.itinerary = [i.current_node]
+                journey_type = 'none'
+                dict_legs_info['service_id_' + str(ln)].append(None)
+                dict_legs_info['origin_' + str(ln)].append(i.current_node)
+                dict_legs_info['destination_' + str(ln)].append(i.current_node)
+                dict_legs_info['provider_' + str(ln)].append(None)
+                dict_legs_info['alliance_' + str(ln)].append(None)
+                dict_legs_info['mode_' + str(ln)].append(i.layers_used[ln])
+                dict_legs_info['departure_time_' + str(ln)].append(None)
+                dict_legs_info['arrival_time_' + str(ln)].append(None)
+                dict_legs_info['travel_time_' + str(ln)].append(None)
+                dict_legs_info['cost_' + str(ln)].append(None)
+                dict_legs_info['emissions_' + str(ln)].append(None)
+                path = [i.current_node]
+                ln += 1
+
             for s in i.itinerary:
                 if consider_times_constraints:
                     dict_legs_info['service_id_' + str(ln)].append(s.id)
