@@ -307,6 +307,8 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         df_agency = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'agency.txt')
         df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt')
 
+        df_calendar.columns = list(df_calendar.columns.str.strip())
+        df_calendar_dates.columns = list(df_calendar_dates.columns.str.strip())
         df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
         df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
 
@@ -314,7 +316,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
 
         # TODO: fix rail dates
         # TODO: filter by parent stations
-        date_rail = '20230503'
+        date_rail = '20220923'
         date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
         df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 

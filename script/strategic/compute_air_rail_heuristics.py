@@ -111,8 +111,8 @@ if __name__ == '__main__':
         heuristic_config = tomli.load(fp)
 
     if 'air_heuristic' in heuristic_config.keys():
-        pass
-        #create_air_heuristic(heuristic_config)
+        # pass
+        create_air_heuristic(heuristic_config)
 
     if 'rail_heuristic' in heuristic_config.keys():
         create_rail_heuristic(heuristic_config)

@@ -1,10 +1,17 @@
+from pathlib import Path
 from biogeme import models
 from biogeme.expressions import Beta
 import biogeme.database as db
 import biogeme.results as res
 import biogeme.biogeme as bio
+import numpy as np
 import pandas as pd
+import logging
+from script.strategic.launch_parameters import n_alternatives, n_archetypes
 from sklearn.model_selection import train_test_split
+
+
+logger = logging.getLogger(__name__)
 
 
 def utility_function(database, n_alternatives: int):
@@ -27,19 +34,19 @@ def utility_function(database, n_alternatives: int):
     B_COST = Beta('B_COST', 0, None, None, 0)
     B_CO2 = Beta('B_CO2', 0, None, None, 0)
 
-
     # We define the utility function for each alternative
     i = 1
     V = {}
-    while i<=n_alternatives:
+    while i <= n_alternatives:
         V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + ASC_PLANE * database.variables[f'plane_{i}'] + ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
                 B_TIME * database.variables[f'travel_time_{i}'] +
-                B_COST * database.variables[f'travel_cost_{i}'] +
-                B_CO2 * database.variables[f'co2_{i}'])
+                B_COST * database.variables[f'cost_{i}'] +
+                B_CO2 * database.variables[f'emissions_{i}'])
 
-        i+=1
-    
+        i += 1
+
     return V
+
 
 def alternative_availability(database, n_alternatives: int):
     """This function define the variable in the database that defines the availability of each alternative
@@ -52,8 +59,10 @@ def alternative_availability(database, n_alternatives: int):
         dict: dictionary with the availability information of each alternative
     """
     # Availabilities of alternatives
-    av = {i: database.variables[f'av_{i}'] for i in range(1, n_alternatives + 1)}
-    return av 
+    av = {i: database.variables[f'av_{i}']
+          for i in range(1, n_alternatives + 1)}
+    return av
+
 
 def logit_model(database, V: dict, av: dict, weight_column: str):
     """Define and calibrate the logit model for an archetype defined by the "weight_column"
@@ -70,23 +79,25 @@ def logit_model(database, V: dict, av: dict, weight_column: str):
     """
 
     number_of_observations = database.getNumberOfObservations()
-    number_of_trips = database.valuesFromDatabase(database.variables[weight_column]).sum()
+    number_of_trips = database.valuesFromDatabase(
+        database.variables[weight_column]).sum()
 
     # We define de logit model based on the utility function (V), availability (av) and observed choice
     logprob = models.loglogit(V, av, database.variables['observed_choice'])
     formulas = {'loglike': logprob,
-                'weight': database.variables[weight_column] / number_of_trips * number_of_observations }
-    
+                'weight': database.variables[weight_column] / number_of_trips * number_of_observations}
+
     # We create the biogeme object and calibrate the model
     the_biogeme = bio.BIOGEME(database, formulas)
     the_biogeme.modelName = weight_column
-    the_biogeme.generate_html  = False
+    the_biogeme.generate_html = False
     the_biogeme.generate_pickle = True
     the_biogeme.save_iterations = False
 
     results = the_biogeme.estimate()
 
     return the_biogeme, results
+
 
 def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_column: str, beta_values: dict):
     # TO DO
@@ -107,6 +118,7 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
 
     # df.groupby(['observed_choice'])['trips'].sum() / df['trips'].sum()
 
+
 def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int):
     """Main function to calibrate the logit model
 
@@ -119,10 +131,11 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int):
 
     od_matrix = pd.read_csv(database_path)
 
-    od_matrix_train, od_matrix_test = train_test_split(od_matrix, test_size=0.2, random_state = 42 )
+    od_matrix_train, od_matrix_test = train_test_split(
+        od_matrix, test_size=0.2, random_state=42)
 
-    database_train = db.Database("train", od_matrix_train )
-    database_test = db.Database("train", od_matrix_test )
+    database_train = db.Database("train", od_matrix_train)
+    database_test = db.Database("train", od_matrix_test)
 
     for k in range(n_archetypes):
         weight_column = f'archetype_{k}'
@@ -130,11 +143,13 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int):
         V = utility_function(database_train, n_alternatives)
         av = alternative_availability(database_train, n_alternatives)
 
-        the_biogeme, results = logit_model(database_train, V, av, weight_column)
+        the_biogeme, results = logit_model(
+            database_train, V, av, weight_column)
 
         print(results.short_summary())
         print(results.getEstimatedParameters())
         print(results.getBetaValues())
+
 
 def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weight_column: str, beta_values: dict):
     """Estimate the probabilities of each alternative for an archetype ("weight_column")
@@ -162,7 +177,8 @@ def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weig
 
     return probabilities
 
-def predict_main(paths_file: str, n_archetypes: int, n_alternatives: int):
+
+def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str):
     """_summary_
 
     Args:
@@ -171,32 +187,44 @@ def predict_main(paths_file: str, n_archetypes: int, n_alternatives: int):
         n_alternatives (int): number of alternatives between OD pairs
 
     Returns:
-        pd.DataFrame: probability of each alternative for each arquetype and OD pair
+        pd.DataFrame: probability of each alternative for each archetype and OD pair
     """
     # TO DO: create a configuration file. The input will only be the configuration file. For now we include other inputs
 
-    paths = pd.read_csv(paths_file)
-    # the paths file should have the following columns: [origin, destination, train_i, plane_i, multimodal_i, travel_time_i, travel_cost_i, co2_i, av_i]
+    # paths = pd.read_csv(paths_file)
+    # the paths file should have the following columns: [origin, destination, train_i, plane_i, multimodal_i, travel_time_i, cost_i, emissions_i, av_i]
     # i=1:k where k is the number of alternatives
-    
-    cols = [x for x in paths.columns if (x!= 'origin') & (x!= 'destination')]
 
-    database = db.Database("prediction", paths[cols] )
+    cols = [
+        x for x in paths.columns if not x in (
+            ['origin', 'destination', 'path_id', 'observed_choice'] +
+            [f"path_id_{i}" for i in range(1, n_alternatives+1)]
+        )
+    ]
+
+    database = db.Database("prediction", paths[cols])
 
     df_results = paths[['origin', 'destination']].copy()
 
     for k in range(n_archetypes):
         weight_column = f'archetype_{k}'
-        beta_values = res.bioResults(pickleFile=f'/opt/dev/data/{weight_column}.pickle').getBetaValues()
+        beta_values = res.bioResults(
+            pickleFile=(
+                Path(sensitivities["sensitivities"]) / f"{weight_column}.pickle")
+        ).getBetaValues()
 
         V = utility_function(database, n_alternatives)
         av = alternative_availability(database, n_alternatives)
 
-        probabilities = predict_probabilities(database, V, av, n_alternatives, weight_column, beta_values)
+        probabilities = predict_probabilities(
+            database, V, av, n_alternatives, weight_column, beta_values)
 
-        df_results = pd.concat([df_results, probabilities], axis=1, join="inner").rename({i: f'{weight_column}_{i}' for i in probabilities.columns }, axis = 1)
+        df_results = pd.concat(
+            [df_results, probabilities], axis=1, join="inner"
+        ).rename({i: f'{weight_column}_{i}' for i in probabilities.columns}, axis=1)
 
-    return df_results
+    return df_results.drop_duplicates()
+
 
 def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
     """Assign how many passengers belonging to an acrhetype choose the alternative i for the OD pair
@@ -218,22 +246,122 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
 
     return trips * paths_prob_dict[(O, D)][name]
 
+
 def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, pax_demand_path: str):
     """Main function to assign trips to paths
 
     Args:
-        paths_prob (pd.DataFrame): probability of each alternative for each arquetype and OD pair
+        paths_prob (pd.DataFrame): probability of each alternative for each archetype and OD pair
         n_alternatives (int): number of alternatives between OD pairs
         pax_demand_path (str): path to the pax_demand file
 
     Returns:
         pd.DataFrame: df with the trips assigned to each alternative
     """
-    
+
     pax_demand = pd.read_csv(pax_demand_path)
-    paths_prob_dict = paths_prob.set_index(['origin', 'destination']).to_dict('index')
+    paths_prob_dict = paths_prob.set_index(
+        ['origin', 'destination']).to_dict("index")
 
     for i in range(1, n_alternatives + 1):
-        pax_demand[f'alternative_{i}'] = pax_demand.apply(lambda row: assign_passengers2path(row, paths_prob_dict, i), axis = 1)
+        pax_demand[f'alternative_{i}'] = pax_demand.apply(
+            lambda row: assign_passengers2path(row, paths_prob_dict, i), axis=1)
 
     return pax_demand
+
+
+def select_paths(paths: pd.DataFrame, n_alternatives: int):
+    paths_no_duplicates = paths[~paths[[
+        "origin", "destination", "path"]].astype(str).duplicated()]
+    paths_filtered = paths_no_duplicates.groupby(
+        ["origin", "destination"], as_index=False
+    ).apply(lambda x: x.iloc[:n_alternatives]).reset_index(level=0, drop=True)
+    return paths_filtered
+
+
+def format_paths_for_predict(paths: pd.DataFrame, n_alternatives: int):
+    paths["mode_tp"] = paths.apply(
+        lambda row: [row[f"mode_{i}"] for i in range(n_alternatives) if str(row[f"mode_{i}"]) != "nan"], axis=1
+    )
+    paths["path_id"] = (
+        "path_id_" + paths["option"].astype(str) + "_" +
+        paths["origin"] + "_" + paths["destination"]
+    )
+    paths["option_number"] = paths.groupby(["origin", "destination"])["path_id"].transform(
+        lambda df: range(1, len(df)+1)
+    ).astype(str)
+    paths["train"] = paths.apply(
+        lambda row: "rail" in row["mode_tp"], axis=1).astype(int)
+    paths["plane"] = paths.apply(
+        lambda row: "air" in row["mode_tp"], axis=1).astype(int)
+    paths["multimodal"] = (paths["nmodes"] > 1).astype(int)
+    paths_base = paths[[
+        "origin", "destination", "option_number", "path_id",
+        'total_travel_time', 'total_cost', 'total_emissions',
+        "multimodal", "train", "plane"
+    ]].sort_values(["origin", "destination"])
+
+    paths_pivoted = pivot_paths(paths_base)
+    paths_final = paths_pivoted.groupby(["origin", "destination"]).apply(
+        lambda df: df.bfill().ffill(), include_groups=False
+    ).reset_index().drop_duplicates(
+        ["origin", "destination", "path_id"]
+    ).drop(columns=["level_2"]).fillna(0).reset_index(drop=True)
+
+    paths_final.columns = [
+        i.replace("total_", "") for i in paths_final.columns
+    ]
+    for i in range(1, n_alternatives+1):
+        paths_final[f"av_{i}"] = paths_final[
+            f"travel_time_{i}"
+        ].notna().astype(int)
+
+    paths_final.to_csv("paths_final.csv", header=True, index=False)
+
+    return paths_final
+
+
+def pivot_paths(paths: pd.DataFrame):
+    paths_pivoted = paths.pivot_table(
+        index=["origin", "destination", "path_id"],
+        columns='option_number',
+        values=[
+            'total_travel_time', 'total_cost', 'total_emissions',
+            "multimodal", "train", "plane"
+        ],
+        aggfunc='mean'
+    ).reset_index()
+    paths_pivoted.columns = [
+        ("_".join(pair)).rstrip("_") for pair in paths_pivoted.columns
+    ]
+    paths_pivoted_updated = paths_pivoted.groupby(["origin", "destination"]).apply(
+        assign_path_id_columns, include_groups=False).reset_index().drop(columns="level_2")
+    paths_pivoted_updated["observed_choice"] = paths_pivoted_updated.groupby(["origin", "destination"])["path_id"].transform(
+        lambda df: range(1, len(df)+1)
+    ).astype(str)
+
+    return paths_pivoted_updated
+
+
+def assign_path_id_columns(df: pd.DataFrame):
+    paths_ids = df["path_id"].values
+    for i in range(1, len(paths_ids)+1):
+        df[f"path_id_{i}"] = paths_ids[i-1]
+    return df
+
+
+def assign_demand_to_paths(df: pd.DataFrame, n_alternatives: int, network_paths_config: str):
+    logger.important_info("Predict demand on paths")
+    paths_final = df.pipe(select_paths, n_alternatives).pipe(
+        format_paths_for_predict, n_alternatives
+    )
+    paths_probabilities = predict_main(
+        paths_final, n_archetypes=n_archetypes,
+        n_alternatives=n_alternatives, sensitivities=network_paths_config['sensitivities']
+    )
+    pax_demand_paths = assign_passengers_main(
+        paths_probabilities, n_alternatives, Path(
+            network_paths_config['demand']['demand'])
+    )
+    pax_demand_paths.to_csv(Path(
+        network_paths_config['output']['paths_demand_output_folder']) / "pax_demand_paths.csv", index=False)

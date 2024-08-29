@@ -242,18 +242,19 @@ class Network:
             # Iterate through each path
             for path in routes:
                 # Iterate through each segment of the path
-                for i in range(len(path) - 1):
-                    # Create the key as a tuple of the sub-path up to the current segment
-                    key = tuple(path[:i + 1])
-                    # The next stop is the element right after the current segment
-                    next_stop = path[i + 1]
-                    # Append the next stop to the list of possible next stops for this key
-                    if next_stop not in dict_next_valid_nodes[key]:
-                        dict_next_valid_nodes[key].append(next_stop)
-                # Also add the full path as a key
-                full_path_key = tuple(path)
-                if full_path_key not in dict_next_valid_nodes:
-                    dict_next_valid_nodes[full_path_key] = []
+                if path:
+                    for i in range(len(path) - 1):
+                        # Create the key as a tuple of the sub-path up to the current segment
+                        key = tuple(path[:i + 1])
+                        # The next stop is the element right after the current segment
+                        next_stop = path[i + 1]
+                        # Append the next stop to the list of possible next stops for this key
+                        if next_stop not in dict_next_valid_nodes[key]:
+                            dict_next_valid_nodes[key].append(next_stop)
+                    # Also add the full path as a key
+                    full_path_key = tuple(path)
+                    if full_path_key not in dict_next_valid_nodes:
+                        dict_next_valid_nodes[full_path_key] = []
 
             # Algorithm to find all posssible itineraries between origin-destination using routes provided
             #return self.find_itineraries_in_route(origin, destination, routes, consider_operators_connections,

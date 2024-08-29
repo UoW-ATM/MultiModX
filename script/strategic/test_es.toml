@@ -1,5 +1,5 @@
 [network_definition]
-    network_path = "../../data/example_strategic/es/"
+    network_path = "data/es_full_AW/"
     processed_folder = "processed"
     [network_definition.air_network]
         flight_schedules = "flight_schedules.csv"
@@ -10,12 +10,15 @@
         rail_stations_considered = "rail_stations_considered.csv"
         create_rail_layer_from = 'gtfs' #gtfs / services
     [network_definition.multimodal]
-        air_rail_transitions = "air_rail_transitions.csv"
+        air_rail_transitions = "air_rail_transitions_all.csv"
 	[network_definition.regions_access]
-		regions_access = "regions_access.csv"
+		regions_access = "regions_access_all.csv"
 
 [demand]
-	demand = "../../data/example_strategic/es/pax_demand.csv"
+	demand = "data/example_strategic/es/pax_demand_partial.csv"
+
+[sensitivities]
+    sensitivities = "data/sensitivities"
 
 [output]
-	output_folder = "../../data/example_strategic/es/processed/possible_paths/"
+	output_folder = "data/es_full_AW/processed/paths_itineraries/"

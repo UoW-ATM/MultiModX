@@ -6,6 +6,7 @@ from collections import defaultdict
 import ast
 import logging
 import sys
+from launch_parameters import n_alternatives, n_archetypes
 sys.path.insert(1, '../..')
 
 
@@ -40,11 +41,13 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
     preprocess_input(network_definition, pre_processed_version=pre_processed_version)
 
     # Create network
-    network = create_network(network_definition,
-                             compute_simplified=not consider_time_constraints,
-                             allow_mixed_operators=allow_mixed_operators,
-                             use_heuristics_precomputed=use_heuristics_precomputed,
-                             pre_processed_version=pre_processed_version)
+    network = create_network(
+        network_definition,
+        compute_simplified=not consider_time_constraints,
+        allow_mixed_operators=allow_mixed_operators,
+        use_heuristics_precomputed=use_heuristics_precomputed,
+        pre_processed_version=pre_processed_version
+    )
 
     # Read demand
     demand_matrix = read_origin_demand_matrix(network_paths_config['demand']['demand'])
@@ -67,30 +70,35 @@ def run(network_paths_config, pc=1, n_itineraries=10, max_connections=1, pre_pro
 
         dict_o_d_routes = dict(dict_o_d_routes)
 
-    df_itineraries = compute_possible_itineraries_network(network, o_d, dict_o_d_routes=dict_o_d_routes,
-                                                          pc=pc, n_itineraries=n_itineraries,
-                                                          max_connections=max_connections,
-                                                          allow_mixed_operators=allow_mixed_operators,
-                                                          consider_times_constraints=consider_time_constraints)
+    df_itineraries = compute_possible_itineraries_network(
+        network, o_d, dict_o_d_routes=dict_o_d_routes,
+        pc=pc, n_itineraries=n_itineraries,
+        max_connections=max_connections,
+        allow_mixed_operators=allow_mixed_operators,
+        consider_times_constraints=consider_time_constraints
+    )
 
     if consider_time_constraints:
         ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     else:
+        assign_demand_to_paths(df_itineraries, n_alternatives, network_paths_config)
         ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
 
-    df_itineraries.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_itineraries.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
 
     if consider_time_constraints:
         # Compute average paths from possible itineraries
         df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries)
         ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
-        df_avg_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+        df_avg_paths.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
+        
 
-
-def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
-                     max_connections=1, pre_processed_version=0,
-                     allow_mixed_operators_itineraries=False,
-                     use_heuristics_precomputed=False):
+def run_two_step(
+    network_paths_config, pc=1, n_paths=15, n_itineraries=50,
+    max_connections=1, pre_processed_version=0,
+    allow_mixed_operators_itineraries=False,
+    use_heuristics_precomputed=False
+):
 
     # Preprocess input
     logger.info("Pre-processing input")
@@ -122,16 +130,16 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
                                                           consider_times_constraints=False)
 
     ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
-    df_potential_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_potential_paths.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
 
     # Then compute itineraries based on potential paths
     # Create potential routes dictionary
     logger.info("Create dictionary of potential routes to use by itineraries")
     dict_o_d_routes = defaultdict(list)
 
-    df_potential_paths['path'] = df_potential_paths['path'].apply(tuple)
+    df_potential_paths['path'] = df_potential_paths['path'].apply(lambda x: tuple(x) if x else None)
     df_potential_paths_unique = df_potential_paths[['origin', 'destination', 'path']].drop_duplicates()
-    df_potential_paths_unique['path'] = df_potential_paths_unique['path'].apply(list)
+    df_potential_paths_unique['path'] = df_potential_paths_unique['path'].apply(lambda x: list(x) if x else None)
 
     for _, row in df_potential_paths_unique.iterrows():
         key = (row['origin'], row['destination'])
@@ -141,10 +149,12 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
 
     # Create network
     logger.info("Create network to compute itineraries")
-    network = create_network(network_definition,
-                             compute_simplified=False,
-                             use_heuristics_precomputed=use_heuristics_precomputed,
-                             pre_processed_version=pre_processed_version)
+    network = create_network(
+        network_definition,
+        compute_simplified=False,
+        use_heuristics_precomputed=use_heuristics_precomputed,
+        pre_processed_version=pre_processed_version
+    )
 
     # Compute itineraries
     logger.info("Computing potential paths")
@@ -155,13 +165,13 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
                                                           consider_times_constraints=True)
 
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
-    df_itineraries.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_itineraries.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
 
     # Compute average paths from possible itineraries
     logger.info("Compute average path for possible itineraries")
     df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries)
     ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
-    df_avg_paths.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_avg_paths.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
 
     # Filter options that are 'similar' from the df_itineraries
     logger.important_info("Filtering/Clustering itineraries options")
@@ -170,7 +180,7 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
 
 
     ofp = 'possible_itineraries_clustered_' + str(pre_processed_version) + '.csv'
-    df_cluster_options.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_cluster_options.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
 
     # Pareto options from similar options
     logger.important_info("Computing Pareto itineraries options")
@@ -186,16 +196,15 @@ def run_two_step(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
     pareto_df = keep_pareto_equivalent_solutions(df_cluster_options, thresholds)
 
     ofp = 'possible_itineraries_clustered_pareto_' + str(pre_processed_version) + '.csv'
-    pareto_df.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    pareto_df.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
 
     df_itineraries_filtered = keep_itineraries_options(df_itineraries, pareto_df)
 
     ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
-    df_itineraries_filtered.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_itineraries_filtered.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
 
-
-
-
+    assign_demand_to_paths(df_itineraries, n_alternatives, network_paths_config)
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Strategic pipeline test', add_help=True)
@@ -256,12 +265,16 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
 
     # Loading functions here so that logging setting is inherited
-    from strategic_evaluator.strategic_evaluator import (create_network, preprocess_input,
-                                                         compute_possible_itineraries_network,
-                                                         compute_avg_paths_from_itineraries,
-                                                         cluster_options_itineraries,
-                                                         keep_pareto_equivalent_solutions,
-                                                         keep_itineraries_options)
+    from strategic_evaluator.strategic_evaluator import (
+        create_network, preprocess_input, compute_itineraries,
+        compute_possible_itineraries_network,
+        compute_avg_paths_from_itineraries, cluster_options_itineraries,
+        keep_pareto_equivalent_solutions, keep_itineraries_options
+    )
+    from strategic_evaluator.logit_model import (
+        assign_demand_to_paths, assign_passengers_main,
+        format_paths_for_predict, predict_main, select_paths
+    )
 
     with open(Path(args.toml_file), mode="rb") as fp:
         network_paths_config = tomli.load(fp)
