@@ -1146,7 +1146,7 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     return df_paths_avg
 
 
-def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None):
+def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):
     # Default KPIs if none are provided
     if kpis is None:
         kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time']
@@ -1186,10 +1186,25 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None):
     # Group by origin-destination and apply filtering
     df_itineraries.loc[df_itineraries.total_waiting_time.isnull(), 'total_waiting_time'] = 0
 
-    result = df_itineraries.groupby(['origin', 'destination']).apply(lambda group: filter_similar_options(group, kpis,
-                                                                                                          thresholds)).reset_index()
+    grouped_data = df_itineraries.groupby(['origin', 'destination'])
 
-    result.columns = ['origin', 'destination', 'options_cluster']
+    def process_group(name, group):
+        options_cluster = filter_similar_options(group, kpis, thresholds)
+        return (name[0], name[1], options_cluster)
+
+    # If pc > 1, use parallel computing, otherwise proceed sequentially
+    if pc > 1:
+        results = Parallel(n_jobs=pc)(delayed(process_group)(name, group) for name, group in grouped_data)
+    else:
+        results = [process_group(name, group) for name, group in grouped_data]
+
+    # Convert results to DataFrame
+    result = pd.DataFrame(results, columns=['origin', 'destination', 'options_cluster'])
+
+    #result = df_itineraries.groupby(['origin', 'destination']).apply(lambda group: filter_similar_options(group, kpis,
+    #                                                                                                      thresholds)).reset_index()
+    #result.columns = ['origin', 'destination', 'options_cluster']
+
     result['filtered_options'] = result['options_cluster'].apply(lambda x: x[0])
     result['clusters'] = result['options_cluster'].apply(lambda x: x[1])
     result.drop(columns='options_cluster', inplace=True)
