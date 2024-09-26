@@ -1148,7 +1148,7 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     return df_paths_avg
 
 
-def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None):
+def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc: int =1):
     # Default KPIs if none are provided
     if kpis is None:
         kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time']

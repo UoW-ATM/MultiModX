@@ -1,2 +1,2 @@
-n_alternatives = 3
+n_alternatives_max = 40
 n_archetypes = 6

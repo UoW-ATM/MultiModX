@@ -7,7 +7,7 @@ import biogeme.biogeme as bio
 import numpy as np
 import pandas as pd
 import logging
-from script.strategic.launch_parameters import n_alternatives, n_archetypes
+from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
 from sklearn.model_selection import train_test_split
 
 
@@ -207,6 +207,9 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
     df_results = paths[['origin', 'destination']].copy()
 
     for k in range(n_archetypes):
+        logger.important_info(
+            f"Predicting number of passenger on each path for archetype {k}."
+        )
         weight_column = f'archetype_{k}'
         beta_values = res.bioResults(
             pickleFile=(
@@ -217,7 +220,8 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
         av = alternative_availability(database, n_alternatives)
 
         probabilities = predict_probabilities(
-            database, V, av, n_alternatives, weight_column, beta_values)
+            database, V, av, n_alternatives, weight_column, beta_values
+        )
 
         df_results = pd.concat(
             [df_results, probabilities], axis=1, join="inner"
@@ -243,8 +247,10 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
     trips = row['trips']
 
     name = f'{arc}_prob_{alternative_i}'
-
-    return trips * paths_prob_dict[(O, D)][name]
+    if (O, D) in paths_prob_dict.keys():
+        return trips * paths_prob_dict[(O, D)][name]
+    else:
+        logger.important_info(f"No paths on OD pair {O, D}")
 
 
 def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, pax_demand_path: str):
@@ -270,31 +276,43 @@ def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, pax_de
     return pax_demand
 
 
-def select_paths(paths: pd.DataFrame, n_alternatives: int):
-    paths_no_duplicates = paths[~paths[[
-        "origin", "destination", "path"]].astype(str).duplicated()]
-    paths_filtered = paths_no_duplicates.groupby(
+def select_paths(paths: pd.DataFrame, n_alternatives_max: int):
+    paths_filtered = paths.sort_values("total_travel_time").groupby(
         ["origin", "destination"], as_index=False
-    ).apply(lambda x: x.iloc[:n_alternatives]).reset_index(level=0, drop=True)
+    ).apply(lambda x: x.iloc[:n_alternatives_max]).reset_index(level=0, drop=True)
     return paths_filtered
 
 
-def format_paths_for_predict(paths: pd.DataFrame, n_alternatives: int):
-    paths["mode_tp"] = paths.apply(
-        lambda row: [row[f"mode_{i}"] for i in range(n_alternatives) if str(row[f"mode_{i}"]) != "nan"], axis=1
-    )
-    paths["path_id"] = (
-        "path_id_" + paths["option"].astype(str) + "_" +
-        paths["origin"] + "_" + paths["destination"]
-    )
+def format_paths_for_predict(
+    paths: pd.DataFrame, n_alternatives: int,
+    max_connections: int, network_paths_config: str, paths_clusters: bool = True
+):
+    if paths_clusters:
+        paths["train"] = paths["journey_type"] == "rail"
+        paths["plane"] = paths["journey_type"] == "plane"
+        paths["multimodal"] = paths["journey_type"] == "multimodal"
+        paths["path_id"] = (
+            "cluster_id_" + paths["cluster_id"].astype(str) + "_" +
+            paths["origin"] + "_" + paths["destination"]
+        )
+    else:
+        paths["mode_tp"] = paths.apply(lambda row: [
+            row[f"mode_{i}"] for i in range(max_connections)if str(row[f"mode_{i}"]) != "nan"
+        ], axis=1)
+        paths["path_id"] = (
+            "path_id_" + paths["option"].astype(str) + "_" +
+            paths["origin"] + "_" + paths["destination"]
+        )
+
+        paths["train"] = paths.apply(
+            lambda row: "rail" in row["mode_tp"], axis=1).astype(int)
+        paths["plane"] = paths.apply(
+            lambda row: "air" in row["mode_tp"], axis=1).astype(int)
+        paths["multimodal"] = (paths["nmodes"] > 1).astype(int)
+
     paths["option_number"] = paths.groupby(["origin", "destination"])["path_id"].transform(
-        lambda df: range(1, len(df)+1)
-    ).astype(str)
-    paths["train"] = paths.apply(
-        lambda row: "rail" in row["mode_tp"], axis=1).astype(int)
-    paths["plane"] = paths.apply(
-        lambda row: "air" in row["mode_tp"], axis=1).astype(int)
-    paths["multimodal"] = (paths["nmodes"] > 1).astype(int)
+            lambda df: range(1, len(df)+1)
+        ).astype(str)
     paths_base = paths[[
         "origin", "destination", "option_number", "path_id",
         'total_travel_time', 'total_cost', 'total_emissions',
@@ -302,23 +320,28 @@ def format_paths_for_predict(paths: pd.DataFrame, n_alternatives: int):
     ]].sort_values(["origin", "destination"])
 
     paths_pivoted = pivot_paths(paths_base)
-    paths_final = paths_pivoted.groupby(["origin", "destination"]).apply(
+    paths_pivoted_final = paths_pivoted.groupby(["origin", "destination"]).apply(
         lambda df: df.bfill().ffill(), include_groups=False
     ).reset_index().drop_duplicates(
         ["origin", "destination", "path_id"]
     ).drop(columns=["level_2"]).fillna(0).reset_index(drop=True)
 
-    paths_final.columns = [
-        i.replace("total_", "") for i in paths_final.columns
+    paths_pivoted_final.columns = [
+        i.replace("total_", "") for i in paths_pivoted_final.columns
     ]
+
     for i in range(1, n_alternatives+1):
-        paths_final[f"av_{i}"] = paths_final[
+        paths_pivoted_final[f"av_{i}"] = (paths_pivoted_final[
             f"travel_time_{i}"
-        ].notna().astype(int)
+        ] != 0).astype(int)
 
-    paths_final.to_csv("paths_final.csv", header=True, index=False)
+    paths_pivoted_final.to_csv(
+        Path(
+            network_paths_config['output']['paths_demand_output_folder']
+        ) / "paths_pivoted_final.csv", index=False
+    )
 
-    return paths_final
+    return paths_pivoted_final
 
 
 def pivot_paths(paths: pd.DataFrame):
@@ -350,11 +373,18 @@ def assign_path_id_columns(df: pd.DataFrame):
     return df
 
 
-def assign_demand_to_paths(df: pd.DataFrame, n_alternatives: int, network_paths_config: str):
+def assign_demand_to_paths(
+    paths: pd.DataFrame, n_alternatives: int,
+    max_connections: int, network_paths_config: str
+):
     logger.important_info("Predict demand on paths")
-    paths_final = df.pipe(select_paths, n_alternatives).pipe(
-        format_paths_for_predict, n_alternatives
+    
+    # Selecting paths if necessary (too many options)
+    # paths = paths.pipe(select_paths, n_alternatives_max)
+    paths_final = paths.pipe(
+        format_paths_for_predict, n_alternatives, max_connections, network_paths_config
     )
+
     paths_probabilities = predict_main(
         paths_final, n_archetypes=n_archetypes,
         n_alternatives=n_alternatives, sensitivities=network_paths_config['sensitivities']
@@ -363,5 +393,8 @@ def assign_demand_to_paths(df: pd.DataFrame, n_alternatives: int, network_paths_
         paths_probabilities, n_alternatives, Path(
             network_paths_config['demand']['demand'])
     )
-    pax_demand_paths.to_csv(Path(
-        network_paths_config['output']['paths_demand_output_folder']) / "pax_demand_paths.csv", index=False)
+    pax_demand_paths.to_csv(
+        Path(
+            network_paths_config['output']['paths_demand_output_folder']
+        ) / "pax_demand_paths.csv", index=False
+    )

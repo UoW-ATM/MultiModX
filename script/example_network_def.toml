@@ -13,13 +13,15 @@
         rail_stations_considered = "infrastructure/rail_stations_considered_new.csv"
         create_rail_layer_from = 'gtfs' #gtfs / services
         country = "LE"
+        date_rail = "20220923"
+        date_to_set_rail = "20190906"
     [[network_definition.multimodal]]
         air_rail_transitions = "infrastructure/air_rail_transitions_new.csv"
 	[[network_definition.regions_access]]
 		regions_access = "infrastructure/regions_access_all.csv"
 
 [demand]
-	demand = "data/es_full_AW/pax_demand.csv"
+	demand = "data/es_full_AW/pax_demand_partial.csv"
 
 [sensitivities]
     sensitivities = "data/es_full_AW/sensitivities"

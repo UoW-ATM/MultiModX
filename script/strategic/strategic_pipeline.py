@@ -5,7 +5,7 @@ import pandas as pd
 from collections import defaultdict
 import logging
 import sys
-from launch_parameters import n_alternatives, n_archetypes
+from launch_parameters import n_archetypes
 sys.path.insert(1, '../..')
 
 
@@ -173,7 +173,17 @@ def run_full_strategic_pipeline(network_paths_config, pc=1, n_paths=15, n_itiner
     df_itineraries_filtered = keep_itineraries_options(df_itineraries, pareto_df)
 
     ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
-    df_itineraries_filtered.to_csv(Path(network_paths_config['output']['output_folder']) / ofp, index=False)
+    df_itineraries_filtered.to_csv(
+        Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp,
+        index=False
+    )
+
+    # Assign passengers to paths clusters
+    n_alternatives = pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
+    logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
+    assign_demand_to_paths(
+        pareto_df, n_alternatives, max_connections, network_paths_config
+    )
 
 
 # Setting up logging
