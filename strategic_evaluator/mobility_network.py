@@ -2,6 +2,9 @@ import heapq
 import copy
 from datetime import timedelta
 from collections import defaultdict
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Service:
@@ -280,10 +283,12 @@ class Network:
 
         if len(initial_nodes) == 0:
             # Origin not in the layers considered of the network
-            print(f"Origin {origin} is not in layers of network --> Path not possible")
+            logger.warning(f"Origin {origin} is not in layers of network --> Path not possible")
+            #print(f"Origin {origin} is not in layers of network --> Path not possible")
             return itineraries, 0
         if len(destination_nodes) == 0:
-            print(f"Destination {destination} is not in layers of network  --> Path not possible")
+            logger.warning(f"Destination {destination} is not in layers of network  --> Path not possible")
+            #print(f"Destination {destination} is not in layers of network  --> Path not possible")
             return itineraries, 0
 
         # Try to find first direct services in single layer
