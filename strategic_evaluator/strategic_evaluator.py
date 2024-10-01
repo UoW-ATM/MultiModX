@@ -1149,7 +1149,7 @@ def compute_avg_paths_from_itineraries(df_itineraries):
 def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):
     # Default KPIs if none are provided
     if kpis is None:
-        kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time']
+        kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time', 'nservices']
 
     def filter_similar_options(group, kpis, thresholds=None):
         filtered_options = []
@@ -1161,22 +1161,42 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
             if thresholds is None:
                 # Calculate data-driven thresholds as std of group
                 # Else provide dictionary with values per KPI
-                thresholds = {kpi: category_group[kpi].std() for kpi in kpis}
+                thresholds_in_func = {kpi: category_group[kpi].std() for kpi in kpis}
+            else:
+                # process thresholds given to generate thresholds to use
+                thresholds_in_func = {}
+                # iterate through kpis to use
+                for kpi in kpis:
+                    # Check if kpi defined in thresholds given category
+                    # if not, check if defined for all
+                    # if not use std
+                    thresholds_in_func[kpi] = thresholds.get(category, {}).get(kpi,
+                                                                               thresholds.get('all', {}).get(kpi))
+                    if thresholds_in_func[kpi] is None:
+                        thresholds_in_func[kpi] = category_group[kpi].std()
 
             for _, option in category_group.iterrows():
                 similar = False
                 for idx, existing_option in enumerate(filtered_options):
-                    if (abs(option['total_travel_time'] - existing_option['total_travel_time']) <= thresholds[
-                        'total_travel_time'] and
-                            abs(option['total_cost'] - existing_option['total_cost']) <= thresholds['total_cost'] and
-                            abs(option['total_emissions'] - existing_option['total_emissions']) <= thresholds[
-                                'total_emissions'] and
-                            (option['total_waiting_time'] is None or existing_option['total_waiting_time'] is None or
-                             abs(option['total_waiting_time'] - existing_option['total_waiting_time']) <= thresholds[
-                                 'total_waiting_time'])):
-                        similar = True
+                    # Loop through all KPIs provided by the user
+                    is_similar = True  # Flag to check if option is similar based on all KPIs
+                    for kpi in kpis:
+                        value_kpi_option = option[kpi]
+                        existing_kpi_option = existing_option[kpi]
+                        if pd.isnull(option[kpi]):
+                            value_kpi_option = 0
+                        if pd.isnull(existing_kpi_option):
+                            existing_kpi_option = 0
+                        if abs(value_kpi_option - existing_kpi_option) > thresholds_in_func[kpi]:
+                            is_similar = False   # If any KPI difference is greater than the threshold, it's not similar
+                            break
+
+                    # Check if total_waiting_time is also part of the KPIs or not
+                    if is_similar:
                         clusters[filtered_options[idx]['option']].append(option['option'])
+                        similar = True
                         break
+
                 if not similar:
                     filtered_options.append(option)
                     clusters[option['option']] = [option['option']]
