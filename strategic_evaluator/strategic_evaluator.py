@@ -1276,11 +1276,15 @@ def keep_pareto_equivalent_solutions(df, thresholds):
         pareto_options = []
         options = group.to_dict('records')
         for i, option1 in enumerate(options):
-            dominated = False
-            for j, option2 in enumerate(options):
-                if i != j and dominates(option2, option1, thresholds):
-                    dominated = True
-                    break
+            if option1['nservices'] == 1:
+                # If only one service, it's direct, so we keep it
+                dominated = False
+            else:
+                dominated = False
+                for j, option2 in enumerate(options):
+                    if i != j and dominates(option2, option1, thresholds):
+                        dominated = True
+                        break
             if not dominated:
                 pareto_options.append(option1)
         return pd.DataFrame(pareto_options)
