@@ -384,8 +384,21 @@ class Network:
                 # Check first on same layer
                 if (not i.itinerary) or (not consider_times_constraints):
                     # First time we are in this path. Check all services available from the current node.
-                    possible_following_services_same_layer = self.dict_layers[i.current_layer_id].get_services_from(
+                    possible_following_services_same_layer_all = self.dict_layers[i.current_layer_id].get_services_from(
                         i.current_node)
+
+                    # As it is the firs time, we want to make sure we don't use a service which takes us from
+                    # a station in the origin to another station in the origin.
+                    # Get all stations in the layer that are reachable directly from the origin.
+                    # If the destination is not in that set, then keep it, otherwise remove it.
+
+                    nodes_reachable_from_origin_in_layer = self.dict_layers[i.current_layer_id].get_initial_nodes(
+                        origin)
+
+                    possible_following_services_same_layer = set()
+                    for service in possible_following_services_same_layer_all:
+                        if service.destination not in nodes_reachable_from_origin_in_layer:
+                            possible_following_services_same_layer = possible_following_services_same_layer.union({service})
                 else:
                     # We have already some elements in the path, check which services (edges) are available
                     # on the same layer after this one.
