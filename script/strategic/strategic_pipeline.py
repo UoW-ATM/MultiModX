@@ -65,23 +65,23 @@ def read_origin_demand_matrix(path_demand):
     return df_demand
 
 
-def run_full_strategic_pipeline(network_paths_config, pc=1, n_paths=15, n_itineraries=50,
+def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                 max_connections=1, pre_processed_version=0,
                                 allow_mixed_operators_itineraries=False,
                                 use_heuristics_precomputed=False):
 
     # Preprocess input
     logger.info("Pre-processing input")
-    preprocess_input(network_paths_config['network_definition'], pre_processed_version=pre_processed_version)
+    preprocess_input(toml_config['network_definition'], pre_processed_version=pre_processed_version)
 
     # Read demand
     logger.info("Reading demand")
-    demand_matrix = read_origin_demand_matrix(network_paths_config['demand']['demand'])
+    demand_matrix = read_origin_demand_matrix(toml_config['demand']['demand'])
 
     # Compute possible itineraries based on demand
     o_d = demand_matrix[['origin', 'destination']].drop_duplicates()
 
-    network_definition = network_paths_config['network_definition']
+    network_definition = toml_config['network_definition']
 
     # First compute potential paths
     # Create network
@@ -101,7 +101,7 @@ def run_full_strategic_pipeline(network_paths_config, pc=1, n_paths=15, n_itiner
                                                           consider_times_constraints=False)
 
     ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
-    df_potential_paths.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
+    df_potential_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Then compute itineraries based on potential paths
     # Create potential routes dictionary
@@ -136,47 +136,43 @@ def run_full_strategic_pipeline(network_paths_config, pc=1, n_paths=15, n_itiner
                                                           consider_times_constraints=True)
 
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
-    df_itineraries.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
+    df_itineraries.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Compute average paths from possible itineraries
     logger.info("Compute average path for possible itineraries")
     df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries)
     ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
-    df_avg_paths.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
+    df_avg_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Filter options that are 'similar' from the df_itineraries
     logger.important_info("Filtering/Clustering itineraries options")
-    df_cluster_options = cluster_options_itineraries(df_itineraries, kpis=['total_travel_time', 'total_cost',
-                                                                           'total_emissions', 'total_waiting_time'],
+
+    kpis_and_thresholds_to_cluster = toml_config['other_param'].get('kpi_cluster_itineraries', {})
+    kpis_to_cluster = kpis_and_thresholds_to_cluster.get('kpis_to_use')
+
+    kpis_thresholds = kpis_and_thresholds_to_cluster.get('thresholds')
+
+    df_cluster_options = cluster_options_itineraries(df_itineraries, kpis=kpis_to_cluster, thresholds=kpis_thresholds,
                                                      pc=pc)
 
-
     ofp = 'possible_itineraries_clustered_' + str(pre_processed_version) + '.csv'
-    df_cluster_options.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
+    df_cluster_options.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Pareto options from similar options
     logger.important_info("Computing Pareto itineraries options")
 
-    thresholds = {
-        'total_travel_time': 15,
-        'total_cost': 10,
-        'total_emissions': 5,
-        'total_waiting_time': 30
-    }
+    thresholds_pareto_dominance = toml_config['other_param']['thresholds_pareto_dominance']
 
     # Apply the Pareto filtering
-    pareto_df = keep_pareto_equivalent_solutions(df_cluster_options, thresholds)
+    pareto_df = keep_pareto_equivalent_solutions(df_cluster_options, thresholds_pareto_dominance)
 
     ofp = 'possible_itineraries_clustered_pareto_' + str(pre_processed_version) + '.csv'
-    pareto_df.to_csv(Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp, index=False)
+    pareto_df.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     df_itineraries_filtered = keep_itineraries_options(df_itineraries, pareto_df)
 
     ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
-    df_itineraries_filtered.to_csv(
-        Path(network_paths_config['output']['paths_itineraries_output_folder']) / ofp,
-        index=False
-    )
+    df_itineraries_filtered.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Assign passengers to paths clusters
     n_alternatives = pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
@@ -249,17 +245,17 @@ if __name__ == '__main__':
     )
 
     with open(Path(args.toml_file), mode="rb") as fp:
-        network_paths_config = tomli.load(fp)
+        toml_config = tomli.load(fp)
 
     if args.demand_file is not None:
-        network_paths_config['demand']['demand'] = Path(args.demand_file)
+        toml_config['demand']['demand'] = Path(args.demand_file)
 
     pc = 1
     if args.n_proc is not None:
         pc = int(args.n_proc)
 
     logger.important_info("Running first potential paths and then itineraries")
-    run_full_strategic_pipeline(network_paths_config,
+    run_full_strategic_pipeline(toml_config,
                                 pc=pc,
                                 n_paths=int(args.num_paths),
                                 n_itineraries=int(args.num_itineraries),

@@ -306,12 +306,13 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
     df_stop_timess = []
 
     for rail_network in rail_networks:
-        df_stop_times = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stop_times.txt')
+        df_stop_times = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stop_times.txt',
+                                    dtype={'stop_id': str})
         df_trips = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'trips.txt')
         df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
         df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
         df_agency = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'agency.txt')
-        df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt')
+        df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt', dtype={'stop_id': str})
 
         df_calendar.columns = list(df_calendar.columns.str.strip())
         df_calendar_dates.columns = list(df_calendar_dates.columns.str.strip())
@@ -345,7 +346,8 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
 
         # Filter GTFS to keep only rail stations considered
         if 'rail_stations_considered' in rail_network.keys():
-            df_stops_considered = pd.read_csv(Path(path_network) / rail_network['rail_stations_considered'])
+            df_stops_considered = pd.read_csv(Path(path_network) / rail_network['rail_stations_considered'],
+                                              dtype={'stop_id': str})
             df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)].copy()
 
         df_stop_timess += [df_stop_times]
@@ -606,7 +608,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 # Create the services file (regarless if it exists or not) and then process downstream as from services
                 fstops_filename = 'rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'
                 df_stop_times = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                           fstops_filename, keep_default_na=False, na_values=[''])
+                                           fstops_filename, keep_default_na=False, na_values=[''],
+                                              dtype={'stop_id': str})
 
                 df_stops = pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt')
 
@@ -617,7 +620,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 fstops_filename = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
 
                 df_rail_data = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                           fstops_filename, keep_default_na=False, na_values=[''])
+                                           fstops_filename, keep_default_na=False, na_values=[''],
+                                              dtype={'origin': str, 'destination': str})
 
                 df_rail_data = df_rail_data.applymap(lambda x: None if pd.isna(x) else x)
 
@@ -693,7 +697,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             for rn in path_network_dict['rail_network']:
                 # Need the stops to have its coordinates
                 df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
-                                       'stops.txt')]
+                                       'stops.txt', dtype={'stop_id': str})]
 
             df_stops = pd.concat(df_stopsl, ignore_index=True)
         else:
@@ -1148,10 +1152,10 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     return df_paths_avg
 
 
-def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc: int =1):
+def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):
     # Default KPIs if none are provided
     if kpis is None:
-        kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time']
+        kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time', 'nservices']
 
     def filter_similar_options(group, kpis, thresholds=None):
         filtered_options = []
@@ -1163,22 +1167,42 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc: 
             if thresholds is None:
                 # Calculate data-driven thresholds as std of group
                 # Else provide dictionary with values per KPI
-                thresholds = {kpi: category_group[kpi].std() for kpi in kpis}
+                thresholds_in_func = {kpi: category_group[kpi].std() for kpi in kpis}
+            else:
+                # process thresholds given to generate thresholds to use
+                thresholds_in_func = {}
+                # iterate through kpis to use
+                for kpi in kpis:
+                    # Check if kpi defined in thresholds given category
+                    # if not, check if defined for all
+                    # if not use std
+                    thresholds_in_func[kpi] = thresholds.get(category, {}).get(kpi,
+                                                                               thresholds.get('all', {}).get(kpi))
+                    if thresholds_in_func[kpi] is None:
+                        thresholds_in_func[kpi] = category_group[kpi].std()
 
             for _, option in category_group.iterrows():
                 similar = False
                 for idx, existing_option in enumerate(filtered_options):
-                    if (abs(option['total_travel_time'] - existing_option['total_travel_time']) <= thresholds[
-                        'total_travel_time'] and
-                            abs(option['total_cost'] - existing_option['total_cost']) <= thresholds['total_cost'] and
-                            abs(option['total_emissions'] - existing_option['total_emissions']) <= thresholds[
-                                'total_emissions'] and
-                            (option['total_waiting_time'] is None or existing_option['total_waiting_time'] is None or
-                             abs(option['total_waiting_time'] - existing_option['total_waiting_time']) <= thresholds[
-                                 'total_waiting_time'])):
-                        similar = True
+                    # Loop through all KPIs provided by the user
+                    is_similar = True  # Flag to check if option is similar based on all KPIs
+                    for kpi in kpis:
+                        value_kpi_option = option[kpi]
+                        existing_kpi_option = existing_option[kpi]
+                        if pd.isnull(option[kpi]):
+                            value_kpi_option = 0
+                        if pd.isnull(existing_kpi_option):
+                            existing_kpi_option = 0
+                        if abs(value_kpi_option - existing_kpi_option) > thresholds_in_func[kpi]:
+                            is_similar = False   # If any KPI difference is greater than the threshold, it's not similar
+                            break
+
+                    # Check if total_waiting_time is also part of the KPIs or not
+                    if is_similar:
                         clusters[filtered_options[idx]['option']].append(option['option'])
+                        similar = True
                         break
+
                 if not similar:
                     filtered_options.append(option)
                     clusters[option['option']] = [option['option']]
@@ -1188,10 +1212,25 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc: 
     # Group by origin-destination and apply filtering
     df_itineraries.loc[df_itineraries.total_waiting_time.isnull(), 'total_waiting_time'] = 0
 
-    result = df_itineraries.groupby(['origin', 'destination']).apply(lambda group: filter_similar_options(group, kpis,
-                                                                                                          thresholds)).reset_index()
+    grouped_data = df_itineraries.groupby(['origin', 'destination'])
 
-    result.columns = ['origin', 'destination', 'options_cluster']
+    def process_group(name, group):
+        options_cluster = filter_similar_options(group, kpis, thresholds)
+        return (name[0], name[1], options_cluster)
+
+    # If pc > 1, use parallel computing, otherwise proceed sequentially
+    if pc > 1:
+        results = Parallel(n_jobs=pc)(delayed(process_group)(name, group) for name, group in grouped_data)
+    else:
+        results = [process_group(name, group) for name, group in grouped_data]
+
+    # Convert results to DataFrame
+    result = pd.DataFrame(results, columns=['origin', 'destination', 'options_cluster'])
+
+    #result = df_itineraries.groupby(['origin', 'destination']).apply(lambda group: filter_similar_options(group, kpis,
+    #                                                                                                      thresholds)).reset_index()
+    #result.columns = ['origin', 'destination', 'options_cluster']
+
     result['filtered_options'] = result['options_cluster'].apply(lambda x: x[0])
     result['clusters'] = result['options_cluster'].apply(lambda x: x[1])
     result.drop(columns='options_cluster', inplace=True)
@@ -1243,11 +1282,15 @@ def keep_pareto_equivalent_solutions(df, thresholds):
         pareto_options = []
         options = group.to_dict('records')
         for i, option1 in enumerate(options):
-            dominated = False
-            for j, option2 in enumerate(options):
-                if i != j and dominates(option2, option1, thresholds):
-                    dominated = True
-                    break
+            if option1['nservices'] == 1:
+                # If only one service, it's direct, so we keep it
+                dominated = False
+            else:
+                dominated = False
+                for j, option2 in enumerate(options):
+                    if i != j and dominates(option2, option1, thresholds):
+                        dominated = True
+                        break
             if not dominated:
                 pareto_options.append(option1)
         return pd.DataFrame(pareto_options)

@@ -2,6 +2,9 @@ import heapq
 import copy
 from datetime import timedelta
 from collections import defaultdict
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Service:
@@ -281,10 +284,12 @@ class Network:
 
         if len(initial_nodes) == 0:
             # Origin not in the layers considered of the network
-            print(f"Origin {origin} is not in layers of network --> Path not possible")
+            logger.warning(f"Origin {origin} is not in layers of network --> Path not possible")
+            #print(f"Origin {origin} is not in layers of network --> Path not possible")
             return itineraries, 0
         if len(destination_nodes) == 0:
-            print(f"Destination {destination} is not in layers of network  --> Path not possible")
+            logger.warning(f"Destination {destination} is not in layers of network  --> Path not possible")
+            #print(f"Destination {destination} is not in layers of network  --> Path not possible")
             return itineraries, 0
 
         # Try to find first direct services in single layer
@@ -380,8 +385,24 @@ class Network:
                 # Check first on same layer
                 if (not i.itinerary) or (not consider_times_constraints):
                     # First time we are in this path. Check all services available from the current node.
-                    possible_following_services_same_layer = self.dict_layers[i.current_layer_id].get_services_from(
+                    possible_following_services_same_layer_all = self.dict_layers[i.current_layer_id].get_services_from(
                         i.current_node)
+
+                    # As it is the firs time, we want to make sure we don't use a service which takes us from
+                    # a station in the origin to another station in the origin.
+                    # Get all stations in the layer that are reachable directly from the origin.
+                    # If the destination is not in that set, then keep it, otherwise remove it.
+
+                    nodes_reachable_from_origin_in_layer = self.dict_layers[i.current_layer_id].get_initial_nodes(
+                        origin)
+
+                    possible_following_services_same_layer = set()
+                    for service in possible_following_services_same_layer_all:
+                        if i.current_layer_id == 'air' or service.destination not in nodes_reachable_from_origin_in_layer:
+                            # If air we keep it as if we get a flight then it's fine.
+                            # avoid airports that origin-destination are 'reachable' but outside region
+                            # TODO: Consider access times when deciding if it makes sense or not to keep service instead of only if reachable from origin
+                            possible_following_services_same_layer = possible_following_services_same_layer.union({service})
                 else:
                     # We have already some elements in the path, check which services (edges) are available
                     # on the same layer after this one.
@@ -405,6 +426,12 @@ class Network:
                                                              total_travel_time=new_total_time,
                                                              layer_id=i.current_layer_id,
                                                              access_time=i.access_time)
+
+                                # Add heuristic to destination
+                                ht = self.dict_layers[i.current_layer_id].get_heuristic(service.destination,
+                                                                                        destination_nodes)
+                                it.expected_minimum_travel_time += ht
+
                                 heapq.heappush(pq, it)
 
                     else:

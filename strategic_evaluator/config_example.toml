@@ -1,0 +1,53 @@
+[network_definition]
+    network_path = "../../data/CS-ES/v=0.5/"
+    processed_folder = "processed"
+    #potential_paths = "processed/paths_itineraries/possible_paths_avg_0_prev.csv"
+    potential_paths = "processed/paths_itineraries/potential_paths_0.csv"
+    [[network_definition.air_network]]
+        flight_schedules = "flight_schedules_oag_es.csv"
+        airports_static = "infrastructure/airports_coordinates_updated.csv"
+        mct_air = "infrastructure/mct_air.csv"
+        alliances = "air_alliances.csv"
+    [[network_definition.rail_network]]
+        gtfs = "gtfs_es_20220708"
+        date_rail = "20220915" # Date to use to filter GTFS
+        date_to_set_rail = "20190906" # Date from flights to make rail and flights 'compatible'
+        rail_stations_considered = "infrastructure/rail_stations_considered_GTFS_2022.csv"
+        create_rail_layer_from = 'services' #gtfs / services
+        country = "LE"
+    [[network_definition.multimodal]]
+        air_rail_transitions = "infrastructure/air_rail_transitions_all.csv"
+	[[network_definition.regions_access]]
+		regions_access = "infrastructure/regions_access_all.csv"
+        iata_icao_static = "infrastructure/IATA_ICAO_Airport_codes_updated.csv"
+
+[demand]
+	#demand = "../../data/CS-ES/v=0.5/pax_demand_BCN_MAD.csv"
+    demand = "../../data/CS-ES/v=0.5/pax_demand_MAD_BCN.csv"
+    #demand = "../../data/CS-ES/v=0.5/pax_demand.csv"
+
+[other_param]
+    [other_param.kpi_cluster_itineraries]
+        # Can define, or not kpis_to_use for the clustering of itineraries
+        # Then, thresholds can be provided. if category doesn't exit (e.g. no rail, or no some
+        # kpi for some cateogy), the values from 'all' will be taken (if given)
+        # if nothing is provided, the thershold will be computed as the std of the kpi for the
+        # category being clustered
+        kpis_to_use = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time', 'nservices']
+        [other_param.kpi_cluster_itineraries.thresholds.all]
+            total_cost = 30
+            total_travel_time = 50
+            total_emissions = 15
+            total_waiting_time = 30
+            nservices = 0
+        [other_param.kpi_cluster_itineraries.thresholds.air]
+            total_emissions = 20
+
+    [other_param.thresholds_pareto_dominance]
+        total_travel_time = 15
+        total_cost = 10
+        total_emissions = 5
+        total_waiting_time = 30
+
+[output]
+	output_folder = "../../data/CS-ES/v=0.5/processed/paths_itineraries/"
