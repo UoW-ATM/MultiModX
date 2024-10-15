@@ -12,3 +12,13 @@ tests/
 __pycache__/
 
 *.csv
+
+*.parquet
+
+*.html
+
+*.png
+
+*.pickle
+
+script/strategic/test_loggin.log
