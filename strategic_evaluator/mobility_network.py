@@ -397,7 +397,10 @@ class Network:
 
                     possible_following_services_same_layer = set()
                     for service in possible_following_services_same_layer_all:
-                        if service.destination not in nodes_reachable_from_origin_in_layer:
+                        if i.current_layer_id == 'air' or service.destination not in nodes_reachable_from_origin_in_layer:
+                            # If air we keep it as if we get a flight then it's fine.
+                            # avoid airports that origin-destination are 'reachable' but outside region
+                            # TODO: Consider access times when deciding if it makes sense or not to keep service instead of only if reachable from origin
                             possible_following_services_same_layer = possible_following_services_same_layer.union({service})
                 else:
                     # We have already some elements in the path, check which services (edges) are available
