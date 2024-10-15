@@ -425,6 +425,12 @@ class Network:
                                                              total_travel_time=new_total_time,
                                                              layer_id=i.current_layer_id,
                                                              access_time=i.access_time)
+
+                                # Add heuristic to destination
+                                ht = self.dict_layers[i.current_layer_id].get_heuristic(service.destination,
+                                                                                        destination_nodes)
+                                it.expected_minimum_travel_time += ht
+
                                 heapq.heappush(pq, it)
 
                     else:
