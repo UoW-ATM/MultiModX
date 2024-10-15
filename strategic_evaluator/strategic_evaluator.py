@@ -306,12 +306,13 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
     df_stop_timess = []
 
     for rail_network in rail_networks:
-        df_stop_times = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stop_times.txt')
+        df_stop_times = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stop_times.txt',
+                                    dtype={'stop_id': str})
         df_trips = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'trips.txt')
         df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
         df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
         df_agency = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'agency.txt')
-        df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt')
+        df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt', dtype={'stop_id': str})
 
         df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
         df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
@@ -343,7 +344,8 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
 
         # Filter GTFS to keep only rail stations considered
         if 'rail_stations_considered' in rail_network.keys():
-            df_stops_considered = pd.read_csv(Path(path_network) / rail_network['rail_stations_considered'])
+            df_stops_considered = pd.read_csv(Path(path_network) / rail_network['rail_stations_considered'],
+                                              dtype={'stop_id': str})
             df_stop_times = df_stop_times[df_stop_times.stop_id.isin(df_stops_considered.stop_id)].copy()
 
         df_stop_timess += [df_stop_times]
@@ -604,7 +606,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 # Create the services file (regarless if it exists or not) and then process downstream as from services
                 fstops_filename = 'rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'
                 df_stop_times = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                           fstops_filename, keep_default_na=False, na_values=[''])
+                                           fstops_filename, keep_default_na=False, na_values=[''],
+                                              dtype={'stop_id': str})
 
                 df_stops = pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt')
 
@@ -615,7 +618,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 fstops_filename = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
 
                 df_rail_data = pd.read_csv(Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                           fstops_filename, keep_default_na=False, na_values=[''])
+                                           fstops_filename, keep_default_na=False, na_values=[''],
+                                              dtype={'origin': str, 'destination': str})
 
                 df_rail_data = df_rail_data.applymap(lambda x: None if pd.isna(x) else x)
 
@@ -691,7 +695,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             for rn in path_network_dict['rail_network']:
                 # Need the stops to have its coordinates
                 df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
-                                       'stops.txt')]
+                                       'stops.txt', dtype={'stop_id': str})]
 
             df_stops = pd.concat(df_stopsl, ignore_index=True)
         else:
