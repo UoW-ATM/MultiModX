@@ -304,7 +304,7 @@ def format_paths_for_predict(
 ):
     if paths_clusters:
         paths["train"] = paths["journey_type"] == "rail"
-        paths["plane"] = paths["journey_type"] == "plane"
+        paths["plane"] = paths["journey_type"] == "air"
         paths["multimodal"] = paths["journey_type"] == "multimodal"
     else:
         paths["mode_tp"] = paths.apply(lambda row: [
