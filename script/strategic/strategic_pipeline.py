@@ -181,6 +181,16 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 
 
+    # Add demand per cluster
+    df_cluster_pax = obtain_demand_per_cluster_itineraries(pareto_df, df_pax_demand_paths, df_paths_final)
+
+    ofp = 'possible_itineraries_clustered_pareto_w_demand' + str(pre_processed_version) + '.csv'
+    df_cluster_pax.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+
+
+
+
 
 
 # Setting up logging
@@ -238,7 +248,8 @@ if __name__ == '__main__':
         create_network, preprocess_input, compute_itineraries,
         compute_possible_itineraries_network,
         compute_avg_paths_from_itineraries, cluster_options_itineraries,
-        keep_pareto_equivalent_solutions, keep_itineraries_options
+        keep_pareto_equivalent_solutions, keep_itineraries_options,
+        obtain_demand_per_cluster_itineraries
     )
     from strategic_evaluator.logit_model import (
         assign_demand_to_paths, assign_passengers_main,

@@ -1360,3 +1360,60 @@ def keep_itineraries_options(df_itineraries, pareto_df):
     filtered_df = filtered_df[new_column_order]
 
     return filtered_df
+
+
+def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
+    # Aggregate Passenger Demand from df_pax_demand
+    agg_demand = df_pax_demand.groupby(['origin', 'destination']).sum().reset_index()
+
+    # Extract the demand per alternative column
+    alternatives_cols = [col for col in agg_demand.columns if col.startswith('alternative_') and not col.startswith('alternative_prob')]
+    agg_demand = agg_demand[['origin', 'destination'] + alternatives_cols]
+
+    # Step 1: Calculate total passengers per alternative for each OD pair
+    total_pax_per_alternative = df_pax_demand.groupby(['origin', 'destination'])[alternatives_cols].sum().reset_index()
+
+    # Step 2: Compute percentage of passengers for each archetype per alternative
+    def calculate_percentages(row, total_pax_df):
+        origin, destination = row['origin'], row['destination']
+        total_row = total_pax_df[(total_pax_df['origin'] == origin) & (total_pax_df['destination'] == destination)]
+        if not total_row.empty:
+            return {col: row[col] / total_row.iloc[0][col] if total_row.iloc[0][col] > 0 else 0.0 for col in alternatives_cols}
+        return {}
+
+    df_pax_demand['percentages_per_alternative'] = df_pax_demand.apply(calculate_percentages, total_pax_df=total_pax_per_alternative, axis=1)
+
+    # Create a Mapping for Cluster IDs from df_paths
+    simplified_cluster_mapping = {
+        row[col]: col
+        for _, row in df_paths.iterrows()
+        for col in [c for c in df_paths.columns if c.startswith('alternative_id_')]
+        if row[col] != 0
+    }
+
+    # Make a copy of df_clusters to expand it
+    df_clusters_expanded = df_clusters.copy()
+    df_clusters_expanded['num_pax'] = 0
+    df_clusters_expanded['prob_of_archetype'] = [{} for _ in range(len(df_clusters_expanded))]
+
+    # Iterate through each row in df_clusters to add num_pax and prob_of_archetype
+    for index, row in df_clusters_expanded.iterrows():
+        cluster_id = row['alternative_id']
+        if cluster_id in simplified_cluster_mapping:
+            alternative_label = simplified_cluster_mapping[cluster_id]
+            alternative_key = alternative_label.replace('alternative_id_', 'alternative_')
+            origin, destination = row['origin'], row['destination']
+            demand_row = agg_demand[(agg_demand['origin'] == origin) & (agg_demand['destination'] == destination)]
+
+            if not demand_row.empty and alternative_key in demand_row.columns:
+                num_pax = demand_row.iloc[0][alternative_key]
+                df_clusters_expanded.at[index, 'num_pax'] = num_pax
+
+                matching_rows = df_pax_demand[(df_pax_demand['origin'] == origin) & (df_pax_demand['destination'] == destination)]
+                archetype_percentages = {
+                    matching_row['archetype']: matching_row['percentages_per_alternative'].get(alternative_key, 0.0)
+                    for _, matching_row in matching_rows.iterrows()
+                }
+                df_clusters_expanded.at[index, 'prob_of_archetype'] = archetype_percentages
+
+    return df_clusters_expanded
