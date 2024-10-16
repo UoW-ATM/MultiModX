@@ -450,8 +450,6 @@ def assign_demand_to_paths(
     # Round pax
     pax_demand_paths[alternative_columns] = pax_demand_paths[alternative_columns].round(2)
 
-    pax_demand_paths.to_csv(
-        Path(
-            network_paths_config['output']['output_folder']
-        ) / "pax_demand_paths.csv", index=False
-    )
+
+
+    return pax_demand_paths, paths_final
