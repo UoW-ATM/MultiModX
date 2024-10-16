@@ -1261,6 +1261,26 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     for k in kpis:
         final_df[k] = final_df[k].apply(lambda x: round(x, 2))
 
+    final_df['alternative_id'] = final_df['origin'] + "_" + final_df['destination'] + "_" + final_df['cluster_id'].astype(str)
+
+    columns_to_move = ['alternative_id']
+    # Get the current list of columns
+    all_columns = list(final_df.columns)
+
+    # Find the position after 'cluser_id'
+    position_after = all_columns.index('cluster_id') + 1
+
+    # Create a new list of columns with 'a' and 'b' moved
+    new_column_order = (
+            all_columns[:position_after] +  # Columns up to 'destination'
+            columns_to_move +
+            [col for col in all_columns if col not in columns_to_move and col not in all_columns[:position_after]]
+    # Remaining columns
+    )
+
+    # Reorder the DataFrame
+    final_df = final_df[new_column_order]
+
     return final_df
 
 
@@ -1309,14 +1329,34 @@ def keep_itineraries_options(df_itineraries, pareto_df):
             expanded_rows.append({
                 'origin': row['origin'],
                 'destination': row['destination'],
-                'journey_type': row['journey_type'],
                 'cluster_id': row['cluster_id'],
-                'option': option
+                'option': option,
+                'alternative_id': row['alternative_id']
             })
 
     expanded_df = pd.DataFrame(expanded_rows)
 
     # Filter the second dataframe using the expanded dataframe
     filtered_df = df_itineraries.merge(expanded_df, on=['origin', 'destination', 'option'], how='inner')
+
+    # Move cluster_id and alternative_id to beginning of dataframe
+    columns_to_move = ['alternative_id', 'cluster_id']
+
+    # Get the current list of columns
+    all_columns = list(filtered_df.columns)
+
+    # Find the position after 'origin' and 'destination' (which are the 1st and 2nd columns)
+    position_after = all_columns.index('destination') + 1
+
+    # Create a new list of columns with 'a' and 'b' moved
+    new_column_order = (
+            all_columns[:position_after] +  # Columns up to 'destination'
+            columns_to_move +  # Columns to be inserted
+            [col for col in all_columns if col not in columns_to_move and col not in all_columns[:position_after]]
+    # Remaining columns
+    )
+
+    # Reorder the DataFrame
+    filtered_df = filtered_df[new_column_order]
 
     return filtered_df

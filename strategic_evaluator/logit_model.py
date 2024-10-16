@@ -4,8 +4,8 @@ from biogeme.expressions import Beta
 import biogeme.database as db
 import biogeme.results as res
 import biogeme.biogeme as bio
-import numpy as np
 import pandas as pd
+import re
 import logging
 from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
 from sklearn.model_selection import train_test_split
@@ -197,8 +197,8 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
 
     cols = [
         x for x in paths.columns if not x in (
-            ['origin', 'destination', 'path_id', 'observed_choice'] +
-            [f"path_id_{i}" for i in range(1, n_alternatives+1)]
+            ['origin', 'destination', 'alternative_id', 'observed_choice'] +
+            [f"alternative_id_{i}" for i in range(1, n_alternatives+1)]
         )
     ]
 
@@ -252,6 +252,19 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
     else:
         logger.important_info(f"No paths on OD pair {O, D}")
 
+def get_probability_path_archetype(row, paths_prob_dict: dict, alternative_i: int):
+    O = row['origin']
+    D = row['destination']
+    arc = row['archetype']
+    trips = row['trips']
+
+    name = f'{arc}_prob_{alternative_i}'
+    if (O, D) in paths_prob_dict.keys():
+        return paths_prob_dict[(O, D)][name]
+    else:
+        logger.important_info(f"No paths on OD pair {O, D}")
+
+
 
 def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, pax_demand_path: str):
     """Main function to assign trips to paths
@@ -272,6 +285,8 @@ def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, pax_de
     for i in range(1, n_alternatives + 1):
         pax_demand[f'alternative_{i}'] = pax_demand.apply(
             lambda row: assign_passengers2path(row, paths_prob_dict, i), axis=1)
+        pax_demand[f'alternative_prob_{i}'] = pax_demand.apply(
+            lambda row: get_probability_path_archetype(row, paths_prob_dict, i), axis=1)
 
     return pax_demand
 
@@ -291,17 +306,12 @@ def format_paths_for_predict(
         paths["train"] = paths["journey_type"] == "rail"
         paths["plane"] = paths["journey_type"] == "plane"
         paths["multimodal"] = paths["journey_type"] == "multimodal"
-        paths["path_id"] = (
-            "cluster_id_" + paths["cluster_id"].astype(str) + "_" +
-            paths["origin"] + "_" + paths["destination"]
-        )
     else:
         paths["mode_tp"] = paths.apply(lambda row: [
             row[f"mode_{i}"] for i in range(max_connections)if str(row[f"mode_{i}"]) != "nan"
         ], axis=1)
-        paths["path_id"] = (
-            "path_id_" + paths["option"].astype(str) + "_" +
-            paths["origin"] + "_" + paths["destination"]
+        paths["alternative_id"] = (
+            paths["origin"] + "_" + paths["destination"] + "_" + paths["option"].astype(str)
         )
 
         paths["train"] = paths.apply(
@@ -310,21 +320,27 @@ def format_paths_for_predict(
             lambda row: "air" in row["mode_tp"], axis=1).astype(int)
         paths["multimodal"] = (paths["nmodes"] > 1).astype(int)
 
-    paths["option_number"] = paths.groupby(["origin", "destination"])["path_id"].transform(
+    paths["option_number"] = paths.groupby(["origin", "destination"])["alternative_id"].transform(
             lambda df: range(1, len(df)+1)
         ).astype(str)
     paths_base = paths[[
-        "origin", "destination", "option_number", "path_id",
-        'total_travel_time', 'total_cost', 'total_emissions',
-        "multimodal", "train", "plane"
+        "origin", "destination", "option_number", "alternative_id",
+        "multimodal", "train", "plane",
+        'total_travel_time', 'total_cost', 'total_emissions'
     ]].sort_values(["origin", "destination"])
 
     paths_pivoted = pivot_paths(paths_base)
+    #paths_pivoted_final = paths_pivoted.groupby(["origin", "destination"]).apply(
+    #    lambda df: df.bfill().ffill(), include_groups=False
+    #).reset_index().drop_duplicates(
+    #    ["origin", "destination", "path_id"]
+    #).drop(columns=["level_2"]).fillna(0).reset_index(drop=True)
+
     paths_pivoted_final = paths_pivoted.groupby(["origin", "destination"]).apply(
-        lambda df: df.bfill().ffill(), include_groups=False
-    ).reset_index().drop_duplicates(
-        ["origin", "destination", "path_id"]
-    ).drop(columns=["level_2"]).fillna(0).reset_index(drop=True)
+        lambda df: df.bfill().ffill()
+    ).reset_index(drop=True).drop_duplicates(
+        ["origin", "destination", "alternative_id"]
+    ).drop(columns=["level_2"], errors='ignore').fillna(0).reset_index(drop=True)
 
     paths_pivoted_final.columns = [
         i.replace("total_", "") for i in paths_pivoted_final.columns
@@ -337,7 +353,7 @@ def format_paths_for_predict(
 
     paths_pivoted_final.to_csv(
         Path(
-            network_paths_config['output']['paths_demand_output_folder']
+            network_paths_config['output']['output_folder']
         ) / "paths_pivoted_final.csv", index=False
     )
 
@@ -346,20 +362,37 @@ def format_paths_for_predict(
 
 def pivot_paths(paths: pd.DataFrame):
     paths_pivoted = paths.pivot_table(
-        index=["origin", "destination", "path_id"],
+        index=["origin", "destination", "alternative_id"],
         columns='option_number',
         values=[
-            'total_travel_time', 'total_cost', 'total_emissions',
-            "multimodal", "train", "plane"
+            "multimodal", "train", "plane",
+            'total_travel_time', 'total_cost', 'total_emissions'
         ],
         aggfunc='mean'
     ).reset_index()
     paths_pivoted.columns = [
         ("_".join(pair)).rstrip("_") for pair in paths_pivoted.columns
     ]
+
+    # Keep order of alternatives
+    paths_indexed = paths.set_index('alternative_id')
+    paths_pivoted_indexed = paths_pivoted.set_index('alternative_id')
+    path_pivoted_ordered = paths_pivoted_indexed.loc[paths_indexed.index]
+
+    paths_pivoted = path_pivoted_ordered.reset_index()
+
+    #paths_pivoted_updated = paths_pivoted.groupby(["origin", "destination"]).apply(
+    #    assign_path_id_columns, include_groups=False).reset_index().drop(columns="level_2")
+
     paths_pivoted_updated = paths_pivoted.groupby(["origin", "destination"]).apply(
-        assign_path_id_columns, include_groups=False).reset_index().drop(columns="level_2")
-    paths_pivoted_updated["observed_choice"] = paths_pivoted_updated.groupby(["origin", "destination"])["path_id"].transform(
+        assign_path_id_columns
+    ).reset_index(drop=True).drop(columns="level_2", errors='ignore')
+
+    #paths_pivoted_updated = paths_pivoted.groupby(["origin", "destination"]).apply(
+    #    assign_path_id_columns
+    #).reset_index(drop=True).drop(columns="level_2", errors='ignore')
+
+    paths_pivoted_updated["observed_choice"] = paths_pivoted_updated.groupby(["origin", "destination"])["alternative_id"].transform(
         lambda df: range(1, len(df)+1)
     ).astype(str)
 
@@ -367,9 +400,9 @@ def pivot_paths(paths: pd.DataFrame):
 
 
 def assign_path_id_columns(df: pd.DataFrame):
-    paths_ids = df["path_id"].values
+    paths_ids = df["alternative_id"].values
     for i in range(1, len(paths_ids)+1):
-        df[f"path_id_{i}"] = paths_ids[i-1]
+        df[f"alternative_id_{i}"] = paths_ids[i-1]
     return df
 
 
@@ -378,7 +411,7 @@ def assign_demand_to_paths(
     max_connections: int, network_paths_config: str
 ):
     logger.important_info("Predict demand on paths")
-    
+
     # Selecting paths if necessary (too many options)
     # paths = paths.pipe(select_paths, n_alternatives_max)
     paths_final = paths.pipe(
@@ -389,12 +422,36 @@ def assign_demand_to_paths(
         paths_final, n_archetypes=n_archetypes,
         n_alternatives=n_alternatives, sensitivities=network_paths_config['sensitivities']
     )
+
     pax_demand_paths = assign_passengers_main(
         paths_probabilities, n_alternatives, Path(
             network_paths_config['demand']['demand'])
     )
+
+    # Get a list of all columns that end with '_prob'
+    prob_columns = [col for col in pax_demand_paths.columns if '_prob' in col]
+
+    # Get the list of remaining columns
+    remaining_columns = [col for col in pax_demand_paths.columns if col not in prob_columns]
+
+    # Create the new order of columns
+    new_column_order = remaining_columns + prob_columns
+
+    # Reorder the DataFrame
+    pax_demand_paths = pax_demand_paths[new_column_order]
+
+    # Round alternatives
+
+    alternative_columns = [col for col in pax_demand_paths.columns if re.match(r'alternative_\d+$', col)]
+
+    # Round probabilites
+    pax_demand_paths[prob_columns] = pax_demand_paths[prob_columns].round(3)
+
+    # Round pax
+    pax_demand_paths[alternative_columns] = pax_demand_paths[alternative_columns].round(2)
+
     pax_demand_paths.to_csv(
         Path(
-            network_paths_config['output']['paths_demand_output_folder']
+            network_paths_config['output']['output_folder']
         ) / "pax_demand_paths.csv", index=False
     )
