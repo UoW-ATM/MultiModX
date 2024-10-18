@@ -3,6 +3,7 @@ import pandas as pd
 from itertools import combinations
 import multiprocessing as mp
 import time
+import re
 import logging
 
 from joblib import Parallel, delayed
@@ -19,6 +20,7 @@ from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
 from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_flights, compute_costs_air,
                                               compute_emissions_rail, compute_costs_rail)
 from libs.time_converstions import  convert_to_utc_vectorized
+from libs.passenger_assigner.passenger_assigner import assign_passengers_options_solver
 
 
 logger = logging.getLogger(__name__)
@@ -1417,3 +1419,88 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
                 df_clusters_expanded.at[index, 'prob_of_archetype'] = archetype_percentages
 
     return df_clusters_expanded
+
+
+def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, paras):
+
+    df_possible_itineraries_orig = df_possible_itineraries.copy()
+    df_schedules_orig = df_schedules.copy()
+
+    if paras['train_seats_per_segment'].lower() == 'combined'.lower():
+        # If combined need to remove the stops from the train ids so from xxx_stop1_stop2 to xxx on the id
+        # of the trains and on the df_possible_itineraries
+        # Also for seats keep the mean number of seats and for distance the max
+        # The original xxx_stop1_stop2 and distance will be saved on df_possible_itineraries_orig and df_schedules_orig
+
+        df_schedules.loc[df_schedules['mode']=='rail',
+                        'nid'] = df_schedules.loc[df_schedules['mode']=='rail']['nid'].apply(lambda x: x.split('_')[0])
+
+        # Keep mean number of seats across different 'stops', if they were to be different
+        service_max_seats_group = df_schedules.groupby('nid')['max_seats'].mean()
+        service_max_gcdistance = df_schedules.groupby('nid')['gcdistance'].max()
+
+        # Convert the result to a dictionary
+        service_max_seats_avg_dict = service_max_seats_group.to_dict()
+        service_max_gcdistance_dict = service_max_gcdistance.to_dict()
+
+        df_schedules['seats'] = df_schedules['nid'].apply(lambda x: service_max_seats_avg_dict[x])
+        df_schedules['gcdistance'] = df_schedules['nid'].apply(lambda x: service_max_gcdistance_dict[x])
+
+        df_schedules = df_schedules.drop_duplicates()
+
+        # Remove the stops part of the id of the trains (from xxx_y_z to xxx)
+        service_cols = [col for col in df_possible_itineraries.columns if col.startswith('service_id_')]
+        mode_cols = [col for col in df_possible_itineraries.columns if col.startswith('mode_')]
+
+        for service_col, mode_col in zip(service_cols, mode_cols):
+            df_possible_itineraries[service_col] = df_possible_itineraries.apply(
+                lambda row: re.sub(r'_.*', '', row[service_col]) if row[mode_col] == 'rail' else row[service_col],
+                axis=1
+            )
+
+    # Initialize unique IDs for df_demand
+    df_demand['id'] = range(1, len(df_demand) + 1)
+
+    # Step 1: Merge df_demand and df_poss_it on alternative_id
+    merged_df = pd.merge(df_possible_itineraries, df_demand, on='alternative_id', suffixes=('_opt', '_pax'))
+
+    # Step 2: Create a per-passenger DataFrame by repeating each row for each passenger
+    merged_df = merged_df.loc[merged_df.index.repeat(merged_df['num_pax'])].reset_index(drop=True)
+
+    # Step 3: Assign 'nid_f1', 'nid_f2', ..., based on service_id_x from df_poss_it
+    # Determine the maximum number of services (to know how many nid_fx columns we need)
+    max_services = int(merged_df['nservices_pax'].max())
+
+    # Create columns for each service (e.g., nid_f1, nid_f2, ...)
+    for i in range(max_services):
+        col_name = f'nid_f{i + 1}'
+        service_col_name = f'service_id_{i}'  # Service columns in df_poss_it
+        merged_df[col_name] = merged_df[service_col_name]
+
+    # Step 4: Construct 'type' column using vectorized operations for better performance
+    modes = [f'mode_{i}' for i in range(max_services)]
+
+    # Replace 'air' with 'flight' in the mode columns
+    for mode in modes:
+        merged_df[mode] = merged_df[mode].replace('air', 'flight')
+
+    merged_df['type'] = merged_df[modes].fillna('').agg('_'.join, axis=1)
+    merged_df['type'] = merged_df['type'].str.replace(r'^_|_+$', '',
+                                                      regex=True)  # Remove leading and trailing underscores
+    merged_df['type'] = merged_df['type'].str.replace(r'_+', '_', regex=True)  # Replace multiple underscores with one
+
+    # Step 5: Rename and select the required columns for the final output
+    nid_columns = [f'nid_f{i + 1}' for i in range(max_services)]
+    final_columns = ['id', 'option_number'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
+                                                             'fare']
+
+    merged_df = merged_df.rename(columns={'total_cost_opt': 'fare', 'total_waiting_time_opt': 'total_waiting_time',
+                                          'total_travel_time_opt': 'total_time', 'num_pax': 'volume'})
+
+    options = merged_df[final_columns].copy()
+
+    # Create unique id for option_number
+    options['option_number'] = range(1, len(options) + 1)
+
+    # Display final dataframe
+    return assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
