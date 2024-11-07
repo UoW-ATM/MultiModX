@@ -388,7 +388,7 @@ class Network:
                     possible_following_services_same_layer_all = self.dict_layers[i.current_layer_id].get_services_from(
                         i.current_node)
 
-                    # As it is the firs time, we want to make sure we don't use a service which takes us from
+                    # As it is the first time, we want to make sure we don't use a service which takes us from
                     # a station in the origin to another station in the origin.
                     # Get all stations in the layer that are reachable directly from the origin.
                     # If the destination is not in that set, then keep it, otherwise remove it.
@@ -428,8 +428,25 @@ class Network:
                                                              access_time=i.access_time)
 
                                 # Add heuristic to destination
+                                # Check how many layers we can reach from the service.destination node
                                 ht = self.dict_layers[i.current_layer_id].get_heuristic(service.destination,
                                                                                         destination_nodes)
+
+                                if self.dict_transitions.get((i.current_layer_id, service.destination)) is not None:
+                                    # We can transfer to other layers, maybe much faster so check as heuristic
+                                    for pt in self.dict_transitions.get((i.current_layer_id, service.destination)):
+                                        if pt['layer_id'] in self.dict_layers.keys():
+                                            # Get the connecting time to transition the layers
+                                            connecting_time_btw_layers = self.get_connecting_time_btw_layers(
+                                                pt.get('mct', {}))
+                                            node_after_transition = pt['destination']
+                                            ht_transition =  connecting_time_btw_layers
+                                            ht_transition += self.dict_layers[pt['layer_id']].get_heuristic(node_after_transition,
+                                                                                                           destination_nodes)
+                                            if ht_transition < ht:
+                                                # It's faster to change layer (as heuristic)
+                                                ht = ht_transition
+
                                 it.expected_minimum_travel_time += ht
 
                                 heapq.heappush(pq, it)
@@ -471,6 +488,22 @@ class Network:
                                                 ht = self.dict_layers[i.current_layer_id].get_heuristic(service.destination,
                                                                                                         destination_nodes)
 
+                                                # Check if we can transition layer and maybe have a faster heuristic
+                                                if self.dict_transitions.get((i.current_layer_id, service.destination)) is not None:
+                                                    # We can transfer to other layers, maybe much faster so check as heuristic
+                                                    for pt in self.dict_transitions.get((i.current_layer_id, service.destination)):
+                                                        if pt['layer_id'] in self.dict_layers.keys():
+                                                            # Get the connecting time to transition the layers
+                                                            connecting_time_btw_layers = self.get_connecting_time_btw_layers(
+                                                                pt.get('mct', {}))
+                                                            node_after_transition = pt['destination']
+                                                            ht_transition =  connecting_time_btw_layers
+                                                            ht_transition += self.dict_layers[pt['layer_id']].get_heuristic(node_after_transition,
+                                                                                                                           destination_nodes)
+                                                            if ht_transition < ht:
+                                                                # It's faster to change layer (as heuristic)
+                                                                ht = ht_transition
+
                                                 new_path.add_service_itinerary(service, heuristic_time=ht,
                                                                                time_from_path=consider_times_constraints,
                                                                                mct=mct)
@@ -482,15 +515,14 @@ class Network:
                         self.dict_transitions.get((i.current_layer_id, i.current_node)) is not None):
                     # Check if we can change layer from i.current_node in layer i.current_layer_id
                     # We already have some elements in the path (len(i.itinerary)>0), otherwise we would be
-                    # transitioning accross layers without even moving (e.g. doing door-to-LEBL and then LEBL-Sants)
-                    # Transitions are allowed accross layers and the current node has possible transitions
-                    # defined in ground mobility accross layers.
+                    # transitioning across layers without even moving (e.g. doing door-to-LEBL and then LEBL-Sants)
+                    # Transitions are allowed across layers and the current node has possible transitions
+                    # defined in ground mobility across layers.
 
                     for pt in self.dict_transitions.get((i.current_layer_id, i.current_node)):
                         # For each possible transition from this node check if we can use it.
                         if pt['layer_id'] in self.dict_layers.keys():
                             # The transition is to a layer that is part of the Network
-
                             # Get the connecting time to transition the layers
                             connecting_time_btw_layers = self.get_connecting_time_btw_layers(pt.get('mct', {}))
 
