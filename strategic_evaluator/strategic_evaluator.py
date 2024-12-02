@@ -1,10 +1,12 @@
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from itertools import combinations
 import multiprocessing as mp
 import time
 import re
 import logging
+import sys
 
 from joblib import Parallel, delayed
 
@@ -504,28 +506,190 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
     layers = []
     network = None
 
+    df_airport_processes = None
+    df_rail_station_processes = None
+    if 'processing_time' in path_network_dict.keys():
+        # Read processing time at infrastructure if provided
+        df_processing_times_airl = []
+        df_processing_times_raill = []
+        default_k2g = []
+        default_g2k = []
+        default_k2p = []
+        default_p2k = []
+
+        for pt in path_network_dict['processing_time']:
+            # Read processing times airports and rails
+            if pt.get('airport_processes') is not None:
+                df_airport_processes_i = pd.read_csv(Path(path_network_dict['network_path']) /
+                                                     pt['airport_processes'])
+
+                if 'iata_icao_static' in pt:
+                    df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
+                                               pt['iata_icao_static'])
+
+                    # Deal wit the fact that some airports might be in IATA code instead of ICAO
+                    df_airport_processes_i['len_station'] = df_airport_processes_i['airport'].apply(lambda x: len(x))
+                    if len(df_airport_processes_i[(df_airport_processes_i['len_station'] == 3)]) > 0:
+                        df_airport_processes_i = df_airport_processes_i.merge(df_iata_icao[['IATA', 'ICAO']], how='left',
+                                                                              left_on='airport', right_on='IATA')
+                        df_airport_processes_i['ICAO'] = df_airport_processes_i['ICAO'].fillna(
+                            df_airport_processes_i['airport'])
+                        df_airport_processes_i['airport'] = df_airport_processes_i['ICAO']
+
+                df_processing_times_airl += [df_airport_processes_i]
+
+            # Read rail process times
+            if pt.get('rail_stations_processes') is not None:
+                df_rail_processes_i = pd.read_csv(Path(path_network_dict['network_path']) /
+                                                  pt['rail_stations_processes'], dtype={"station": str})
+
+                df_processing_times_raill += [df_rail_processes_i]
+
+            # Read default if provided
+            if pt.get('default_process_time_k2g') is not None:
+                default_k2g += [pt.get('default_process_time_k2g')]
+            if pt.get('default_process_time_g2k') is not None:
+                default_g2k += [pt.get('default_process_time_g2k')]
+            if pt.get('default_process_time_k2p') is not None:
+                default_k2p += [pt.get('default_process_time_k2p')]
+            if pt.get('default_process_time_p2k') is not None:
+                default_p2k += [pt.get('default_process_time_p2k')]
+
+        if len(df_processing_times_airl) > 0:
+            df_airport_processes = pd.concat(df_processing_times_airl, ignore_index=True)
+        if len(df_processing_times_raill) > 0:
+            df_rail_station_processes = pd.concat(df_processing_times_raill, ignore_index=True)
+
+        # Averages as more than one default could be provided in a list of processing times in the toml
+        def compute_default_processing(default_l):
+            if len(default_l)>0:
+                return round(sum(default_l)/len(default_l), 2)
+            else:
+                return None
+        default_k2g = compute_default_processing(default_k2g)
+        default_k2p = compute_default_processing(default_k2p)
+        default_g2k = compute_default_processing(default_g2k)
+        default_p2k = compute_default_processing(default_p2k)
+
     if 'regions_access' in path_network_dict.keys():
         # Read regions access to infrastructure if provided
         df_regions_accessl = []
         for ra in path_network_dict['regions_access']:
+
             df_regions_acess_i = pd.read_csv(Path(path_network_dict['network_path']) /
-                                        ra['regions_access'])
+                                        ra['regions_access'], dtype={"station": str})
 
-            if 'iata_icao_static' in ra:
-                df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
-                                        ra['iata_icao_static'])
+            if 'total_time' not in df_regions_acess_i.columns:
+                # We don't have a regions access with the total time computed
+                # We should have had processing times
+                if (((df_airport_processes is None) and ((default_k2g is None) or (default_g2k is None)))
+                        or ((df_rail_station_processes is None) and ((default_k2p is None) or (default_p2k is None)))):
+                    logger.error("Missing processing times (not defined in regions access)")
+                    sys.exit(-1)
 
-                # Deal wit the fact that some airports might be in IATA code instead of ICAO
-                df_regions_acess_i['len_station'] = df_regions_acess_i['station'].apply(lambda x: len(x))
-                if ((len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']) > 0) and
-                        (len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']['len_station'] == 3) > 0)):
+                # Reshaping the DataFrame
+                df_regions_acess_i = pd.melt(
+                    df_regions_acess_i,
+                    id_vars=["region", "station", "layer", "pax_type"],
+                    value_vars=["avg_d2i", "avg_i2d"],
+                    var_name="access_type",
+                    value_name="avg_time",
+                )
 
-                    df_regions_acess_i = df_regions_acess_i.merge(df_iata_icao[['IATA','ICAO']], how='left',
-                                                                  left_on='station', right_on='IATA')
+                # Mapping 'avg_d2i' to 'access' and 'avg_i2d' to 'egress'
+                df_regions_acess_i["access_type"] = df_regions_acess_i["access_type"].map({"avg_d2i": "access", "avg_i2d": "egress"})
 
-                    df_regions_acess_i['ICAO'] = df_regions_acess_i['ICAO'].fillna(df_regions_acess_i['station'])
+                if 'iata_icao_static' in ra:
+                    df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
+                                            ra['iata_icao_static'])
 
-                    df_regions_acess_i['station'] = df_regions_acess_i['ICAO']
+                    # Deal wit the fact that some airports might be in IATA code instead of ICAO
+                    df_regions_acess_i['len_station'] = df_regions_acess_i['station'].apply(lambda x: len(x))
+
+                    if ((len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']) > 0) and
+                            (len(df_regions_acess_i[(df_regions_acess_i['layer'] == 'air') &
+                                                    (df_regions_acess_i['len_station'] == 3)]) > 0)):
+                        df_regions_acess_i = df_regions_acess_i.merge(df_iata_icao[['IATA','ICAO']], how='left',
+                                                                      left_on='station', right_on='IATA')
+                        df_regions_acess_i['ICAO'] = df_regions_acess_i['ICAO'].fillna(df_regions_acess_i['station'])
+                        df_regions_acess_i['station'] = df_regions_acess_i['ICAO']
+
+                # Merge with airport processes
+                if df_airport_processes is not None:
+                    df_air_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "air"].merge(
+                        df_airport_processes,
+                        left_on=["station", "pax_type"],
+                        right_on=["airport", "pax_type"],
+                        how="left"
+                    )
+
+                    # Add the processing time column for air
+                    df_air_merged["processing_time"] = np.where(
+                        df_air_merged["access_type"] == "access",
+                        df_air_merged["k2g"],
+                        df_air_merged["g2k"]
+                    )
+
+                    # Fill missing values
+                    df_air_merged.loc[df_air_merged["access_type"] == "access", "processing_time"] = \
+                        df_air_merged.loc[df_air_merged["access_type"] == "access", "processing_time"].fillna(
+                            default_k2g)
+
+                    df_air_merged.loc[df_air_merged["access_type"] == "egress", "processing_time"] = \
+                        df_air_merged.loc[df_air_merged["access_type"] == "egress", "processing_time"].fillna(
+                            default_g2k)
+
+                else:
+                    # We should have the defaults
+                    df_air_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "air"]
+                    df_air_merged['processing_time'] = df_air_merged.apply(
+                        lambda row: default_k2g if row["access_type"] == "access" else default_g2k,
+                        axis=1
+                    )
+
+                if df_rail_station_processes is not None:
+                    # Merge with rail processes
+                    df_rail_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "rail"].merge(
+                        df_rail_station_processes,
+                        left_on=["station", "pax_type"],
+                        right_on=["station", "pax_type"],
+                        how="left"
+                    )
+
+                    # Add the processing time column for rail
+                    df_rail_merged["processing_time"] = np.where(
+                        df_rail_merged["access_type"] == "access",
+                        df_rail_merged["k2p"],
+                        df_rail_merged["p2k"]
+                    )
+
+                    # Fill missing values
+                    df_rail_merged.loc[df_rail_merged["access_type"] == "access", "processing_time"] = \
+                        df_rail_merged.loc[df_rail_merged["access_type"] == "access", "processing_time"].fillna(
+                            default_k2p)
+
+                    df_rail_merged.loc[df_rail_merged["access_type"] == "egress", "processing_time"] = \
+                        df_rail_merged.loc[df_rail_merged["access_type"] == "egress", "processing_time"].fillna(
+                            default_p2k)
+
+
+                else:
+                    # We should have the defaults
+                    df_rail_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "rail"]
+                    df_rail_merged['processing_time'] = df_rail_merged.apply(
+                        lambda row: default_k2p if row["access_type"] == "access" else default_p2k,
+                        axis=1
+                    )
+
+                # Combine the two DataFrames
+                df_regions_acess_i = pd.concat([df_air_merged, df_rail_merged], ignore_index=True)
+
+                # Drop unnecessary columns
+                df_regions_acess_i = df_regions_acess_i[
+                    ["region", "station", "layer", "access_type", "pax_type", "avg_time", "processing_time"]
+                ]
+
+                df_regions_acess_i['total_time'] = df_regions_acess_i['avg_time'] + df_regions_acess_i['processing_time']
 
             df_regions_accessl += [df_regions_acess_i]
 
