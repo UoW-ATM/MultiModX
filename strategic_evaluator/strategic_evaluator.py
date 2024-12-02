@@ -1162,7 +1162,7 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     def filter_similar_options(group, kpis, thresholds=None):
         filtered_options = []
         clusters = {}
-        group = group.dropna(subset=kpis)
+        #group = group.dropna(subset=kpis)
         for category in group['journey_type'].unique():
             category_group = group[group['journey_type'] == category]
 
