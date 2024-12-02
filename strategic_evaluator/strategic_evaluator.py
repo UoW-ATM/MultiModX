@@ -332,34 +332,40 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
     df_stop_timess = []
 
     for rail_network in rail_networks:
+        # TODO: filter by parent stations
         df_stop_times = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stop_times.txt',
                                     dtype={'stop_id': str})
-        df_trips = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'trips.txt')
-        df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
-        df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
+
+        date_rail = rail_network['date_rail']  # '20230503'
+
+        if date_rail != 'None':
+            # Filter rail trips that operate on that day
+
+            df_trips = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'trips.txt')
+            df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
+            df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
+            df_calendar.columns = list(df_calendar.columns.str.strip())
+            df_calendar_dates.columns = list(df_calendar_dates.columns.str.strip())
+            df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
+            df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
+            df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
+
+            date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
+
+            df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
+
         df_agency = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'agency.txt')
         df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt', dtype={'stop_id': str})
 
-        df_calendar.columns = list(df_calendar.columns.str.strip())
-        df_calendar_dates.columns = list(df_calendar_dates.columns.str.strip())
-        df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
-        df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
-
-        df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
-
-        # TODO: filter by parent stations
-        date_rail = rail_network['date_rail'] #'20230503'
         date_to_set_rail = rail_network['date_to_set_rail']
-        date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
         date_to_set_rail = pd.to_datetime(date_to_set_rail, format='%Y%m%d')
-
-        df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
         # Note that country is set for both stops when in reality the trip could be accross countries...
         # TODO improve country identification of stops in rail, for now just got from the toml file
         country = rail_network['country']
 
         # TODO: cost, emissions...
+        # TODO: agency linked with services
         rail_provider = df_agency.iloc[0].agency_name
         rail_alliance = df_agency.iloc[0].agency_name
         if 'provider' not in df_stop_times.columns:
