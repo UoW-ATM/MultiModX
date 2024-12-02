@@ -1,30 +1,41 @@
 [network_definition]
-    network_path = "../../data/CS-ES/v=0.5/"
+    network_path = "../../data/CS-ES/v=0.7/"
     processed_folder = "processed"
-    #potential_paths = "processed/paths_itineraries/possible_paths_avg_0_prev.csv"
-    potential_paths = "processed/paths_itineraries/potential_paths_0.csv"
     [[network_definition.air_network]]
-        flight_schedules = "flight_schedules_oag_es.csv"
-        airports_static = "infrastructure/airports_coordinates_updated.csv"
-        mct_air = "infrastructure/mct_air.csv"
-        alliances = "air_alliances.csv"
+        flight_schedules = "flights_schedules/flight_schedules_oag_es.csv"
+        alliances = "flights_schedules/air_alliances.csv"
+        airports_static = "infrastructure/airports_coordinates_v1.1.csv"
+        mct_air = "infrastructure/mct_air_v0.2.csv"
+        mct_default = 30
     [[network_definition.rail_network]]
-        gtfs = "gtfs_es_20220708"
-        date_rail = "20220915" # Date to use to filter GTFS
+        gtfs = "gtfs_es_UIC"
+        date_rail = "20230920" # Date to use to filter GTFS
         date_to_set_rail = "20190906" # Date from flights to make rail and flights 'compatible'
         rail_stations_considered = "infrastructure/rail_stations_considered_GTFS_2022.csv"
+        mct_rail = "infrastructure/mct_rail_v0.1.csv"
+        mct_default = 15
         create_rail_layer_from = 'services' #gtfs / services
         country = "LE"
+    [[network_definition.processing_time]]
+        airport_processes = "infrastructure/airport_processes_v0.1.csv"
+        iata_icao_static = "infrastructure/IATA_ICAO_Airport_codes_v1.3.csv"
+        rail_stations_processes = "infrastructure/rail_stations_processes_v0.1.csv"
+        default_process_time_k2g = 90
+        default_process_time_g2k = 30
+        default_process_time_k2p = 15
+        default_process_time_p2k = 10
     [[network_definition.multimodal]]
         air_rail_transitions = "infrastructure/air_rail_transitions_all.csv"
 	[[network_definition.regions_access]]
-		regions_access = "infrastructure/regions_access_all.csv"
-        iata_icao_static = "infrastructure/IATA_ICAO_Airport_codes_updated.csv"
+		regions_access = "infrastructure/regions_access_v0.1.csv"
+        iata_icao_static = "infrastructure/IATA_ICAO_Airport_codes_v1.3.csv"
 
 [demand]
-	#demand = "../../data/CS-ES/v=0.5/pax_demand_BCN_MAD.csv"
-    demand = "../../data/CS-ES/v=0.5/pax_demand_MAD_BCN.csv"
-    #demand = "../../data/CS-ES/v=0.5/pax_demand.csv"
+    demand = "../../data/CS-ES/v=0.7/demand/pax_demand_mobile_phone.csv"
+
+
+[sensitivities]
+    sensitivities = "../../data/CS-ES/v=0.7/sensitivities"
 
 [other_param]
     [other_param.kpi_cluster_itineraries]
@@ -49,5 +60,9 @@
         total_emissions = 5
         total_waiting_time = 30
 
+    [other_param.sensitivities_logit]
+        sensitivities = "../../data/CS-ES/v=0.7/sensitivities"
 [output]
-	output_folder = "../../data/CS-ES/v=0.5/processed/paths_itineraries/"
+	output_folder = "../../data/CS-ES/v=0.7/processed/paths_itineraries/"
+
+#  python ./strategic_pipeline.py -tf ../../data/CS-ES/v=0.7/es.toml -ni 50 -np 100 -mc 1 -hpc -pc 23  -lf ./test_loggin.log -v
