@@ -225,6 +225,7 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
 
 def compute_cost_emissions_air(df_fs):
     # print(df_fs[df_fs.gcdistance==0])
+    # TODO: emissions for long-haul flights
     df_fs['emissions'] = df_fs.apply(lambda row:
                                      compute_emissions_pax_short_mid_flights(row['gcdistance'], row['seats'])
                                      if pd.isnull(row['emissions']) else row['emissions'], axis=1)
@@ -1162,7 +1163,9 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     def filter_similar_options(group, kpis, thresholds=None):
         filtered_options = []
         clusters = {}
-        #group = group.dropna(subset=kpis)
+        # Remove the dropna as we want to keep options even if some KPIs are missing. They'll be replaced
+        # by 0, which maybe it's not great, but at least not loosing options.
+        # group = group.dropna(subset=kpis)
         for category in group['journey_type'].unique():
             category_group = group[group['journey_type'] == category]
 
