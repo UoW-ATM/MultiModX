@@ -10,9 +10,6 @@ def get_mct_hub(dict_mct, coming_from, hub, going_to):
         # All domestic (looking at country by first two letters of origin, destination, connecting code (hub)
         # TODO could be improved, e.g. Canary islands to Peninsular Spain, different origin code same country.
         dict_type_connection = dict_mct['dom']
-    elif (coming_from[0:2] != going_to[0:2]) and ((hub[0:2] == coming_from[0:2]) or (hub[0:2] == going_to[0:2])):
-        # Coming and going are in different countries and hub is in country of one of them
-        dict_type_connection = dict_mct['std']
     else:
         dict_type_connection = dict_mct['int']
     return timedelta(minutes=dict_type_connection.get(hub, 30))
