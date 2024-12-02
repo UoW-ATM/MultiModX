@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import argparse
 import tomli
@@ -5,7 +6,6 @@ import pandas as pd
 from collections import defaultdict
 import logging
 import sys
-from launch_parameters import n_archetypes
 sys.path.insert(1, '../..')
 
 
@@ -174,17 +174,19 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
     df_itineraries_filtered.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
+
     # Assign passengers to paths clusters
+    logger.important_info("Assigning passengers to Path Clustered")
+
     n_alternatives = pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
     logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
     df_pax_demand_paths, df_paths_final = assign_demand_to_paths(pareto_df, n_alternatives, max_connections, toml_config)
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 
-
     # Add demand per cluster
     df_cluster_pax = obtain_demand_per_cluster_itineraries(pareto_df, df_pax_demand_paths, df_paths_final)
 
-    ofp = 'possible_itineraries_clustered_pareto_w_demand' + str(pre_processed_version) + '.csv'
+    ofp = 'possible_itineraries_clustered_pareto_w_demand_' + str(pre_processed_version) + '.csv'
     df_cluster_pax.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
@@ -196,7 +198,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 # Setting up logging
 logging.addLevelName(IMPORTANT_INFO, "IMPORTANT_INFO")
 logging.Logger.important_info = important_info
-    
+
 
 if __name__ == '__main__':
 
