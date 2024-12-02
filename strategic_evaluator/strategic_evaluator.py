@@ -121,6 +121,8 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
 
 def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_stops_considered=None, df_ra_rail=None,
                       keep_only_fastest_service=0,
+                      df_mct=None,
+                      mct_default=None,
                       df_stops=None,
                       heuristic_precomputed_distance=None):
 
@@ -131,6 +133,20 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
         rail_services_df = pre_process_rail_gtfs_to_services(df_rail, date_considered, df_stops)
     else:
         rail_services_df = df_rail
+
+    # MCT between rail if provided
+    dict_mct_rail = {}
+    avg_transfer_time = None
+
+    if df_mct is not None:
+        #  MCTs between air services
+        dict_mct_rail = dict(zip(df_mct['stop_id'], df_mct['default transfer time']))
+    if mct_default is not None:
+        avg_transfer_time = mct_default
+    elif df_mct is not None:
+        avg_transfer_time = round(df_mct['default transfer time'].mean())
+
+    dict_mct = {'std': dict_mct_rail, 'avg_default': avg_transfer_time}
 
     # Regions access -- Create dictionary
     regions_access_rail = None
@@ -200,7 +216,9 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
     else:
         heuristic_func = fastest_rail_time_heuristic
 
-    nl_rail = NetworkLayer('rail', rail_services_df, regions_access=regions_access_rail,
+    nl_rail = NetworkLayer('rail', rail_services_df,
+                           dict_mct=dict_mct,
+                           regions_access=regions_access_rail,
                            custom_initialisation=initialise_rail_network,
                            custom_mct_func=mct_rail_network,
                            custom_services_from_after_func=services_from_after_function_rail,
@@ -602,6 +620,9 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
     if 'rail_network' in path_network_dict.keys():
         df_rail_data_l = []
+        df_mctl = []
+        mct_defaultl = []
+        mct_default = None
         need_save = False
         for rn in path_network_dict['rail_network']:
             date_rail_str = rn['date_to_set_rail']
@@ -652,8 +673,27 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
                 df_rail_data_l += [df_rail_data]
 
+            # Read MCTs between rail services
+            if rn.get('mct_rail') is not None:
+                df_mct = pd.read_csv(Path(path_network_dict['network_path']) /
+                                      rn['mct_rail'], dtype={'stop_id': str})
+
+                df_mctl += [df_mct]
+            if rn.get('mct_default') is not None:
+                mct_defaultl += [rn.get('mct_default')]
+
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
         df_rail_data = compute_cost_emissions_rail(df_rail_data)
+
+        df_mct = None
+        if len(df_mctl)>0:
+            df_mct = pd.concat(df_mctl, ignore_index=True)
+
+        if len(mct_defaultl)>0:
+            # If MCT provided for the different definitions of rail create one MCT as
+            # average of all provided.
+            # TODO: Allow different MCTs per definition of rail layer
+            mct_default = sum(mct_defaultl) / len(mct_defaultl)
 
         # Compute departure and arrival times in UTC times
         # Vectorized processing for departure times
@@ -716,6 +756,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                        df_ra_rail=df_ra_rail,
                                        keep_only_fastest_service=only_fastest,
                                        df_stops=df_stops,
+                                       df_mct=df_mct,
+                                       mct_default=mct_default,
                                        heuristic_precomputed_distance=df_heuristic_rail)
 
         layers += [rail_layer]

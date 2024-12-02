@@ -1,8 +1,20 @@
 from datetime import timedelta
 
 
-def mct_rail_network(*args, **kwargs):
-    return timedelta(minutes=10)
+def mct_rail_network(obj, service_from, service_to):
+    if service_from.destination != service_to.origin:
+        # Something wrong, destination previous flight should be same as origin next one
+        return None
+
+    dict_std_mct = obj.dict_mct.get('std', {})
+    minutes = dict_std_mct.get(service_to.origin,
+                                              obj.dict_mct.get('avg_default',10))
+    if minutes is None:
+        # By default minimum connecting time train
+        minutes = 15
+    mct = timedelta(minutes=minutes)
+
+    return mct
 
 
 def get_mct_hub(dict_mct, coming_from, hub, going_to):
