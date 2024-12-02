@@ -53,7 +53,7 @@ def create_region_access_dict(df_ra_air):
     return regions_access_air
 
 
-def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_service=0,
+def create_air_layer(df_fs, df_as, df_mct, mct_default=None, df_ra_air=None, keep_only_fastest_service=0,
                      dict_dist_origin_destination=None,
                      heuristic_precomputed_distance=None):
 
@@ -67,6 +67,11 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     dict_mct_international = dict(zip(df_mct['icao_id'], df_mct['international']))
     dict_mct_domestic = dict(zip(df_mct['icao_id'], df_mct['domestic']))
     dict_mct = {'std': dict_mct_std, 'int': dict_mct_international, 'dom': dict_mct_domestic}
+    if mct_default is not None:
+        dict_mct['avg_default'] = mct_default
+    else:
+        # Average of standard if nothing provided
+        dict_mct['avg_default'] = round(df_mct['standard'].mean())
 
     # Rename sobt and sibt
     df_fs.rename(columns={'sobt': 'departure_time', 'sibt': 'arrival_time'}, inplace=True)
@@ -526,6 +531,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_mctl = []
         df_ra_airl = []
         df_heuristic_airl = []
+        mct_defaultl = []
 
         dict_dist_origin_destination = {}
         df_heuristic_air = None
@@ -579,6 +585,9 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             df_mct = pd.read_csv(Path(path_network_dict['network_path']) /
                                  an['mct_air'])
 
+            if an.get('mct_default') is not None:
+                mct_defaultl += [an.get('mct_default')]
+
             # Get regions access for air
             df_ra_air = None
             if df_regions_access is not None:
@@ -607,12 +616,20 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_ra_air = pd.concat(df_ra_airl, ignore_index=True)
         if len(df_heuristic_airl) > 0:
             df_heuristic_air = pd.concat(df_heuristic_airl, ignore_index=True)
+        mct_default = None
+        if len(mct_defaultl)>0:
+            # If MCT provided for the different definitions of air create one MCT as
+            # average of all provided.
+            # TODO: Allow different MCTs per definition of rail layer
+            mct_default = sum(mct_defaultl) / len(mct_defaultl)
 
         # Use first two letters of airport ICAO codes for country origin and destination
         df_fs['country_origin'] = df_fs['origin'].str[:2]
         df_fs['country_destination'] = df_fs['destination'].str[:2]
 
-        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air,
+        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct,
+                                     mct_default=mct_default,
+                                     df_ra_air=df_ra_air,
                                      keep_only_fastest_service=only_fastest,
                                      dict_dist_origin_destination=dict_dist_origin_destination,
                                      heuristic_precomputed_distance=df_heuristic_air)
@@ -693,7 +710,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             # If MCT provided for the different definitions of rail create one MCT as
             # average of all provided.
             # TODO: Allow different MCTs per definition of rail layer
-            mct_default = sum(mct_defaultl) / len(mct_defaultl)
+            mct_default = round(sum(mct_defaultl) / len(mct_defaultl))
 
         # Compute departure and arrival times in UTC times
         # Vectorized processing for departure times

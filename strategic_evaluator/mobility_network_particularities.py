@@ -8,10 +8,15 @@ def mct_rail_network(obj, service_from, service_to):
 
     dict_std_mct = obj.dict_mct.get('std', {})
     minutes = dict_std_mct.get(service_to.origin,
-                                              obj.dict_mct.get('avg_default',10))
+                                              obj.dict_mct.get('avg_default',15))
     if minutes is None:
-        # By default minimum connecting time train
+        # By default, minimum connecting time train
+        # Used if no avg_default if provided. If no value provided and no MTC
+        # rail file is given avg_default return None and therefore the code enters here
+        # if MCT rail file is provided then avg_default is average of the values in the
+        # MCT rail file.
         minutes = 15
+
     mct = timedelta(minutes=minutes)
 
     return mct
@@ -24,7 +29,14 @@ def get_mct_hub(dict_mct, coming_from, hub, going_to):
         dict_type_connection = dict_mct['dom']
     else:
         dict_type_connection = dict_mct['int']
-    return timedelta(minutes=dict_type_connection.get(hub, 30))
+
+    # 30 minute would be used if avg_default not exits
+    # note that avg_default is usually given as parameter in the config toml file
+    # or computed as the avg of the std MCT so this 30 value should never be used
+    # in the MMX pipeline, but it could be used in a generic use of the mobility network
+    minutes = dict_type_connection.get(hub, dict_mct.get('avg_default', 30))
+
+    return timedelta(minutes=minutes)
 
 
 def mct_air_network(obj, service_from, service_to):
