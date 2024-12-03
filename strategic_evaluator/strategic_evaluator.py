@@ -953,14 +953,135 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_transitionsl = []
         for mm in path_network_dict['multimodal']:
             df_transitionsl += [pd.read_csv(Path(path_network_dict['network_path']) /
-                                            mm['air_rail_transitions'])]
+                                            mm['air_rail_transitions'], dtype={'origin_station': str,
+                                                                               'destination_station': str})]
 
         df_transitions = pd.concat(df_transitionsl, ignore_index=True)
 
-        df_transitions.rename(columns={'origin_station': 'origin', 'destination_station': 'destination',
-                                       'layer_origin': 'layer_id_origin', 'layer_destination': 'layer_id_destination'},
-                              inplace=True)
+        if 'mct' not in df_transitions.columns:
+            # If MCT is in the df_transitions then the format already has the value
+            # if not compute it by adding g2k/p2k and k2g/k2p to the travel time between
+            # stations
+
+            # We should have had processing times
+            if (((df_airport_processes is None) and ((default_k2g is None) or (default_g2k is None)))
+                    or ((df_rail_station_processes is None) and ((default_k2p is None) or (default_p2k is None)))):
+                logger.error("Missing processing times (not defined in multimodal definition)")
+                sys.exit(-1)
+
+            # Create two new DataFrames for each direction
+            df_a_b = df_transitions[["origin_station", "destination_station", "layer_origin", "layer_destination",
+                         "avg_travel_a_b"]].rename(
+                columns={"avg_travel_a_b": "avg_travel_time"}
+            )
+
+            df_b_a = df_transitions[["destination_station", "origin_station", "layer_destination", "layer_origin",
+                         "avg_travel_b_a"]].rename(
+                columns={"destination_station": "origin_station", "origin_station": "destination_station",
+                         "layer_destination": "layer_origin", "layer_origin": "layer_destination",
+                         "avg_travel_b_a": "avg_travel_time"}
+            )
+
+            # Combine the two DataFrames
+            df_transitions = pd.concat([df_a_b, df_b_a], ignore_index=True)
+
+            # Ensure _multimodal columns exist in airport processes
+            if "k2g_multimodal" not in df_airport_processes.columns:
+                df_airport_processes["k2g_multimodal"] = df_airport_processes["k2g"]
+            if "g2k_multimodal" not in df_airport_processes.columns:
+                df_airport_processes["g2k_multimodal"] = df_airport_processes["g2k"]
+
+            # Ensure _multimodal columns exist in rail station processes
+            if "k2p_multimodal" not in df_rail_station_processes.columns:
+                df_rail_station_processes["k2p_multimodal"] = df_rail_station_processes["k2p"]
+            if "p2k_multimodal" not in df_rail_station_processes.columns:
+                df_rail_station_processes["p2k_multimodal"] = df_rail_station_processes["p2k"]
+
+            # Merge for origin_station (x2k logic)
+            df_transitions = (df_transitions.merge(
+                df_airport_processes[["airport", "pax_type", "g2k", "g2k_multimodal"]],
+                left_on="origin_station",
+                right_on="airport",
+                how="left"
+            ).merge(
+                df_rail_station_processes[["station", "pax_type", "p2k", "p2k_multimodal"]],
+                left_on="origin_station",
+                right_on="station",
+                how="left"
+            ).drop(columns=["airport", "station"]))
+
+            df_transitions['pax_type'] = df_transitions.apply(
+                lambda row: row['pax_type_x'] if pd.notna(row['pax_type_x']) else row['pax_type_y'],
+                axis=1
+            )
+
+            df_transitions = df_transitions.drop(columns=['pax_type_x', 'pax_type_y'])
+
+            if default_g2k is not None:
+                df_transitions.loc[((df_transitions.layer_origin == "air") &
+                                (df_transitions.g2k_multimodal.isna())), 'g2k_multimodal'] = default_g2k
+
+            if default_p2k is not None:
+                df_transitions.loc[((df_transitions.layer_origin == "rail") &
+                                    (df_transitions.g2k_multimodal.isna())), 'p2k_multimodal'] = default_p2k
+
+
+            # Determine x2k based on layer_origin
+            df_transitions["x2k"] = df_transitions.apply(
+                lambda row: row["g2k_multimodal"] if row["layer_origin"] == "air" else row["p2k_multimodal"],
+                axis=1
+            )
+
+            # Merge for destination_station (k2x logic)
+            df_transitions = df_transitions.merge(
+                df_airport_processes[["airport", "pax_type", "k2g", "k2g_multimodal"]],
+                left_on=("destination_station", "pax_type"),
+                right_on=("airport", "pax_type"),
+                how="left"
+            ).merge(
+                df_rail_station_processes[["station", "pax_type", "k2p", "k2p_multimodal"]],
+                left_on=("destination_station", "pax_type"),
+                right_on=("station", "pax_type"),
+                how="left"
+            ).drop(columns=["airport", "station"])
+
+            if default_k2g is not None:
+                df_transitions.loc[((df_transitions.layer_destination == "air") &
+                                    (df_transitions.k2g_multimodal.isna())), 'k2g_multimodal'] = default_k2g
+
+            if default_k2p is not None:
+                df_transitions.loc[((df_transitions.layer_destination == "rail") &
+                                    (df_transitions.k2g_multimodal.isna())), 'k2p_multimodal'] = default_k2p
+
+
+            # Determine k2x based on layer_destination
+            df_transitions["k2x"] = df_transitions.apply(
+                lambda row: row["k2g_multimodal"] if row["layer_destination"] == "air" else row["k2p_multimodal"],
+                axis=1
+            )
+
+            # Drop intermediate columns used for merging
+            df_transitions = df_transitions.drop(columns=["g2k", "g2k_multimodal", "p2k", "p2k_multimodal",
+                                                          "k2g", "k2g_multimodal", "k2p", "k2p_multimodal"])
+
+            # Compute MCT to transition between layers
+            df_transitions['mct'] = df_transitions['x2k'] + df_transitions['avg_travel_time'] + df_transitions['k2x']
+
+            df_transitions.drop(columns=['x2k', 'k2x'], inplace=True)
+
+
+    df_transitions.rename(columns={'origin_station': 'origin', 'destination_station': 'destination',
+                                   'layer_origin': 'layer_id_origin', 'layer_destination': 'layer_id_destination'},
+                          inplace=True)
+    if 'pax_type' not in df_transitions:
         df_transitions['mct'] = df_transitions['mct'].apply(lambda x: {'all': x})
+    else:
+        # Group by origin, destination, layer_id_origin, and layer_id_destination, and aggregate mct into a dictionary by pax_type
+        df_transitions = df_transitions.groupby(
+            ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
+        ).apply(
+            lambda group: group.set_index('pax_type')['mct'].to_dict()
+        ).reset_index(name='mct')
 
     if len(layers) > 0:
         if len(layers) == 1:

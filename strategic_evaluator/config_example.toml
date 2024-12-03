@@ -25,7 +25,7 @@
         default_process_time_k2p = 15
         default_process_time_p2k = 10
     [[network_definition.multimodal]]
-        air_rail_transitions = "infrastructure/air_rail_transitions_all.csv"
+        air_rail_transitions = "infrastructure/air_rail_transitions_v0.1.csv"
 	[[network_definition.regions_access]]
 		regions_access = "infrastructure/regions_access_v0.1.csv"
         iata_icao_static = "infrastructure/IATA_ICAO_Airport_codes_v1.3.csv"
