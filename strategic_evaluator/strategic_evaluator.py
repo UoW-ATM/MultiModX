@@ -499,7 +499,7 @@ def create_dict_distance_origin_destination(origin_destination_df):
 
 
 def create_network(path_network_dict, compute_simplified=False, allow_mixed_operators=True,
-                   use_heuristics_precomputed=False,
+                   heuristics_precomputed=None,
                    pre_processed_version=0):
     df_regions_access = None
     df_transitions = None
@@ -700,7 +700,6 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_asl = []
         df_mctl = []
         df_ra_airl = []
-        df_heuristic_airl = []
         mct_defaultl = []
 
         dict_dist_origin_destination = {}
@@ -765,27 +764,22 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 if len(df_ra_air) == 0:
                     df_ra_air = None
 
-            if use_heuristics_precomputed:
-                p_heuristic_air = (Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                   'heuristics_computed' / 'air_time_heuristics.csv')
-
-                if p_heuristic_air.exists():
-                    # We have the file for air time heuristics
-                    df_heuristic_air = pd.read_csv(p_heuristic_air)
-
-                    df_heuristic_airl += [df_heuristic_air]
-
             df_fsl += [df_fs]
             df_asl += [df_as]
             df_mctl += [df_mct]
             df_ra_airl += [df_ra_air]
 
+        if heuristics_precomputed is not None:
+            p_heuristic_air = Path(heuristics_precomputed['heuristics_precomputed_air'])
+            if p_heuristic_air.exists():
+                # We have the file for air time heuristics
+                df_heuristic_air = pd.read_csv(p_heuristic_air)
+
         df_fs = pd.concat(df_fsl, ignore_index=True)
         df_as = pd.concat(df_asl, ignore_index=True)
         df_mct = pd.concat(df_mctl, ignore_index=True)
         df_ra_air = pd.concat(df_ra_airl, ignore_index=True)
-        if len(df_heuristic_airl) > 0:
-            df_heuristic_air = pd.concat(df_heuristic_airl, ignore_index=True)
+
         mct_default = None
         if len(mct_defaultl)>0:
             # If MCT provided for the different definitions of air create one MCT as
@@ -807,6 +801,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
     if 'rail_network' in path_network_dict.keys():
         df_rail_data_l = []
+        df_stopsl = []
         df_mctl = []
         mct_defaultl = []
         mct_default = None
@@ -860,6 +855,10 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
                 df_rail_data_l += [df_rail_data]
 
+            # Need the stops to have its coordinates
+            df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
+                                      'stops.txt', dtype={'stop_id': str})]
+
             # Read MCTs between rail services
             if rn.get('mct_rail') is not None:
                 df_mct = pd.read_csv(Path(path_network_dict['network_path']) /
@@ -871,6 +870,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
         df_rail_data = compute_cost_emissions_rail(df_rail_data)
+        df_stops = pd.concat(df_stopsl, ignore_index=True)
 
         df_mct = None
         if len(df_mctl)>0:
@@ -916,22 +916,11 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 df_ra_rail = None
 
         df_heuristic_rail = None
-        if use_heuristics_precomputed:
-            p_heuristic_rail = (Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                'heuristics_computed' / 'rail_time_heuristics.csv')
+        if heuristics_precomputed is not None:
+            p_heuristic_rail = Path(heuristics_precomputed['heuristics_precomputed_rail'])
             if p_heuristic_rail.exists():
-                # We have the file for air time heuristics
+                # We have the file for rail time heuristics
                 df_heuristic_rail = pd.read_csv(p_heuristic_rail)
-
-            df_stopsl = []
-            for rn in path_network_dict['rail_network']:
-                # Need the stops to have its coordinates
-                df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
-                                       'stops.txt', dtype={'stop_id': str})]
-
-            df_stops = pd.concat(df_stopsl, ignore_index=True)
-        else:
-            df_stops = None
 
         only_fastest = 0
         if compute_simplified:
