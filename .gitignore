@@ -15,6 +15,7 @@ __pycache__/
 
 .venv/*
 *.csv
+!data_analysis/seats_ac_missing.csv
 
 *.parquet
 
