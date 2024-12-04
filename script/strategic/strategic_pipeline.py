@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import shutil
 import argparse
 import tomli
 import pandas as pd
@@ -64,11 +65,32 @@ def read_origin_demand_matrix(path_demand):
     df_demand.replace('', None, inplace=True)
     return df_demand
 
+def recreate_output_folder(folder_path: Path):
+    """
+    Check if a folder exists, delete it if it does, and recreate it as an empty folder.
+
+    Args:
+        folder_path (Path): The path to the folder.
+    """
+    if folder_path.exists():
+        logger.important_info(f"Folder {folder_path} exists. Deleting...")
+        shutil.rmtree(folder_path)
+    logger.info(f"Creating folder {folder_path}...")
+    folder_path.mkdir(parents=True, exist_ok=True)
+    logger.important_info(f"Folder {folder_path} is ready.")
+
+
 
 def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                 max_connections=1, pre_processed_version=0,
                                 allow_mixed_operators_itineraries=False,
                                 use_heuristics_precomputed=False):
+
+    # Check if output folder exists, if not create it
+    recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
+                           toml_config['network_definition']['processed_folder'])
+    recreate_output_folder(Path(toml_config['output']['output_folder']))
+
 
     # Preprocess input
     logger.info("Pre-processing input")
