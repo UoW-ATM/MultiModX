@@ -86,10 +86,14 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # First compute potential paths
     # Create network
     logger.info("Create network simplified to compute paths")
+    heuristics_precomputed = None
+    if use_heuristics_precomputed:
+        heuristics_precomputed = toml_config['other_param']['heuristics_precomputed']
+
     network = create_network(network_definition,
                              compute_simplified=True,
                              allow_mixed_operators=allow_mixed_operators_itineraries,
-                             use_heuristics_precomputed=use_heuristics_precomputed,
+                             heuristics_precomputed=heuristics_precomputed,
                              pre_processed_version=pre_processed_version)
 
     # Compute potential paths
@@ -123,7 +127,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     network = create_network(
         network_definition,
         compute_simplified=False,
-        use_heuristics_precomputed=use_heuristics_precomputed,
+        heuristics_precomputed=heuristics_precomputed,
         pre_processed_version=pre_processed_version
     )
 
