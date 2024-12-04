@@ -1008,9 +1008,13 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
             if default_g2k is not None:
                 df_transitions.loc[((df_transitions.layer_origin == "air") &
+                                (df_transitions.g2k_multimodal.isna())), 'pax_type'] = 'all'
+                df_transitions.loc[((df_transitions.layer_origin == "air") &
                                 (df_transitions.g2k_multimodal.isna())), 'g2k_multimodal'] = default_g2k
 
             if default_p2k is not None:
+                df_transitions.loc[((df_transitions.layer_origin == "rail") &
+                                    (df_transitions.g2k_multimodal.isna())), 'pax_type'] = 'all'
                 df_transitions.loc[((df_transitions.layer_origin == "rail") &
                                     (df_transitions.g2k_multimodal.isna())), 'p2k_multimodal'] = default_p2k
 
@@ -1059,18 +1063,25 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             df_transitions.drop(columns=['x2k', 'k2x'], inplace=True)
 
 
-    df_transitions.rename(columns={'origin_station': 'origin', 'destination_station': 'destination',
-                                   'layer_origin': 'layer_id_origin', 'layer_destination': 'layer_id_destination'},
-                          inplace=True)
-    if 'pax_type' not in df_transitions:
-        df_transitions['mct'] = df_transitions['mct'].apply(lambda x: {'all': x})
-    else:
-        # Group by origin, destination, layer_id_origin, and layer_id_destination, and aggregate mct into a dictionary by pax_type
-        df_transitions = df_transitions.groupby(
-            ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
-        ).apply(
-            lambda group: group.set_index('pax_type')['mct'].to_dict()
-        ).reset_index(name='mct')
+        df_transitions.rename(columns={'origin_station': 'origin', 'destination_station': 'destination',
+                                       'layer_origin': 'layer_id_origin', 'layer_destination': 'layer_id_destination'},
+                              inplace=True)
+
+        # Save transitions mct computed
+        #(Path(path_network) / processed_folder / fflights
+
+        df_transitions.to_csv((Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
+                              'transition_layer_connecting_times.csv' ), index=False)
+
+        if 'pax_type' not in df_transitions:
+            df_transitions['mct'] = df_transitions['mct'].apply(lambda x: {'all': x})
+        else:
+            # Group by origin, destination, layer_id_origin, and layer_id_destination, and aggregate mct into a dictionary by pax_type
+            df_transitions = df_transitions.groupby(
+                ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
+            ).apply(
+                lambda group: group.set_index('pax_type')['mct'].to_dict()
+            ).reset_index(name='mct')
 
     if len(layers) > 0:
         if len(layers) == 1:
