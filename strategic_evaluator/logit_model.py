@@ -22,7 +22,7 @@ def utility_function(database, n_alternatives: int):
         n_alternatives (int): number of alternatives between OD pairs
 
     Returns:
-        dict: dictionary with the utiity function of each alternative
+        dict: dictionary with the utility function of each alternative
     """
 
     # Parameters to be estimated
@@ -75,7 +75,7 @@ def logit_model(database, V: dict, av: dict, weight_column: str):
 
     Returns:
         the_biogeme (biogeme object): the object defining the biogeme model
-        reuslts (biogeme object): the object containing the results of the calibration
+        results (biogeme object): the object containing the results of the calibration
     """
 
     number_of_observations = database.getNumberOfObservations()
@@ -231,7 +231,7 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
 
 
 def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
-    """Assign how many passengers belonging to an acrhetype choose the alternative i for the OD pair
+    """Assign how many passengers belonging to an archetype choose the alternative i for the OD pair
 
     Args:
         row (_type_): row of the pax_demand csv
@@ -239,7 +239,7 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
         alternative_i (int): alternative id
 
     Returns:
-        float: volumne of trips for an archetype and alternative
+        float: volume of trips for an archetype and alternative
     """
     O = row['origin']
     D = row['destination']
