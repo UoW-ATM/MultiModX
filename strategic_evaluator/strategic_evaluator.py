@@ -1776,6 +1776,7 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
 def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, paras):
 
     if paras['train_seats_per_segment'].lower() == 'combined'.lower():
+        # TODO: rail option of capacities considering stops
         # If combined need to remove the stops from the train ids so from xxx_stop1_stop2 to xxx on the id
         # of the trains and on the df_possible_itineraries
         # Also for seats keep the mean number of seats and for distance the max

@@ -273,6 +273,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
 
     # Transform flight schedules into tactical input
+    # TODO: flight schedule might not exist if only rail layer used
     df_flights_tactical = transform_fight_schedules_tactical_input(toml_config['other_param']['tactical_input'],
                                              (Path(toml_config['network_definition']['network_path']) /
                                               toml_config['network_definition']['processed_folder']),
