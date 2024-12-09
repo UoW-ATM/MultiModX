@@ -218,6 +218,58 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     # Assign passengers to services
     logger.important_info("Assigning passengers to services")
+    # Read flight and train schedules (if exist)
+    fs_path = (Path(toml_config['network_definition']['network_path']) /
+               toml_config['network_definition']['processed_folder'] /
+               ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+    ts_path = (Path(toml_config['network_definition']['network_path']) /
+               toml_config['network_definition']['processed_folder'] /
+               ('rail_timetable_proc_' + str(pre_processed_version) + '.csv'))
+
+    # Initialize an empty list to hold dataframes of the schedules
+    dataframes = []
+
+    # Check if each file exists and read it if it does
+    if os.path.exists(fs_path):
+        fs = pd.read_csv(fs_path)
+        fs['mode'] = 'flight'
+        dataframes.append(fs[['service_id', 'seats', 'gcdistance', 'mode']])
+
+    if os.path.exists(ts_path):
+        ts = pd.read_csv(ts_path)
+        ts['mode'] = 'rail'
+        dataframes.append(ts[['service_id', 'seats', 'gcdistance', 'mode']])
+
+    # Concatenate dataframes if any exist, otherwise set ds to None
+    if dataframes:
+        ds = pd.concat(dataframes).rename(columns={'service_id': 'nid', 'seats': 'max_seats'})
+    else:
+        ds = None
+
+    df_pax_assigment, d_seats_max, df_options_w_pax = assing_pax_to_services(ds, df_cluster_pax.copy(),
+                                                                    df_itineraries_filtered.copy(),
+                                                                    paras=toml_config['other_param']['pax_assigner'])
+
+    ofp = 'pax_assigned_from_flow_' + str(pre_processed_version) + '.csv'
+    df_pax_assigment.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    ofp = 'pax_assigned_seats_max_target_' + str(pre_processed_version) + '.csv'
+    d_seats_max.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    ofp = 'pax_assigned_to_itineraries_options_' + str(pre_processed_version) + '.csv'
+    df_options_w_pax_save = df_options_w_pax.copy().drop(columns=['it','generated_info','avg_fare'])
+    df_options_w_pax_save.rename(columns={'volume': 'total_volume_pax_cluster',
+                                          'volume_ceil': 'total_volume_pax_cluster_ceil'})
+    df_options_w_pax_save.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+
+    logger.important_info("Transforming format to tactical input")
+    # Transform passenger assigned into tactical input
+    df_pax_tactical, df_pax_tactical_not_supported = transform_pax_assigment_to_tactical_input(df_options_w_pax)
+
+    ofp = 'pax_assigned_tactical_' + str(pre_processed_version) + '.csv'
+    df_pax_tactical.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+    ofp = 'pax_assigned_tactical_not_supported_' + str(pre_processed_version) + '.csv'
+    df_pax_tactical_not_supported.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
     # Transform flight schedules into tactical input
@@ -287,7 +339,8 @@ if __name__ == '__main__':
         create_network, preprocess_input, compute_possible_itineraries_network,
         compute_avg_paths_from_itineraries, cluster_options_itineraries,
         keep_pareto_equivalent_solutions, keep_itineraries_options,
-        obtain_demand_per_cluster_itineraries
+        obtain_demand_per_cluster_itineraries, assing_pax_to_services,
+        transform_pax_assigment_to_tactical_input,
         transform_fight_schedules_tactical_input
     )
     from strategic_evaluator.logit_model import (
@@ -306,6 +359,7 @@ if __name__ == '__main__':
 
 
     logger.important_info("Running first potential paths and then itineraries")
+
     run_full_strategic_pipeline(toml_config,
                                 pc=pc,
                                 n_paths=int(args.num_paths),

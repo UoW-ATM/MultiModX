@@ -1775,9 +1775,6 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
 
 def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, paras):
 
-    df_possible_itineraries_orig = df_possible_itineraries.copy()
-    df_schedules_orig = df_schedules.copy()
-
     if paras['train_seats_per_segment'].lower() == 'combined'.lower():
         # If combined need to remove the stops from the train ids so from xxx_stop1_stop2 to xxx on the id
         # of the trains and on the df_possible_itineraries
@@ -1805,29 +1802,38 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         mode_cols = [col for col in df_possible_itineraries.columns if col.startswith('mode_')]
 
         for service_col, mode_col in zip(service_cols, mode_cols):
-            df_possible_itineraries[service_col] = df_possible_itineraries.apply(
-                lambda row: re.sub(r'_.*', '', row[service_col]) if row[mode_col] == 'rail' else row[service_col],
-                axis=1
-            )
+            # Apply the transformation only to rows where mode_col is 'rail'
+            df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col] = \
+                df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col].str.replace(
+                    r'_.*', '', regex=True)
 
     # Initialize unique IDs for df_demand
-    df_demand['id'] = range(1, len(df_demand) + 1)
+    df_demand['id'] = np.arange(1, len(df_demand) + 1)
+
+    # Step 0: If journey_type is none then mode should be none too
+    df_possible_itineraries.loc[(df_possible_itineraries['journey_type']=='none'), 'mode_0'] = None
 
     # Step 1: Merge df_demand and df_poss_it on alternative_id
     merged_df = pd.merge(df_possible_itineraries, df_demand, on='alternative_id', suffixes=('_opt', '_pax'))
 
     # Step 2: Create a per-passenger DataFrame by repeating each row for each passenger
-    merged_df = merged_df.loc[merged_df.index.repeat(merged_df['num_pax'])].reset_index(drop=True)
+    # This is not needed as we're working with groups, no need to create a row per individual pax
+    #merged_df = merged_df.loc[merged_df.index.repeat(merged_df['num_pax'])].reset_index(drop=True)
 
     # Step 3: Assign 'nid_f1', 'nid_f2', ..., based on service_id_x from df_poss_it
     # Determine the maximum number of services (to know how many nid_fx columns we need)
     max_services = int(merged_df['nservices_pax'].max())
 
     # Create columns for each service (e.g., nid_f1, nid_f2, ...)
-    for i in range(max_services):
-        col_name = f'nid_f{i + 1}'
-        service_col_name = f'service_id_{i}'  # Service columns in df_poss_it
-        merged_df[col_name] = merged_df[service_col_name]
+    #for i in range(max_services):
+    #    col_name = f'nid_f{i + 1}'
+    #    service_col_name = f'service_id_{i}'  # Service columns in df_poss_it
+    #    merged_df[col_name] = merged_df[service_col_name]
+
+    # Generate a mapping of service columns to new column names
+    columns_map = {f'service_id_{i}': f'nid_f{i + 1}' for i in range(max_services)}
+    # Rename the columns in one operation
+    merged_df = merged_df.rename(columns=columns_map)
 
     # Step 4: Construct 'type' column using vectorized operations for better performance
     modes = [f'mode_{i}' for i in range(max_services)]
@@ -1836,14 +1842,21 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
     for mode in modes:
         merged_df[mode] = merged_df[mode].replace('air', 'flight')
 
+    # Add type as concatenation of modes flight, rail, rail_rail, rail_flight, flight_flight, rail_flight_rail, etc.
     merged_df['type'] = merged_df[modes].fillna('').agg('_'.join, axis=1)
-    merged_df['type'] = merged_df['type'].str.replace(r'^_|_+$', '',
-                                                      regex=True)  # Remove leading and trailing underscores
+
+    # Remove leading and trailing underscores
+    #merged_df['type'] = merged_df['type'].str.replace(r'^_|_+$', '', regex=True)
+    merged_df['type'] = merged_df['type'].str.strip('_') # Remove leading and trailing underscores
+
     merged_df['type'] = merged_df['type'].str.replace(r'_+', '_', regex=True)  # Replace multiple underscores with one
+    # if type=='' put None
+    merged_df.loc[(merged_df['type']==''), 'type'] = None
 
     # Step 5: Rename and select the required columns for the final output
     nid_columns = [f'nid_f{i + 1}' for i in range(max_services)]
-    final_columns = ['id', 'option_number'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
+    # We keep also alternative_id as this is a key to identify demand groups
+    final_columns = ['id', 'option_number', 'alternative_id', 'path'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
                                                              'fare']
 
     merged_df = merged_df.rename(columns={'total_cost_opt': 'fare', 'total_waiting_time_opt': 'total_waiting_time',
@@ -1854,8 +1867,147 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
     # Create unique id for option_number
     options['option_number'] = range(1, len(options) + 1)
 
-    # Display final dataframe
-    return assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
+    it_gen, d_seats_max, options = assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
+
+    # it_gen = fill_flights_too_empy(it_gen, df_schedules, d_seats_max, options, paras, verbose=False)
+
+    # For ach option add pax assigned
+    df_options_w_pax = options.merge(it_gen[['it', 'option', 'pax', 'avg_fare', 'generated_info']],
+                                     left_on=['id', 'option_number'],
+                                        right_on=['it', 'option'], how='left').drop(columns=['option'])
+    df_options_w_pax['pax'] = df_options_w_pax['pax'].fillna(0)
+
+    return it_gen, d_seats_max, df_options_w_pax
+
+
+'''
+Create the input for the tactical evaluator (Mercury) from the pax assigment
+'''
+def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigment, df_options):
+    df_pax = df_options_w_pax[df_options_w_pax.pax>0].copy() #df_pax_assigment.merge(df_options, right_on=['id', 'option_number'], left_on=['it', 'option'], how='left')
+
+    # Define the regex patterns for dynamic column selection
+    leg_pattern = r'^leg\d+$'  # Matches columns like leg1, leg2, ...
+    nid_f_pattern = r'^nid_f\d+$'  # Matches columns like nid_f1, nid_f2, ...
+
+    # Specify fixed columns to include
+    fixed_columns = ['it', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path']
+
+    # Filter dynamically using regex for `leg` and `nid_f` columns
+    dynamic_columns = df_pax.filter(regex=f'({leg_pattern}|{nid_f_pattern})').columns.tolist()
+
+    # Combine fixed and dynamic columns
+    selected_columns = fixed_columns + dynamic_columns
+
+    # Filter the dataframe to include only the selected columns
+    df_pax = df_pax[selected_columns]
+    df_pax['ticket_type'] = 'economy'
+
+    # Separate rows where 'type' is None
+    df_pax_non_supported_tactically = df_pax[df_pax['type'].isnull()].copy()
+    df_supported = df_pax[df_pax['type'].notnull()].copy()
+
+    # Define a function to check validity of the `type` column
+    def is_valid_type(type_str):
+        modes = type_str.split('_')
+        # Only allow 'rail' in the first or last position if it appears
+        if 'rail' in modes[1:-1]:  # If 'rail' is in the middle
+            return False
+        if len(modes) > 1 and all(mode == 'rail' for mode in modes):  # All rail
+            return False
+        return True
+
+    # Apply the validity check to the supported rows
+    df_supported['valid_type'] = df_supported['type'].apply(is_valid_type)
+
+    # Separate valid and invalid rows
+    df_valid_supported = df_supported[df_supported['valid_type']].drop(columns=['valid_type'])
+    df_pax_non_supported_tactically = pd.concat(
+        [df_pax_non_supported_tactically, df_supported[~df_supported['valid_type']]]
+    ).drop(columns=['valid_type'])
+
+    df_pax_non_supported_tactically['type'].drop_duplicates()
+
+    # Helper function to process a row
+    def process_row(row):
+        modes = row['type'].split('_')
+        legs = [row.get(f'leg{i + 1}', None) for i in range(len(modes))]
+
+        # Initialize rail_pre and rail_post
+        rail_pre = None
+        rail_post = None
+
+        # Move rail IDs to rail_pre and rail_post
+        if modes[0] == 'rail':
+            rail_pre = legs[0]
+            legs[0] = None
+        if modes[-1] == 'rail':
+            rail_post = legs[-1]
+            legs[-1] = None
+
+        # Remove rail IDs from legs
+        flight_ids = [leg if mode == 'flight' else None for mode, leg in zip(modes, legs)]
+
+        # Compact flight IDs to fill gaps
+        flight_ids = [fid for fid in flight_ids if fid is not None]
+        flight_ids += [None] * (len(legs) - len(flight_ids))  # Pad with None
+
+        # Update the row
+        row['rail_pre'] = rail_pre
+        row['rail_post'] = rail_post
+        for i, flight_id in enumerate(flight_ids):
+            row[f'leg{i + 1}'] = flight_id
+        for j in range(len(flight_ids), len(legs)):  # Set remaining leg columns to None
+            row[f'leg{j + 1}'] = None
+
+        return row
+
+    # Apply processing
+    df_valid_supported = df_valid_supported.copy()
+    df_valid_supported['rail_pre'] = None
+    df_valid_supported['rail_post'] = None
+    df_valid_supported = df_valid_supported.apply(process_row, axis=1)
+
+    # Drop unnecessary leg columns (if needed)
+    max_legs = df_valid_supported['type'].str.count('_').max() + 1
+    extra_cols = [f'leg{i + 1}' for i in
+                  range(max_legs, len([col for col in df_valid_supported.columns if col.startswith('leg')]))]
+    df_valid_supported = df_valid_supported.drop(columns=extra_cols, errors='ignore')
+
+    # Add new columns and initialize with NaN
+    df_valid_supported['origin1'] = np.nan
+    df_valid_supported['destination1'] = np.nan
+    df_valid_supported['origin2'] = np.nan
+    df_valid_supported['destination2'] = np.nan
+
+    # Update origin1 and destination1 based on rail_pre
+    df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'origin1'] = \
+        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: x[0])
+    df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'destination1'] = \
+        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: x[1])
+
+    # Update origin2 and destination2 based on rail_post
+    df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'origin2'] = \
+        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: x[-2])
+    df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'destination2'] = \
+        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: x[-1])
+
+    df_valid_supported['gtfs_pre'] = np.nan
+    df_valid_supported['gtfs_post'] = np.nan
+
+    # Filter rows tacitcal pax assignment
+    df_valid_supported = df_valid_supported.rename(
+        columns={'it': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
+    leg_columns = [col for col in df_valid_supported.columns if col.startswith('leg')]
+    df_valid_supported = df_valid_supported[
+        ['nid_x', 'pax', 'avg_fare', 'ticket_type'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
+                                                                     'gtfs_post',
+                                                                     'origin1', 'destination1', 'origin2',
+                                                                     'destination2',
+                                                                     'type']]
+
+    return df_valid_supported, df_pax_non_supported_tactically
+
 
 def transform_fight_schedules_tactical_input(config, path_folder_network, pre_processed_version):
     path_flight_schedules = (path_folder_network / ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))

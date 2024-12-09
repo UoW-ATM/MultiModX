@@ -66,7 +66,42 @@
     [other_param.sensitivities_logit]
         sensitivities = "../../data/CS-ES-MD/v=0.7/sensitivities_v0.1"
 
+    [other_param.pax_assigner]
+        fillers_in_not_used_flights = 1 #Flights in the schedule but without any pax from the pax itineraries flow also fill with fillers. Otherwise, these flights will be empty.
         train_seats_per_segment = 'combined' # 'segment' each train segment is treated independently, 'combined', but then if a pax uses x_1_2 and another x_3_5 the seats are 'shared' for the whole train 1_5...
+        type_of_optimisation = 'lexicographic' #Type of optimisation lexicographic or max_assinged_only
+        [other_param.pax_assigner.max_assinged_only]
+            problem_file = 'problem' #Save the Gurobi LP problem in a file
+            compute_leg2_plus_first = 1 # Either 1 or 0 to select if doing 2+ legs assigment first
+        [other_param.pax_assigner.lexicographic]
+            nprocs = 23 # For parallel computing
+            objectives = [['total_pax_connecting','maximize'],
+                          ['total_pax', 'maximize']]
+                          #['total_pax_combined_utilisation', 'maximize']]
+            [other_param.pax_assigner.lexicographic.thresholds]
+                [other_param.pax_assigner.lexicographic.thresholds.total_pax_connecting]
+                    type = 'relative'
+                    value = 0.05
+        [other_param.pax_assigner.target_load_factor]
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.75,0.95,1]
+            [other_param.pax_assigner.target_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.75,0.95,1]
+            [other_param.pax_assigner.target_load_factor.rail]
+                type = 'fix' # triangular | fix. If something else then flights will be at full capacity
+                param = 1
+
+        [other_param.pax_assigner.minimum_load_factor]
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.rail]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+
     [other_param.tactical_input]
         [other_param.tactical_input.aircraft]
             ac_type_icao_iata_conversion = "../../data/CS-ES-MD/v=0.7/ac_airline_info/ac_type_icao_iata_v0.1.csv"
