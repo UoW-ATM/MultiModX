@@ -4,7 +4,6 @@ import numpy as np
 from itertools import combinations
 import multiprocessing as mp
 import time
-import re
 import logging
 import sys
 
@@ -22,7 +21,7 @@ from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
 from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_flights, compute_costs_air,
                                               compute_emissions_rail, compute_costs_rail)
 from libs.time_converstions import  convert_to_utc_vectorized
-from libs.passenger_assigner.passenger_assigner import assign_passengers_options_solver
+from libs.passenger_assigner.passenger_assigner import assign_passengers_options_solver, fill_flights_too_empy
 
 
 logger = logging.getLogger(__name__)
@@ -1857,3 +1856,49 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
 
     # Display final dataframe
     return assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
+
+def transform_fight_schedules_tactical_input(config, path_folder_network, pre_processed_version):
+    path_flight_schedules = (path_folder_network / ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+
+    df_fs = pd.read_csv(path_flight_schedules)
+
+    # Read aircraft related information
+    df_ac_icao_iata = pd.read_csv(config['aircraft']['ac_type_icao_iata_conversion'])
+    dict_ac_iata_icao = pd.Series(df_ac_icao_iata['icao_ac_code'].values,
+                                  index=df_ac_icao_iata['iata_ac_code']).to_dict()
+
+    df_ac_wt = pd.read_csv(config['aircraft']['ac_wtc'])
+    dict_ac_wtc = pd.Series(df_ac_wt['wake'].values, index=df_ac_wt['ac_icao']).to_dict()
+
+    df_mtow = pd.read_csv(config['aircraft']['ac_mtow'])
+    dict_mtow = pd.Series(df_mtow['mtow'].values, index=df_mtow['aircraft_type']).to_dict()
+
+    # Read airline related information
+    df_airline_codes = pd.read_csv(config['airlines']['airline_iata_icao'])
+    dict_aln_codes = pd.Series(df_airline_codes['ICAO_code'].values, index=df_airline_codes['IATA_code']).to_dict()
+
+    df_airline_types = pd.read_csv(config['airlines']['airline_ao_type'])
+    dict_ao_types = pd.Series(df_airline_types['AO_type'].values, index=df_airline_types['ICAO']).to_dict()
+
+    # Read flight schedules
+    df_fs['nid'] = df_fs['service_id']
+    df_fs['flight_id'] = df_fs['service_id']
+    df_fs['callsign'] = df_fs['service_id'].str.split("_").apply(lambda x: x[0] + x[1])
+    df_fs['airline'] = df_fs['provider'].apply(lambda x: dict_aln_codes[x])
+    df_fs['airline_type'] = df_fs['airline'].apply(lambda x: dict_ao_types[x])
+    df_fs['long_short_dist'] = None
+    df_fs['aircraft_type'] = df_fs['act_type'].apply(lambda x: dict_ac_iata_icao[x])
+    df_fs['mtow'] = df_fs['aircraft_type'].apply(lambda x: dict_mtow[x])
+    df_fs['wk_tbl_cat'] = df_fs['aircraft_type'].apply(lambda x: dict_ac_wtc[x])
+    df_fs['registration'] = df_fs['flight_id']
+    df_fs['max_seats'] = df_fs['seats']
+    df_fs['exclude'] = 0
+
+    df_fs['long_short_dist'] = df_fs['gcdistance'].apply(lambda x: 'I' if x * 0.539957 > 500 else 'D')
+
+    df_fs = df_fs[['nid', 'flight_id', 'callsign', 'airline', 'airline_type', 'origin',
+           'destination', 'gcdistance', 'long_short_dist', 'sobt', 'sibt',
+           'aircraft_type', 'mtow', 'wk_tbl_cat', 'registration', 'max_seats',
+           'exclude']]
+
+    return df_fs

@@ -216,8 +216,19 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     df_cluster_pax.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
+    # Assign passengers to services
+    logger.important_info("Assigning passengers to services")
 
 
+    # Transform flight schedules into tactical input
+    df_flights_tactical = transform_fight_schedules_tactical_input(toml_config['other_param']['tactical_input'],
+                                             (Path(toml_config['network_definition']['network_path']) /
+                                              toml_config['network_definition']['processed_folder']),
+                                             pre_processed_version
+                                             )
+
+    ofp = 'flight_schedules_tactical_' + str(pre_processed_version) + '.csv'
+    df_flights_tactical.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
 
@@ -273,15 +284,14 @@ if __name__ == '__main__':
 
     # Loading functions here so that logging setting is inherited
     from strategic_evaluator.strategic_evaluator import (
-        create_network, preprocess_input, compute_itineraries,
-        compute_possible_itineraries_network,
+        create_network, preprocess_input, compute_possible_itineraries_network,
         compute_avg_paths_from_itineraries, cluster_options_itineraries,
         keep_pareto_equivalent_solutions, keep_itineraries_options,
         obtain_demand_per_cluster_itineraries
+        transform_fight_schedules_tactical_input
     )
     from strategic_evaluator.logit_model import (
-        assign_demand_to_paths, assign_passengers_main,
-        format_paths_for_predict, predict_main, select_paths
+        assign_demand_to_paths
     )
 
     with open(Path(args.toml_file), mode="rb") as fp:
@@ -293,6 +303,7 @@ if __name__ == '__main__':
     pc = 1
     if args.n_proc is not None:
         pc = int(args.n_proc)
+
 
     logger.important_info("Running first potential paths and then itineraries")
     run_full_strategic_pipeline(toml_config,
