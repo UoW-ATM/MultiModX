@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from itertools import combinations
 import multiprocessing as mp
+import ast
 import time
 import logging
 import sys
@@ -1932,7 +1933,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     # Helper function to process a row
     def process_row(row):
         modes = row['type'].split('_')
-        legs = [row.get(f'leg{i + 1}', None) for i in range(len(modes))]
+        legs = [row.get(f'nid_f{i + 1}', None) for i in range(len(modes))]
 
         # Initialize rail_pre and rail_post
         rail_pre = None
@@ -1982,16 +1983,22 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     df_valid_supported['destination2'] = np.nan
 
     # Update origin1 and destination1 based on rail_pre
+    def get_n_from_path(path, n):
+        if type(path)==str:
+            # The list is in a string form
+            path = ast.literal_eval(path)
+        return path[n]
+
     df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'origin1'] = \
-        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: x[0])
+        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x,0))
     df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'destination1'] = \
-        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: x[1])
+        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x, 1))
 
     # Update origin2 and destination2 based on rail_post
     df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'origin2'] = \
-        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: x[-2])
+        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -2))
     df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'destination2'] = \
-        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: x[-1])
+        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -1))
 
     df_valid_supported['gtfs_pre'] = np.nan
     df_valid_supported['gtfs_post'] = np.nan
