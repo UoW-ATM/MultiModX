@@ -250,8 +250,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                                                     df_itineraries_filtered.copy(),
                                                                     paras=toml_config['other_param']['pax_assigner'])
 
-    ofp = 'pax_assigned_from_flow_' + str(pre_processed_version) + '.csv'
-    df_pax_assigment.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    # ofp = 'pax_assigned_from_flow_' + str(pre_processed_version) + '.csv'
+    # df_pax_assigment.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
     ofp = 'pax_assigned_seats_max_target_' + str(pre_processed_version) + '.csv'
     d_seats_max.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
     ofp = 'pax_assigned_to_itineraries_options_' + str(pre_processed_version) + '.csv'
