@@ -200,6 +200,12 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
     df_itineraries_filtered.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
+    # Compute average paths from itineraries filtered
+    logger.info("Compute average path for filtered itineraries")
+    df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries_filtered)
+    ofp = 'possible_paths_avg_from_filtered_it_' + str(pre_processed_version) + '.csv'
+    df_avg_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
 
     # Assign passengers to paths clusters
     logger.important_info("Assigning passengers to Path Clustered")

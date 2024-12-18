@@ -1500,6 +1500,21 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     cols.insert(9, cols.pop(cols.index('total_travel_time_max')))
     df_paths_avg = df_paths_avg[cols]
 
+    # Count number of alternative_id (clusters) that are different per o-d-path triad.
+    if 'alternative_id' in df_itineraries.columns:
+        df_paths_alternatives = df_itineraries.copy()
+        df_paths_alternatives['path'] = df_paths_alternatives['path'].apply(str)
+        df_paths_alternatives = df_paths_alternatives.groupby(['origin', 'destination', 'path'])['alternative_id'].\
+            nunique().reset_index().rename(columns={'alternative_id': 'n_alternative_id'})
+        df_paths_avg = df_paths_avg.merge(df_paths_alternatives[['origin', 'destination', 'path', 'n_alternative_id']],
+                                          on=['origin', 'destination', 'path'], how='left')
+    else:
+        df_paths_avg['n_alternative_id'] = None
+
+    # Reorder n_alternative_id so that it's the third in the dataframe
+    col = df_paths_avg.pop('n_alternative_id')
+    df_paths_avg.insert(2, 'n_alternative_id', col)
+
     df_paths_avg['path'] = df_paths_avg['path'].apply(eval)
 
     return df_paths_avg
