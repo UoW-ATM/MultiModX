@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def utility_function(database, n_alternatives: int):
-    """This function define the parameters to be estimated and the utility dunction of each alternative
+    """This function defines the parameters to be estimated and the utility function of each alternative
 
     Args:
         database (biogeme.database): biogeme database with the information of alternatives
@@ -49,7 +49,7 @@ def utility_function(database, n_alternatives: int):
 
 
 def alternative_availability(database, n_alternatives: int):
-    """This function define the variable in the database that defines the availability of each alternative
+    """This function defines the variable in the database that defines the availability of each alternative
 
     Args:
         database (biogeme.database): biogeme database with the information of alternatives
