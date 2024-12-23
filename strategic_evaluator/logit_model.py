@@ -207,9 +207,9 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
     df_results = paths[['origin', 'destination']].copy()
 
     for k in range(n_archetypes):
-        logger.important_info(
-            f"Predicting number of passenger on each path for archetype {k}."
-        )
+        # logger.important_info(
+            # f"Predicting number of passenger on each path for archetype {k}."
+        # )
         weight_column = f'archetype_{k}'
         beta_values = res.bioResults(
             pickleFile=(
@@ -250,7 +250,8 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
     if (O, D) in paths_prob_dict.keys():
         return trips * paths_prob_dict[(O, D)][name]
     else:
-        logger.important_info(f"No paths on OD pair {O, D}")
+        pass
+        # logger.important_info(f"No paths on OD pair {O, D}")
 
 def get_probability_path_archetype(row, paths_prob_dict: dict, alternative_i: int):
     O = row['origin']
@@ -262,7 +263,8 @@ def get_probability_path_archetype(row, paths_prob_dict: dict, alternative_i: in
     if (O, D) in paths_prob_dict.keys():
         return paths_prob_dict[(O, D)][name]
     else:
-        logger.important_info(f"No paths on OD pair {O, D}")
+        pass
+        # logger.important_info(f"No paths on OD pair {O, D}")
 
 
 
