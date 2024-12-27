@@ -1,6 +1,7 @@
 from pathlib import Path
 from biogeme import models
 from biogeme.expressions import Beta
+import numpy as np
 import biogeme.database as db
 import biogeme.results as res
 import biogeme.biogeme as bio
@@ -14,7 +15,7 @@ from sklearn.model_selection import train_test_split
 logger = logging.getLogger(__name__)
 
 
-def utility_function(database, n_alternatives: int):
+def utility_function(database, n_alternatives: int, fixed_params: dict = None):
     """This function defines the parameters to be estimated and the utility function of each alternative
 
     Args:
@@ -30,20 +31,24 @@ def utility_function(database, n_alternatives: int):
     ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0)
     ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1)
 
-    B_TIME = Beta('B_TIME', 0, None, None, 0)
-    B_COST = Beta('B_COST', 0, None, None, 0)
-    B_CO2 = Beta('B_CO2', 0, None, None, 0)
+    # Retrieve fixed values for B_COST and B_TIME, or estimate them if not provided
+    B_TIME = Beta('B_TIME', fixed_params['B_TIME'] if fixed_params and 'B_TIME' in fixed_params else 0, None, None, 
+                  1 if fixed_params and 'B_TIME' in fixed_params else 0)
+    B_COST = Beta('B_COST', fixed_params['B_COST'] if fixed_params and 'B_COST' in fixed_params else 0, None, None, 
+                  1 if fixed_params and 'B_COST' in fixed_params else 0)
 
-    # We define the utility function for each alternative
-    i = 1
+    # B_CO2 is estimated only if B_TIME and B_COST are fixed
+    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 1)
+
+    # Define the utility function for each alternative
     V = {}
-    while i <= n_alternatives:
-        V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + ASC_PLANE * database.variables[f'plane_{i}'] + ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
+    for i in range(1, n_alternatives + 1):
+        V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + 
+                ASC_PLANE * database.variables[f'plane_{i}'] + 
+                ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
                 B_TIME * database.variables[f'travel_time_{i}'] +
                 B_COST * database.variables[f'cost_{i}'] +
                 B_CO2 * database.variables[f'emissions_{i}'])
-
-        i += 1
 
     return V
 
@@ -119,7 +124,7 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
     # df.groupby(['observed_choice'])['trips'].sum() / df['trips'].sum()
 
 
-def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int):
+def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, fixed_params: dict=None):
     """Main function to calibrate the logit model
 
     Args:
@@ -129,26 +134,32 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int):
     """
     # TO DO: create a configuration file. The input will only be the configuration file. For now we include other inputs
 
+    if fixed_params is None:
+        fixed_params = {} #set default value in the case there are no fixed parameters
+
     od_matrix = pd.read_csv(database_path)
 
     od_matrix_train, od_matrix_test = train_test_split(
         od_matrix, test_size=0.2, random_state=42)
 
     database_train = db.Database("train", od_matrix_train)
-    database_test = db.Database("train", od_matrix_test)
+    database_test = db.Database("test", od_matrix_test)
 
     for k in range(n_archetypes):
         weight_column = f'archetype_{k}'
+        archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
 
-        V = utility_function(database_train, n_alternatives)
+        V = utility_function(database_train, n_alternatives,archetype_fixed_params)
         av = alternative_availability(database_train, n_alternatives)
 
         the_biogeme, results = logit_model(
             database_train, V, av, weight_column)
 
+        print("Training results:")
         print(results.short_summary())
         print(results.getEstimatedParameters())
         print(results.getBetaValues())
+# there is no testing done, should we do it? 
 
 
 def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weight_column: str, beta_values: dict):
@@ -178,7 +189,7 @@ def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weig
     return probabilities
 
 
-def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str):
+def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str, fixed_params: dict = None):
     """_summary_
 
     Args:
@@ -206,17 +217,21 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
 
     df_results = paths[['origin', 'destination']].copy()
 
+    if fixed_params is None:
+        fixed_params = {} #set default value in the case there are no fixed parameters
+
     for k in range(n_archetypes):
         # logger.important_info(
             # f"Predicting number of passenger on each path for archetype {k}."
         # )
         weight_column = f'archetype_{k}'
+        archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
         beta_values = res.bioResults(
             pickleFile=(
                 Path(sensitivities["sensitivities"]) / f"{weight_column}.pickle")
         ).getBetaValues()
 
-        V = utility_function(database, n_alternatives)
+        V = utility_function(database, n_alternatives, archetype_fixed_params)
         av = alternative_availability(database, n_alternatives)
 
         probabilities = predict_probabilities(
