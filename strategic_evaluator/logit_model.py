@@ -117,6 +117,7 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
     biosim = bio.BIOGEME(database, simulate)
     biosim.modelName = weight_column + '_test'
     test_results = biosim.simulate(theBetaValues=beta_values)
+    return test_results
 
     # df = pd.DataFrame({'observed_choice': database_test.valuesFromDatabase(database_test.variables['observed_choice']),
     #           'trips': database_test.valuesFromDatabase(database_test.variables['trips'])})
@@ -140,7 +141,7 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, f
     od_matrix = pd.read_csv(database_path)
 
     od_matrix_train, od_matrix_test = train_test_split(
-        od_matrix, test_size=0.2, random_state=42)
+        od_matrix, test_size=0.2, random_state=43)
 
     database_train = db.Database("train", od_matrix_train)
     database_test = db.Database("test", od_matrix_test)
@@ -154,12 +155,18 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, f
 
         the_biogeme, results = logit_model(
             database_train, V, av, weight_column)
+        beta_values=results.get_beta_values()
+        # beta_values.update(archetype_fixed_params)
+        test_results=test_data_analysis(database_test, V, av, n_alternatives, weight_column, beta_values)
 
         print("Training results:")
         print(results.short_summary())
         print(results.getEstimatedParameters())
         print(results.getBetaValues())
-# there is no testing done, should we do it? 
+        print("Test results:")
+        print(beta_values)
+        print(test_results)
+ 
 
 
 def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weight_column: str, beta_values: dict):
@@ -230,6 +237,7 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
             pickleFile=(
                 Path(sensitivities["sensitivities"]) / f"{weight_column}.pickle")
         ).getBetaValues()
+        # beta_values.update(archetype_fixed_params)
 
         V = utility_function(database, n_alternatives, archetype_fixed_params)
         av = alternative_availability(database, n_alternatives)
