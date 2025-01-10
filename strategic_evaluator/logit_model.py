@@ -125,13 +125,15 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
     # df.groupby(['observed_choice'])['trips'].sum() / df['trips'].sum()
 
 
-def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, fixed_params: dict=None):
+def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, o_d_info: pd.DataFrame, fixed_params: dict=None,):
     """Main function to calibrate the logit model
 
     Args:
         database_path (str): path to the csv file with the information to calibrate the model
         n_archetypes (int): number of archetypes
         n_alternatives (int): number of alternatives between OD pairs
+        o_d_info (pd.Dataframe): information about the origin and destination of the trips
+        fixed_params (dict): dictionary with the fixed parameters coming from a previous calibration
     """
     # TO DO: create a configuration file. The input will only be the configuration file. For now we include other inputs
 
@@ -158,6 +160,7 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, f
         beta_values=results.get_beta_values()
         # beta_values.update(archetype_fixed_params)
         test_results=test_data_analysis(database_test, V, av, n_alternatives, weight_column, beta_values)
+        
 
         print("Training results:")
         print(results.short_summary())
