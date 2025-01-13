@@ -1,11 +1,12 @@
+import os
 from pathlib import Path
+import shutil
 import argparse
 import tomli
 import pandas as pd
 from collections import defaultdict
 import logging
 import sys
-from launch_parameters import n_archetypes
 sys.path.insert(1, '../..')
 
 
@@ -64,11 +65,32 @@ def read_origin_demand_matrix(path_demand):
     df_demand.replace('', None, inplace=True)
     return df_demand
 
+def recreate_output_folder(folder_path: Path):
+    """
+    Check if a folder exists, delete it if it does, and recreate it as an empty folder.
+
+    Args:
+        folder_path (Path): The path to the folder.
+    """
+    if folder_path.exists():
+        logger.important_info(f"Folder {folder_path} exists. Deleting...")
+        shutil.rmtree(folder_path)
+    logger.info(f"Creating folder {folder_path}...")
+    folder_path.mkdir(parents=True, exist_ok=True)
+    logger.important_info(f"Folder {folder_path} is ready.")
+
+
 
 def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                 max_connections=1, pre_processed_version=0,
                                 allow_mixed_operators_itineraries=False,
                                 use_heuristics_precomputed=False):
+
+    # Check if output folder exists, if not create it
+    recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
+                           toml_config['network_definition']['processed_folder'])
+    recreate_output_folder(Path(toml_config['output']['output_folder']))
+
 
     # Preprocess input
     logger.info("Pre-processing input")
@@ -86,10 +108,14 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # First compute potential paths
     # Create network
     logger.info("Create network simplified to compute paths")
+    heuristics_precomputed = None
+    if use_heuristics_precomputed:
+        heuristics_precomputed = toml_config['other_param']['heuristics_precomputed']
+
     network = create_network(network_definition,
                              compute_simplified=True,
                              allow_mixed_operators=allow_mixed_operators_itineraries,
-                             use_heuristics_precomputed=use_heuristics_precomputed,
+                             heuristics_precomputed=heuristics_precomputed,
                              pre_processed_version=pre_processed_version)
 
     # Compute potential paths
@@ -123,7 +149,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     network = create_network(
         network_definition,
         compute_simplified=False,
-        use_heuristics_precomputed=use_heuristics_precomputed,
+        heuristics_precomputed=heuristics_precomputed,
         pre_processed_version=pre_processed_version
     )
 
@@ -174,29 +200,101 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
     df_itineraries_filtered.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
+    # Compute average paths from itineraries filtered
+    logger.info("Compute average path for filtered itineraries")
+    df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries_filtered)
+    ofp = 'possible_paths_avg_from_filtered_it_' + str(pre_processed_version) + '.csv'
+    df_avg_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+
     # Assign passengers to paths clusters
+    logger.important_info("Assigning passengers to Path Clustered")
+
     n_alternatives = pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
     logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
     df_pax_demand_paths, df_paths_final = assign_demand_to_paths(pareto_df, n_alternatives, max_connections, toml_config)
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 
-
     # Add demand per cluster
     df_cluster_pax = obtain_demand_per_cluster_itineraries(pareto_df, df_pax_demand_paths, df_paths_final)
 
-    ofp = 'possible_itineraries_clustered_pareto_w_demand' + str(pre_processed_version) + '.csv'
+    ofp = 'possible_itineraries_clustered_pareto_w_demand_' + str(pre_processed_version) + '.csv'
     df_cluster_pax.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
+    # Assign passengers to services
+    logger.important_info("Assigning passengers to services")
+    # Read flight and train schedules (if exist)
+    fs_path = (Path(toml_config['network_definition']['network_path']) /
+               toml_config['network_definition']['processed_folder'] /
+               ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+    ts_path = (Path(toml_config['network_definition']['network_path']) /
+               toml_config['network_definition']['processed_folder'] /
+               ('rail_timetable_proc_' + str(pre_processed_version) + '.csv'))
+
+    # Initialize an empty list to hold dataframes of the schedules
+    dataframes = []
+
+    # Check if each file exists and read it if it does
+    if os.path.exists(fs_path):
+        fs = pd.read_csv(fs_path)
+        fs['mode'] = 'flight'
+        dataframes.append(fs[['service_id', 'seats', 'gcdistance', 'mode']])
+
+    if os.path.exists(ts_path):
+        ts = pd.read_csv(ts_path)
+        ts['mode'] = 'rail'
+        dataframes.append(ts[['service_id', 'seats', 'gcdistance', 'mode']])
+
+    # Concatenate dataframes if any exist, otherwise set ds to None
+    if dataframes:
+        ds = pd.concat(dataframes).rename(columns={'service_id': 'nid', 'seats': 'max_seats'})
+    else:
+        ds = None
+
+    df_pax_assigment, d_seats_max, df_options_w_pax = assing_pax_to_services(ds, df_cluster_pax.copy(),
+                                                                    df_itineraries_filtered.copy(),
+                                                                    paras=toml_config['other_param']['pax_assigner'])
+
+    # ofp = 'pax_assigned_from_flow_' + str(pre_processed_version) + '.csv'
+    # df_pax_assigment.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    ofp = 'pax_assigned_seats_max_target_' + str(pre_processed_version) + '.csv'
+    d_seats_max.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    ofp = 'pax_assigned_to_itineraries_options_' + str(pre_processed_version) + '.csv'
+    df_options_w_pax_save = df_options_w_pax.copy().drop(columns=['it','generated_info','avg_fare'])
+    df_options_w_pax_save.rename(columns={'volume': 'total_volume_pax_cluster',
+                                          'volume_ceil': 'total_volume_pax_cluster_ceil'})
+    df_options_w_pax_save.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
+    logger.important_info("Transforming format to tactical input")
+    # Transform passenger assigned into tactical input
+    df_pax_tactical, df_pax_tactical_not_supported = transform_pax_assigment_to_tactical_input(df_options_w_pax)
+
+    ofp = 'pax_assigned_tactical_' + str(pre_processed_version) + '.csv'
+    df_pax_tactical.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+    ofp = 'pax_assigned_tactical_not_supported_' + str(pre_processed_version) + '.csv'
+    df_pax_tactical_not_supported.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+
+    # Transform flight schedules into tactical input
+    # TODO: flight schedule might not exist if only rail layer used
+    df_flights_tactical = transform_fight_schedules_tactical_input(toml_config['other_param']['tactical_input'],
+                                             (Path(toml_config['network_definition']['network_path']) /
+                                              toml_config['network_definition']['processed_folder']),
+                                             pre_processed_version
+                                             )
+
+    ofp = 'flight_schedules_tactical_' + str(pre_processed_version) + '.csv'
+    df_flights_tactical.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
 
 # Setting up logging
 logging.addLevelName(IMPORTANT_INFO, "IMPORTANT_INFO")
 logging.Logger.important_info = important_info
-    
+
 
 if __name__ == '__main__':
 
@@ -245,15 +343,15 @@ if __name__ == '__main__':
 
     # Loading functions here so that logging setting is inherited
     from strategic_evaluator.strategic_evaluator import (
-        create_network, preprocess_input, compute_itineraries,
-        compute_possible_itineraries_network,
+        create_network, preprocess_input, compute_possible_itineraries_network,
         compute_avg_paths_from_itineraries, cluster_options_itineraries,
         keep_pareto_equivalent_solutions, keep_itineraries_options,
-        obtain_demand_per_cluster_itineraries
+        obtain_demand_per_cluster_itineraries, assing_pax_to_services,
+        transform_pax_assigment_to_tactical_input,
+        transform_fight_schedules_tactical_input
     )
     from strategic_evaluator.logit_model import (
-        assign_demand_to_paths, assign_passengers_main,
-        format_paths_for_predict, predict_main, select_paths
+        assign_demand_to_paths
     )
 
     with open(Path(args.toml_file), mode="rb") as fp:
@@ -266,7 +364,9 @@ if __name__ == '__main__':
     if args.n_proc is not None:
         pc = int(args.n_proc)
 
+
     logger.important_info("Running first potential paths and then itineraries")
+
     run_full_strategic_pipeline(toml_config,
                                 pc=pc,
                                 n_paths=int(args.num_paths),

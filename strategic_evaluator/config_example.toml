@@ -1,32 +1,46 @@
+[demand]
+    demand = "../../data/CS-ES-MD/v=0.7/demand/demand_ES_MD_intra_v0.1.csv"
+
+[output]
+	output_folder = "../../data/CS-ES-MD/v=0.7/processed_baseline/paths_itineraries/"
+
 [network_definition]
-    network_path = "../../data/CS-ES/v=0.5/"
-    processed_folder = "processed"
-    #potential_paths = "processed/paths_itineraries/possible_paths_avg_0_prev.csv"
-    potential_paths = "processed/paths_itineraries/potential_paths_0.csv"
+    network_path = "../../data/CS-ES-MD/v=0.7/"
+    processed_folder = "processed_baseline"
     [[network_definition.air_network]]
-        flight_schedules = "flight_schedules_oag_es.csv"
-        airports_static = "infrastructure/airports_coordinates_updated.csv"
-        mct_air = "infrastructure/mct_air.csv"
-        alliances = "air_alliances.csv"
+        flight_schedules = "flights_schedules/flight_schedules_oag_es_v0.3.csv"
+        alliances = "flights_schedules/air_alliances_v0.1.csv"
+        airports_static = "infrastructure/airports_info/airports_coordinates_v1.1.csv"
+        mct_air = "infrastructure/mct/mct_air_v0.2.csv"
+        mct_default = 30
     [[network_definition.rail_network]]
-        gtfs = "gtfs_es_20220708"
-        date_rail = "20220915" # Date to use to filter GTFS
+        gtfs = "gtfs_es_UIC_v1.0"
+        date_rail = "20230920" # Date to use to filter GTFS
         date_to_set_rail = "20190906" # Date from flights to make rail and flights 'compatible'
-        rail_stations_considered = "infrastructure/rail_stations_considered_GTFS_2022.csv"
+        rail_stations_considered = "infrastructure/rail_info/rail_stations_considered_GTFS_2022.csv"
+        mct_rail = "infrastructure/mct/mct_rail_v0.1.csv"
+        mct_default = 15
         create_rail_layer_from = 'services' #gtfs / services
         country = "LE"
+    [[network_definition.processing_time]]
+        airport_processes = "infrastructure/pax_processes/airport_processes_v0.1.csv"
+        iata_icao_static = "infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv"
+        rail_stations_processes = "infrastructure/pax_processes/rail_stations_processes_v0.1.csv"
+        default_process_time_k2g = 90
+        default_process_time_g2k = 30
+        default_process_time_k2p = 15
+        default_process_time_p2k = 10
     [[network_definition.multimodal]]
-        air_rail_transitions = "infrastructure/air_rail_transitions_all.csv"
+        air_rail_transitions = "infrastructure/infrastructure_transitions/infrastructure_transitions_v0.1.csv"
 	[[network_definition.regions_access]]
-		regions_access = "infrastructure/regions_access_all.csv"
-        iata_icao_static = "infrastructure/IATA_ICAO_Airport_codes_updated.csv"
-
-[demand]
-	#demand = "../../data/CS-ES/v=0.5/pax_demand_BCN_MAD.csv"
-    demand = "../../data/CS-ES/v=0.5/pax_demand_MAD_BCN.csv"
-    #demand = "../../data/CS-ES/v=0.5/pax_demand.csv"
+		regions_access = "infrastructure/regions_access/regions_access_v0.3.csv"
+        iata_icao_static = "infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv"
 
 [other_param]
+    [other_param.heuristics_precomputed]
+        heuristics_precomputed_air = "../../data/CS-ES-MD/v=0.7/heuristics/air_time_heuristics_v0.1.csv"
+        heuristics_precomputed_rail = "../../data/CS-ES-MD/v=0.7/heuristics/rail_time_heuristics_v0.1.csv"
+
     [other_param.kpi_cluster_itineraries]
         # Can define, or not kpis_to_use for the clustering of itineraries
         # Then, thresholds can be provided. if category doesn't exit (e.g. no rail, or no some
@@ -49,5 +63,53 @@
         total_emissions = 5
         total_waiting_time = 30
 
-[output]
-	output_folder = "../../data/CS-ES/v=0.5/processed/paths_itineraries/"
+    [other_param.sensitivities_logit]
+        sensitivities = "../../data/CS-ES-MD/v=0.7/sensitivities_v0.1"
+
+    [other_param.pax_assigner]
+        fillers_in_not_used_flights = 1 #Flights in the schedule but without any pax from the pax itineraries flow also fill with fillers. Otherwise, these flights will be empty.
+        train_seats_per_segment = 'combined' # 'segment' each train segment is treated independently, 'combined', but then if a pax uses x_1_2 and another x_3_5 the seats are 'shared' for the whole train 1_5...
+        type_of_optimisation = 'lexicographic' #Type of optimisation lexicographic or max_assinged_only
+        [other_param.pax_assigner.max_assinged_only]
+            problem_file = 'problem' #Save the Gurobi LP problem in a file
+            compute_leg2_plus_first = 1 # Either 1 or 0 to select if doing 2+ legs assigment first
+        [other_param.pax_assigner.lexicographic]
+            nprocs = 23 # For parallel computing
+            objectives = [['total_pax_connecting','maximize'],
+                          ['total_pax', 'maximize']]
+                          #['total_pax_combined_utilisation', 'maximize']]
+            [other_param.pax_assigner.lexicographic.thresholds]
+                [other_param.pax_assigner.lexicographic.thresholds.total_pax_connecting]
+                    type = 'relative'
+                    value = 0.05
+        [other_param.pax_assigner.target_load_factor]
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.75,0.95,1]
+            [other_param.pax_assigner.target_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.75,0.95,1]
+            [other_param.pax_assigner.target_load_factor.rail]
+                type = 'fix' # triangular | fix. If something else then flights will be at full capacity
+                param = 1
+
+        [other_param.pax_assigner.minimum_load_factor]
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.rail]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+
+    [other_param.tactical_input]
+        [other_param.tactical_input.aircraft]
+            ac_type_icao_iata_conversion = "../../data/CS-ES-MD/v=0.7/ac_airline_info/ac_type_icao_iata_v0.1.csv"
+            ac_mtow = "../../data/CS-ES-MD/v=0.7/ac_airline_info/mtow_v0.1.csv"
+            ac_wtc = "../../data/CS-ES-MD/v=0.7/ac_airline_info/wtc_v0.1.csv"
+        [other_param.tactical_input.airlines]
+            airline_ao_type = "../../data/CS-ES-MD/v=0.7/ac_airline_info/airline_icao_ao_type_v1.1.csv"
+            airline_iata_icao = "../../data/CS-ES-MD/v=0.7/ac_airline_info/iata_icao_airlines_codes_v1.1.csv"
+
+
+#  python ./strategic_pipeline.py -tf ../../data/CS-ES-MD/v=0.7/es_md_baseline.toml -ni 50 -np 100 -mc 1 -hpc -pc 23  -lf ./test_loggin.log -v

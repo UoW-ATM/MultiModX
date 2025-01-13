@@ -448,7 +448,7 @@ def assign_demand_to_paths(
 
     paths_probabilities = predict_main(
         paths_final, n_archetypes=n_archetypes,
-        n_alternatives=n_alternatives, sensitivities=network_paths_config['sensitivities']
+        n_alternatives=n_alternatives, sensitivities=network_paths_config['other_param']['sensitivities_logit']
     )
 
     pax_demand_paths = assign_passengers_main(

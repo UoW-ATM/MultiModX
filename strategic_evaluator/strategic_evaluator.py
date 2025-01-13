@@ -1,10 +1,12 @@
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from itertools import combinations
 import multiprocessing as mp
+import ast
 import time
-import re
 import logging
+import sys
 
 from joblib import Parallel, delayed
 
@@ -20,7 +22,7 @@ from libs.gtfs import get_stop_times_on_date, add_date_and_handle_overflow
 from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_flights, compute_costs_air,
                                               compute_emissions_rail, compute_costs_rail)
 from libs.time_converstions import  convert_to_utc_vectorized
-from libs.passenger_assigner.passenger_assigner import assign_passengers_options_solver
+from libs.passenger_assigner.passenger_assigner import assign_passengers_options_solver, fill_flights_too_empy
 
 
 logger = logging.getLogger(__name__)
@@ -53,7 +55,7 @@ def create_region_access_dict(df_ra_air):
     return regions_access_air
 
 
-def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_service=0,
+def create_air_layer(df_fs, df_as, df_mct, mct_default=None, df_ra_air=None, keep_only_fastest_service=0,
                      dict_dist_origin_destination=None,
                      heuristic_precomputed_distance=None):
 
@@ -67,6 +69,11 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
     dict_mct_international = dict(zip(df_mct['icao_id'], df_mct['international']))
     dict_mct_domestic = dict(zip(df_mct['icao_id'], df_mct['domestic']))
     dict_mct = {'std': dict_mct_std, 'int': dict_mct_international, 'dom': dict_mct_domestic}
+    if mct_default is not None:
+        dict_mct['avg_default'] = mct_default
+    else:
+        # Average of standard if nothing provided
+        dict_mct['avg_default'] = round(df_mct['standard'].mean())
 
     # Rename sobt and sibt
     df_fs.rename(columns={'sobt': 'departure_time', 'sibt': 'arrival_time'}, inplace=True)
@@ -121,6 +128,8 @@ def create_air_layer(df_fs, df_as, df_mct, df_ra_air=None, keep_only_fastest_ser
 
 def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_stops_considered=None, df_ra_rail=None,
                       keep_only_fastest_service=0,
+                      df_mct=None,
+                      mct_default=None,
                       df_stops=None,
                       heuristic_precomputed_distance=None):
 
@@ -131,6 +140,20 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
         rail_services_df = pre_process_rail_gtfs_to_services(df_rail, date_considered, df_stops)
     else:
         rail_services_df = df_rail
+
+    # MCT between rail if provided
+    dict_mct_rail = {}
+    avg_transfer_time = None
+
+    if df_mct is not None:
+        #  MCTs between air services
+        dict_mct_rail = dict(zip(df_mct['stop_id'], df_mct['default transfer time']))
+    if mct_default is not None:
+        avg_transfer_time = mct_default
+    elif df_mct is not None:
+        avg_transfer_time = round(df_mct['default transfer time'].mean())
+
+    dict_mct = {'std': dict_mct_rail, 'avg_default': avg_transfer_time}
 
     # Regions access -- Create dictionary
     regions_access_rail = None
@@ -200,7 +223,9 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
     else:
         heuristic_func = fastest_rail_time_heuristic
 
-    nl_rail = NetworkLayer('rail', rail_services_df, regions_access=regions_access_rail,
+    nl_rail = NetworkLayer('rail', rail_services_df,
+                           dict_mct=dict_mct,
+                           regions_access=regions_access_rail,
                            custom_initialisation=initialise_rail_network,
                            custom_mct_func=mct_rail_network,
                            custom_services_from_after_func=services_from_after_function_rail,
@@ -225,6 +250,7 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
 
 def compute_cost_emissions_air(df_fs):
     # print(df_fs[df_fs.gcdistance==0])
+    # TODO: emissions for long-haul flights
     df_fs['emissions'] = df_fs.apply(lambda row:
                                      compute_emissions_pax_short_mid_flights(row['gcdistance'], row['seats'])
                                      if pd.isnull(row['emissions']) else row['emissions'], axis=1)
@@ -308,34 +334,40 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
     df_stop_timess = []
 
     for rail_network in rail_networks:
+        # TODO: filter by parent stations
         df_stop_times = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stop_times.txt',
                                     dtype={'stop_id': str})
-        df_trips = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'trips.txt')
-        df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
-        df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
+
+        date_rail = rail_network['date_rail']  # '20230503'
+
+        if date_rail != 'None':
+            # Filter rail trips that operate on that day
+
+            df_trips = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'trips.txt')
+            df_calendar = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar.txt')
+            df_calendar_dates = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'calendar_dates.txt')
+            df_calendar.columns = list(df_calendar.columns.str.strip())
+            df_calendar_dates.columns = list(df_calendar_dates.columns.str.strip())
+            df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
+            df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
+            df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
+
+            date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
+
+            df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
+
         df_agency = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'agency.txt')
         df_stops = pd.read_csv(Path(path_network) / rail_network['gtfs'] / 'stops.txt', dtype={'stop_id': str})
 
-        df_calendar.columns = list(df_calendar.columns.str.strip())
-        df_calendar_dates.columns = list(df_calendar_dates.columns.str.strip())
-        df_calendar['start_date'] = pd.to_datetime(df_calendar['start_date'], format='%Y%m%d')
-        df_calendar['end_date'] = pd.to_datetime(df_calendar['end_date'], format='%Y%m%d')
-
-        df_calendar_dates['date'] = pd.to_datetime(df_calendar_dates['date'], format='%Y%m%d')
-
-        # TODO: filter by parent stations
-        date_rail = rail_network['date_rail'] #'20230503'
         date_to_set_rail = rail_network['date_to_set_rail']
-        date_rail = pd.to_datetime(date_rail, format='%Y%m%d')
         date_to_set_rail = pd.to_datetime(date_to_set_rail, format='%Y%m%d')
-
-        df_stop_times = get_stop_times_on_date(date_rail, df_calendar, df_calendar_dates, df_trips, df_stop_times)
 
         # Note that country is set for both stops when in reality the trip could be accross countries...
         # TODO improve country identification of stops in rail, for now just got from the toml file
         country = rail_network['country']
 
         # TODO: cost, emissions...
+        # TODO: agency linked with services
         rail_provider = df_agency.iloc[0].agency_name
         rail_alliance = df_agency.iloc[0].agency_name
         if 'provider' not in df_stop_times.columns:
@@ -467,35 +499,197 @@ def create_dict_distance_origin_destination(origin_destination_df):
 
 
 def create_network(path_network_dict, compute_simplified=False, allow_mixed_operators=True,
-                   use_heuristics_precomputed=False,
+                   heuristics_precomputed=None,
                    pre_processed_version=0):
     df_regions_access = None
     df_transitions = None
     layers = []
     network = None
 
+    df_airport_processes = None
+    df_rail_station_processes = None
+    if 'processing_time' in path_network_dict.keys():
+        # Read processing time at infrastructure if provided
+        df_processing_times_airl = []
+        df_processing_times_raill = []
+        default_k2g = []
+        default_g2k = []
+        default_k2p = []
+        default_p2k = []
+
+        for pt in path_network_dict['processing_time']:
+            # Read processing times airports and rails
+            if pt.get('airport_processes') is not None:
+                df_airport_processes_i = pd.read_csv(Path(path_network_dict['network_path']) /
+                                                     pt['airport_processes'])
+
+                if 'iata_icao_static' in pt:
+                    df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
+                                               pt['iata_icao_static'])
+
+                    # Deal wit the fact that some airports might be in IATA code instead of ICAO
+                    df_airport_processes_i['len_station'] = df_airport_processes_i['airport'].apply(lambda x: len(x))
+                    if len(df_airport_processes_i[(df_airport_processes_i['len_station'] == 3)]) > 0:
+                        df_airport_processes_i = df_airport_processes_i.merge(df_iata_icao[['IATA', 'ICAO']], how='left',
+                                                                              left_on='airport', right_on='IATA')
+                        df_airport_processes_i['ICAO'] = df_airport_processes_i['ICAO'].fillna(
+                            df_airport_processes_i['airport'])
+                        df_airport_processes_i['airport'] = df_airport_processes_i['ICAO']
+
+                df_processing_times_airl += [df_airport_processes_i]
+
+            # Read rail process times
+            if pt.get('rail_stations_processes') is not None:
+                df_rail_processes_i = pd.read_csv(Path(path_network_dict['network_path']) /
+                                                  pt['rail_stations_processes'], dtype={"station": str})
+
+                df_processing_times_raill += [df_rail_processes_i]
+
+            # Read default if provided
+            if pt.get('default_process_time_k2g') is not None:
+                default_k2g += [pt.get('default_process_time_k2g')]
+            if pt.get('default_process_time_g2k') is not None:
+                default_g2k += [pt.get('default_process_time_g2k')]
+            if pt.get('default_process_time_k2p') is not None:
+                default_k2p += [pt.get('default_process_time_k2p')]
+            if pt.get('default_process_time_p2k') is not None:
+                default_p2k += [pt.get('default_process_time_p2k')]
+
+        if len(df_processing_times_airl) > 0:
+            df_airport_processes = pd.concat(df_processing_times_airl, ignore_index=True)
+        if len(df_processing_times_raill) > 0:
+            df_rail_station_processes = pd.concat(df_processing_times_raill, ignore_index=True)
+
+        # Averages as more than one default could be provided in a list of processing times in the toml
+        def compute_default_processing(default_l):
+            if len(default_l)>0:
+                return round(sum(default_l)/len(default_l), 2)
+            else:
+                return None
+        default_k2g = compute_default_processing(default_k2g)
+        default_k2p = compute_default_processing(default_k2p)
+        default_g2k = compute_default_processing(default_g2k)
+        default_p2k = compute_default_processing(default_p2k)
+
     if 'regions_access' in path_network_dict.keys():
         # Read regions access to infrastructure if provided
         df_regions_accessl = []
         for ra in path_network_dict['regions_access']:
+
             df_regions_acess_i = pd.read_csv(Path(path_network_dict['network_path']) /
-                                        ra['regions_access'])
+                                        ra['regions_access'], dtype={"station": str})
 
-            if 'iata_icao_static' in ra:
-                df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
-                                        ra['iata_icao_static'])
+            if 'total_time' not in df_regions_acess_i.columns:
+                # We don't have a regions access with the total time computed
+                # We should have had processing times
+                if (((df_airport_processes is None) and ((default_k2g is None) or (default_g2k is None)))
+                        or ((df_rail_station_processes is None) and ((default_k2p is None) or (default_p2k is None)))):
+                    logger.error("Missing processing times (not defined in regions access)")
+                    sys.exit(-1)
 
-                # Deal wit the fact that some airports might be in IATA code instead of ICAO
-                df_regions_acess_i['len_station'] = df_regions_acess_i['station'].apply(lambda x: len(x))
-                if ((len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']) > 0) and
-                        (len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']['len_station'] == 3) > 0)):
+                # Reshaping the DataFrame
+                df_regions_acess_i = pd.melt(
+                    df_regions_acess_i,
+                    id_vars=["region", "station", "layer", "pax_type"],
+                    value_vars=["avg_d2i", "avg_i2d"],
+                    var_name="access_type",
+                    value_name="avg_time",
+                )
 
-                    df_regions_acess_i = df_regions_acess_i.merge(df_iata_icao[['IATA','ICAO']], how='left',
-                                                                  left_on='station', right_on='IATA')
+                # Mapping 'avg_d2i' to 'access' and 'avg_i2d' to 'egress'
+                df_regions_acess_i["access_type"] = df_regions_acess_i["access_type"].map({"avg_d2i": "access", "avg_i2d": "egress"})
 
-                    df_regions_acess_i['ICAO'] = df_regions_acess_i['ICAO'].fillna(df_regions_acess_i['station'])
+                if 'iata_icao_static' in ra:
+                    df_iata_icao = pd.read_csv(Path(path_network_dict['network_path']) /
+                                            ra['iata_icao_static'])
 
-                    df_regions_acess_i['station'] = df_regions_acess_i['ICAO']
+                    # Deal wit the fact that some airports might be in IATA code instead of ICAO
+                    df_regions_acess_i['len_station'] = df_regions_acess_i['station'].apply(lambda x: len(x))
+
+                    if ((len(df_regions_acess_i[df_regions_acess_i['layer'] == 'air']) > 0) and
+                            (len(df_regions_acess_i[(df_regions_acess_i['layer'] == 'air') &
+                                                    (df_regions_acess_i['len_station'] == 3)]) > 0)):
+                        df_regions_acess_i = df_regions_acess_i.merge(df_iata_icao[['IATA','ICAO']], how='left',
+                                                                      left_on='station', right_on='IATA')
+                        df_regions_acess_i['ICAO'] = df_regions_acess_i['ICAO'].fillna(df_regions_acess_i['station'])
+                        df_regions_acess_i['station'] = df_regions_acess_i['ICAO']
+
+                # Merge with airport processes
+                if df_airport_processes is not None:
+                    df_air_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "air"].merge(
+                        df_airport_processes,
+                        left_on=["station", "pax_type"],
+                        right_on=["airport", "pax_type"],
+                        how="left"
+                    )
+
+                    # Add the processing time column for air
+                    df_air_merged["processing_time"] = np.where(
+                        df_air_merged["access_type"] == "access",
+                        df_air_merged["k2g"],
+                        df_air_merged["g2k"]
+                    )
+
+                    # Fill missing values
+                    df_air_merged.loc[df_air_merged["access_type"] == "access", "processing_time"] = \
+                        df_air_merged.loc[df_air_merged["access_type"] == "access", "processing_time"].fillna(
+                            default_k2g)
+
+                    df_air_merged.loc[df_air_merged["access_type"] == "egress", "processing_time"] = \
+                        df_air_merged.loc[df_air_merged["access_type"] == "egress", "processing_time"].fillna(
+                            default_g2k)
+
+                else:
+                    # We should have the defaults
+                    df_air_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "air"]
+                    df_air_merged['processing_time'] = df_air_merged.apply(
+                        lambda row: default_k2g if row["access_type"] == "access" else default_g2k,
+                        axis=1
+                    )
+
+                if df_rail_station_processes is not None:
+                    # Merge with rail processes
+                    df_rail_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "rail"].merge(
+                        df_rail_station_processes,
+                        left_on=["station", "pax_type"],
+                        right_on=["station", "pax_type"],
+                        how="left"
+                    )
+
+                    # Add the processing time column for rail
+                    df_rail_merged["processing_time"] = np.where(
+                        df_rail_merged["access_type"] == "access",
+                        df_rail_merged["k2p"],
+                        df_rail_merged["p2k"]
+                    )
+
+                    # Fill missing values
+                    df_rail_merged.loc[df_rail_merged["access_type"] == "access", "processing_time"] = \
+                        df_rail_merged.loc[df_rail_merged["access_type"] == "access", "processing_time"].fillna(
+                            default_k2p)
+
+                    df_rail_merged.loc[df_rail_merged["access_type"] == "egress", "processing_time"] = \
+                        df_rail_merged.loc[df_rail_merged["access_type"] == "egress", "processing_time"].fillna(
+                            default_p2k)
+
+
+                else:
+                    # We should have the defaults
+                    df_rail_merged = df_regions_acess_i[df_regions_acess_i["layer"] == "rail"]
+                    df_rail_merged['processing_time'] = df_rail_merged.apply(
+                        lambda row: default_k2p if row["access_type"] == "access" else default_p2k,
+                        axis=1
+                    )
+
+                # Combine the two DataFrames
+                df_regions_acess_i = pd.concat([df_air_merged, df_rail_merged], ignore_index=True)
+
+                # Drop unnecessary columns
+                df_regions_acess_i = df_regions_acess_i[
+                    ["region", "station", "layer", "access_type", "pax_type", "avg_time", "processing_time"]
+                ]
+
+                df_regions_acess_i['total_time'] = df_regions_acess_i['avg_time'] + df_regions_acess_i['processing_time']
 
             df_regions_accessl += [df_regions_acess_i]
 
@@ -506,7 +700,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_asl = []
         df_mctl = []
         df_ra_airl = []
-        df_heuristic_airl = []
+        mct_defaultl = []
 
         dict_dist_origin_destination = {}
         df_heuristic_air = None
@@ -560,6 +754,9 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             df_mct = pd.read_csv(Path(path_network_dict['network_path']) /
                                  an['mct_air'])
 
+            if an.get('mct_default') is not None:
+                mct_defaultl += [an.get('mct_default')]
+
             # Get regions access for air
             df_ra_air = None
             if df_regions_access is not None:
@@ -567,33 +764,36 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 if len(df_ra_air) == 0:
                     df_ra_air = None
 
-            if use_heuristics_precomputed:
-                p_heuristic_air = (Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                   'heuristics_computed' / 'air_time_heuristics.csv')
-
-                if p_heuristic_air.exists():
-                    # We have the file for air time heuristics
-                    df_heuristic_air = pd.read_csv(p_heuristic_air)
-
-                    df_heuristic_airl += [df_heuristic_air]
-
             df_fsl += [df_fs]
             df_asl += [df_as]
             df_mctl += [df_mct]
             df_ra_airl += [df_ra_air]
 
+        if heuristics_precomputed is not None:
+            p_heuristic_air = Path(heuristics_precomputed['heuristics_precomputed_air'])
+            if p_heuristic_air.exists():
+                # We have the file for air time heuristics
+                df_heuristic_air = pd.read_csv(p_heuristic_air)
+
         df_fs = pd.concat(df_fsl, ignore_index=True)
         df_as = pd.concat(df_asl, ignore_index=True)
         df_mct = pd.concat(df_mctl, ignore_index=True)
         df_ra_air = pd.concat(df_ra_airl, ignore_index=True)
-        if len(df_heuristic_airl) > 0:
-            df_heuristic_air = pd.concat(df_heuristic_airl, ignore_index=True)
+
+        mct_default = None
+        if len(mct_defaultl)>0:
+            # If MCT provided for the different definitions of air create one MCT as
+            # average of all provided.
+            # TODO: Allow different MCTs per definition of rail layer
+            mct_default = sum(mct_defaultl) / len(mct_defaultl)
 
         # Use first two letters of airport ICAO codes for country origin and destination
         df_fs['country_origin'] = df_fs['origin'].str[:2]
         df_fs['country_destination'] = df_fs['destination'].str[:2]
 
-        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct, df_ra_air,
+        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct,
+                                     mct_default=mct_default,
+                                     df_ra_air=df_ra_air,
                                      keep_only_fastest_service=only_fastest,
                                      dict_dist_origin_destination=dict_dist_origin_destination,
                                      heuristic_precomputed_distance=df_heuristic_air)
@@ -601,6 +801,10 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
     if 'rail_network' in path_network_dict.keys():
         df_rail_data_l = []
+        df_stopsl = []
+        df_mctl = []
+        mct_defaultl = []
+        mct_default = None
         need_save = False
         for rn in path_network_dict['rail_network']:
             date_rail_str = rn['date_to_set_rail']
@@ -651,8 +855,32 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
                 df_rail_data_l += [df_rail_data]
 
+            # Need the stops to have its coordinates
+            df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
+                                      'stops.txt', dtype={'stop_id': str})]
+
+            # Read MCTs between rail services
+            if rn.get('mct_rail') is not None:
+                df_mct = pd.read_csv(Path(path_network_dict['network_path']) /
+                                      rn['mct_rail'], dtype={'stop_id': str})
+
+                df_mctl += [df_mct]
+            if rn.get('mct_default') is not None:
+                mct_defaultl += [rn.get('mct_default')]
+
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
         df_rail_data = compute_cost_emissions_rail(df_rail_data)
+        df_stops = pd.concat(df_stopsl, ignore_index=True)
+
+        df_mct = None
+        if len(df_mctl)>0:
+            df_mct = pd.concat(df_mctl, ignore_index=True)
+
+        if len(mct_defaultl)>0:
+            # If MCT provided for the different definitions of rail create one MCT as
+            # average of all provided.
+            # TODO: Allow different MCTs per definition of rail layer
+            mct_default = round(sum(mct_defaultl) / len(mct_defaultl))
 
         # Compute departure and arrival times in UTC times
         # Vectorized processing for departure times
@@ -688,22 +916,11 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 df_ra_rail = None
 
         df_heuristic_rail = None
-        if use_heuristics_precomputed:
-            p_heuristic_rail = (Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
-                                'heuristics_computed' / 'rail_time_heuristics.csv')
+        if heuristics_precomputed is not None:
+            p_heuristic_rail = Path(heuristics_precomputed['heuristics_precomputed_rail'])
             if p_heuristic_rail.exists():
-                # We have the file for air time heuristics
+                # We have the file for rail time heuristics
                 df_heuristic_rail = pd.read_csv(p_heuristic_rail)
-
-            df_stopsl = []
-            for rn in path_network_dict['rail_network']:
-                # Need the stops to have its coordinates
-                df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
-                                       'stops.txt', dtype={'stop_id': str})]
-
-            df_stops = pd.concat(df_stopsl, ignore_index=True)
-        else:
-            df_stops = None
 
         only_fastest = 0
         if compute_simplified:
@@ -715,6 +932,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                        df_ra_rail=df_ra_rail,
                                        keep_only_fastest_service=only_fastest,
                                        df_stops=df_stops,
+                                       df_mct=df_mct,
+                                       mct_default=mct_default,
                                        heuristic_precomputed_distance=df_heuristic_rail)
 
         layers += [rail_layer]
@@ -723,14 +942,146 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_transitionsl = []
         for mm in path_network_dict['multimodal']:
             df_transitionsl += [pd.read_csv(Path(path_network_dict['network_path']) /
-                                            mm['air_rail_transitions'])]
+                                            mm['air_rail_transitions'], dtype={'origin_station': str,
+                                                                               'destination_station': str})]
 
         df_transitions = pd.concat(df_transitionsl, ignore_index=True)
+
+        if 'mct' not in df_transitions.columns:
+            # If MCT is in the df_transitions then the format already has the value
+            # if not compute it by adding g2k/p2k and k2g/k2p to the travel time between
+            # stations
+
+            # We should have had processing times
+            if (((df_airport_processes is None) and ((default_k2g is None) or (default_g2k is None)))
+                    or ((df_rail_station_processes is None) and ((default_k2p is None) or (default_p2k is None)))):
+                logger.error("Missing processing times (not defined in multimodal definition)")
+                sys.exit(-1)
+
+            # Create two new DataFrames for each direction
+            df_a_b = df_transitions[["origin_station", "destination_station", "layer_origin", "layer_destination",
+                         "avg_travel_a_b"]].rename(
+                columns={"avg_travel_a_b": "avg_travel_time"}
+            )
+
+            df_b_a = df_transitions[["destination_station", "origin_station", "layer_destination", "layer_origin",
+                         "avg_travel_b_a"]].rename(
+                columns={"destination_station": "origin_station", "origin_station": "destination_station",
+                         "layer_destination": "layer_origin", "layer_origin": "layer_destination",
+                         "avg_travel_b_a": "avg_travel_time"}
+            )
+
+            # Combine the two DataFrames
+            df_transitions = pd.concat([df_a_b, df_b_a], ignore_index=True)
+
+            # Ensure _multimodal columns exist in airport processes
+            if "k2g_multimodal" not in df_airport_processes.columns:
+                df_airport_processes["k2g_multimodal"] = df_airport_processes["k2g"]
+            if "g2k_multimodal" not in df_airport_processes.columns:
+                df_airport_processes["g2k_multimodal"] = df_airport_processes["g2k"]
+
+            # Ensure _multimodal columns exist in rail station processes
+            if "k2p_multimodal" not in df_rail_station_processes.columns:
+                df_rail_station_processes["k2p_multimodal"] = df_rail_station_processes["k2p"]
+            if "p2k_multimodal" not in df_rail_station_processes.columns:
+                df_rail_station_processes["p2k_multimodal"] = df_rail_station_processes["p2k"]
+
+            # Merge for origin_station (x2k logic)
+            df_transitions = (df_transitions.merge(
+                df_airport_processes[["airport", "pax_type", "g2k", "g2k_multimodal"]],
+                left_on="origin_station",
+                right_on="airport",
+                how="left"
+            ).merge(
+                df_rail_station_processes[["station", "pax_type", "p2k", "p2k_multimodal"]],
+                left_on="origin_station",
+                right_on="station",
+                how="left"
+            ).drop(columns=["airport", "station"]))
+
+            df_transitions['pax_type'] = df_transitions.apply(
+                lambda row: row['pax_type_x'] if pd.notna(row['pax_type_x']) else row['pax_type_y'],
+                axis=1
+            )
+
+            df_transitions = df_transitions.drop(columns=['pax_type_x', 'pax_type_y'])
+
+            if default_g2k is not None:
+                df_transitions.loc[((df_transitions.layer_origin == "air") &
+                                (df_transitions.g2k_multimodal.isna())), 'pax_type'] = 'all'
+                df_transitions.loc[((df_transitions.layer_origin == "air") &
+                                (df_transitions.g2k_multimodal.isna())), 'g2k_multimodal'] = default_g2k
+
+            if default_p2k is not None:
+                df_transitions.loc[((df_transitions.layer_origin == "rail") &
+                                    (df_transitions.g2k_multimodal.isna())), 'pax_type'] = 'all'
+                df_transitions.loc[((df_transitions.layer_origin == "rail") &
+                                    (df_transitions.g2k_multimodal.isna())), 'p2k_multimodal'] = default_p2k
+
+
+            # Determine x2k based on layer_origin
+            df_transitions["x2k"] = df_transitions.apply(
+                lambda row: row["g2k_multimodal"] if row["layer_origin"] == "air" else row["p2k_multimodal"],
+                axis=1
+            )
+
+            # Merge for destination_station (k2x logic)
+            df_transitions = df_transitions.merge(
+                df_airport_processes[["airport", "pax_type", "k2g", "k2g_multimodal"]],
+                left_on=("destination_station", "pax_type"),
+                right_on=("airport", "pax_type"),
+                how="left"
+            ).merge(
+                df_rail_station_processes[["station", "pax_type", "k2p", "k2p_multimodal"]],
+                left_on=("destination_station", "pax_type"),
+                right_on=("station", "pax_type"),
+                how="left"
+            ).drop(columns=["airport", "station"])
+
+            if default_k2g is not None:
+                df_transitions.loc[((df_transitions.layer_destination == "air") &
+                                    (df_transitions.k2g_multimodal.isna())), 'k2g_multimodal'] = default_k2g
+
+            if default_k2p is not None:
+                df_transitions.loc[((df_transitions.layer_destination == "rail") &
+                                    (df_transitions.k2g_multimodal.isna())), 'k2p_multimodal'] = default_k2p
+
+
+            # Determine k2x based on layer_destination
+            df_transitions["k2x"] = df_transitions.apply(
+                lambda row: row["k2g_multimodal"] if row["layer_destination"] == "air" else row["k2p_multimodal"],
+                axis=1
+            )
+
+            # Drop intermediate columns used for merging
+            df_transitions = df_transitions.drop(columns=["g2k", "g2k_multimodal", "p2k", "p2k_multimodal",
+                                                          "k2g", "k2g_multimodal", "k2p", "k2p_multimodal"])
+
+            # Compute MCT to transition between layers
+            df_transitions['mct'] = df_transitions['x2k'] + df_transitions['avg_travel_time'] + df_transitions['k2x']
+
+            df_transitions.drop(columns=['x2k', 'k2x'], inplace=True)
+
 
         df_transitions.rename(columns={'origin_station': 'origin', 'destination_station': 'destination',
                                        'layer_origin': 'layer_id_origin', 'layer_destination': 'layer_id_destination'},
                               inplace=True)
-        df_transitions['mct'] = df_transitions['mct'].apply(lambda x: {'all': x})
+
+        # Save transitions mct computed
+        #(Path(path_network) / processed_folder / fflights
+
+        df_transitions.to_csv((Path(path_network_dict['network_path']) / path_network_dict['processed_folder'] /
+                              'transition_layer_connecting_times.csv' ), index=False)
+
+        if 'pax_type' not in df_transitions:
+            df_transitions['mct'] = df_transitions['mct'].apply(lambda x: {'all': x})
+        else:
+            # Group by origin, destination, layer_id_origin, and layer_id_destination, and aggregate mct into a dictionary by pax_type
+            df_transitions = df_transitions.groupby(
+                ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
+            ).apply(
+                lambda group: group.set_index('pax_type')['mct'].to_dict()
+            ).reset_index(name='mct')
 
     if len(layers) > 0:
         if len(layers) == 1:
@@ -1149,6 +1500,21 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     cols.insert(9, cols.pop(cols.index('total_travel_time_max')))
     df_paths_avg = df_paths_avg[cols]
 
+    # Count number of alternative_id (clusters) that are different per o-d-path triad.
+    if 'alternative_id' in df_itineraries.columns:
+        df_paths_alternatives = df_itineraries.copy()
+        df_paths_alternatives['path'] = df_paths_alternatives['path'].apply(str)
+        df_paths_alternatives = df_paths_alternatives.groupby(['origin', 'destination', 'path'])['alternative_id'].\
+            nunique().reset_index().rename(columns={'alternative_id': 'n_alternative_id'})
+        df_paths_avg = df_paths_avg.merge(df_paths_alternatives[['origin', 'destination', 'path', 'n_alternative_id']],
+                                          on=['origin', 'destination', 'path'], how='left')
+    else:
+        df_paths_avg['n_alternative_id'] = None
+
+    # Reorder n_alternative_id so that it's the third in the dataframe
+    col = df_paths_avg.pop('n_alternative_id')
+    df_paths_avg.insert(2, 'n_alternative_id', col)
+
     df_paths_avg['path'] = df_paths_avg['path'].apply(eval)
 
     return df_paths_avg
@@ -1162,7 +1528,9 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     def filter_similar_options(group, kpis, thresholds=None):
         filtered_options = []
         clusters = {}
-        group = group.dropna(subset=kpis)
+        # Remove the dropna as we want to keep options even if some KPIs are missing. They'll be replaced
+        # by 0, which maybe it's not great, but at least not loosing options.
+        # group = group.dropna(subset=kpis)
         for category in group['journey_type'].unique():
             category_group = group[group['journey_type'] == category]
 
@@ -1423,10 +1791,8 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
 
 def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, paras):
 
-    df_possible_itineraries_orig = df_possible_itineraries.copy()
-    df_schedules_orig = df_schedules.copy()
-
     if paras['train_seats_per_segment'].lower() == 'combined'.lower():
+        # TODO: rail option of capacities considering stops
         # If combined need to remove the stops from the train ids so from xxx_stop1_stop2 to xxx on the id
         # of the trains and on the df_possible_itineraries
         # Also for seats keep the mean number of seats and for distance the max
@@ -1453,29 +1819,38 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         mode_cols = [col for col in df_possible_itineraries.columns if col.startswith('mode_')]
 
         for service_col, mode_col in zip(service_cols, mode_cols):
-            df_possible_itineraries[service_col] = df_possible_itineraries.apply(
-                lambda row: re.sub(r'_.*', '', row[service_col]) if row[mode_col] == 'rail' else row[service_col],
-                axis=1
-            )
+            # Apply the transformation only to rows where mode_col is 'rail'
+            df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col] = \
+                df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col].str.replace(
+                    r'_.*', '', regex=True)
 
     # Initialize unique IDs for df_demand
-    df_demand['id'] = range(1, len(df_demand) + 1)
+    df_demand['id'] = np.arange(1, len(df_demand) + 1)
+
+    # Step 0: If journey_type is none then mode should be none too
+    df_possible_itineraries.loc[(df_possible_itineraries['journey_type']=='none'), 'mode_0'] = None
 
     # Step 1: Merge df_demand and df_poss_it on alternative_id
     merged_df = pd.merge(df_possible_itineraries, df_demand, on='alternative_id', suffixes=('_opt', '_pax'))
 
     # Step 2: Create a per-passenger DataFrame by repeating each row for each passenger
-    merged_df = merged_df.loc[merged_df.index.repeat(merged_df['num_pax'])].reset_index(drop=True)
+    # This is not needed as we're working with groups, no need to create a row per individual pax
+    #merged_df = merged_df.loc[merged_df.index.repeat(merged_df['num_pax'])].reset_index(drop=True)
 
     # Step 3: Assign 'nid_f1', 'nid_f2', ..., based on service_id_x from df_poss_it
     # Determine the maximum number of services (to know how many nid_fx columns we need)
     max_services = int(merged_df['nservices_pax'].max())
 
     # Create columns for each service (e.g., nid_f1, nid_f2, ...)
-    for i in range(max_services):
-        col_name = f'nid_f{i + 1}'
-        service_col_name = f'service_id_{i}'  # Service columns in df_poss_it
-        merged_df[col_name] = merged_df[service_col_name]
+    #for i in range(max_services):
+    #    col_name = f'nid_f{i + 1}'
+    #    service_col_name = f'service_id_{i}'  # Service columns in df_poss_it
+    #    merged_df[col_name] = merged_df[service_col_name]
+
+    # Generate a mapping of service columns to new column names
+    columns_map = {f'service_id_{i}': f'nid_f{i + 1}' for i in range(max_services)}
+    # Rename the columns in one operation
+    merged_df = merged_df.rename(columns=columns_map)
 
     # Step 4: Construct 'type' column using vectorized operations for better performance
     modes = [f'mode_{i}' for i in range(max_services)]
@@ -1484,14 +1859,21 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
     for mode in modes:
         merged_df[mode] = merged_df[mode].replace('air', 'flight')
 
+    # Add type as concatenation of modes flight, rail, rail_rail, rail_flight, flight_flight, rail_flight_rail, etc.
     merged_df['type'] = merged_df[modes].fillna('').agg('_'.join, axis=1)
-    merged_df['type'] = merged_df['type'].str.replace(r'^_|_+$', '',
-                                                      regex=True)  # Remove leading and trailing underscores
+
+    # Remove leading and trailing underscores
+    #merged_df['type'] = merged_df['type'].str.replace(r'^_|_+$', '', regex=True)
+    merged_df['type'] = merged_df['type'].str.strip('_') # Remove leading and trailing underscores
+
     merged_df['type'] = merged_df['type'].str.replace(r'_+', '_', regex=True)  # Replace multiple underscores with one
+    # if type=='' put None
+    merged_df.loc[(merged_df['type']==''), 'type'] = None
 
     # Step 5: Rename and select the required columns for the final output
     nid_columns = [f'nid_f{i + 1}' for i in range(max_services)]
-    final_columns = ['id', 'option_number'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
+    # We keep also alternative_id as this is a key to identify demand groups
+    final_columns = ['id', 'option_number', 'alternative_id', 'path'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
                                                              'fare']
 
     merged_df = merged_df.rename(columns={'total_cost_opt': 'fare', 'total_waiting_time_opt': 'total_waiting_time',
@@ -1502,5 +1884,196 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
     # Create unique id for option_number
     options['option_number'] = range(1, len(options) + 1)
 
-    # Display final dataframe
-    return assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
+    it_gen, d_seats_max, options = assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
+
+    # it_gen = fill_flights_too_empy(it_gen, df_schedules, d_seats_max, options, paras, verbose=False)
+
+    # For ach option add pax assigned
+    df_options_w_pax = options.merge(it_gen[['it', 'option', 'pax', 'avg_fare', 'generated_info']],
+                                     left_on=['id', 'option_number'],
+                                        right_on=['it', 'option'], how='left').drop(columns=['option'])
+    df_options_w_pax['pax'] = df_options_w_pax['pax'].fillna(0)
+
+    return it_gen, d_seats_max, df_options_w_pax
+
+
+'''
+Create the input for the tactical evaluator (Mercury) from the pax assigment
+'''
+def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigment, df_options):
+    df_pax = df_options_w_pax[df_options_w_pax.pax>0].copy() #df_pax_assigment.merge(df_options, right_on=['id', 'option_number'], left_on=['it', 'option'], how='left')
+
+    # Define the regex patterns for dynamic column selection
+    leg_pattern = r'^leg\d+$'  # Matches columns like leg1, leg2, ...
+    nid_f_pattern = r'^nid_f\d+$'  # Matches columns like nid_f1, nid_f2, ...
+
+    # Specify fixed columns to include
+    fixed_columns = ['it', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path']
+
+    # Filter dynamically using regex for `leg` and `nid_f` columns
+    dynamic_columns = df_pax.filter(regex=f'({leg_pattern}|{nid_f_pattern})').columns.tolist()
+
+    # Combine fixed and dynamic columns
+    selected_columns = fixed_columns + dynamic_columns
+
+    # Filter the dataframe to include only the selected columns
+    df_pax = df_pax[selected_columns]
+    df_pax['ticket_type'] = 'economy'
+
+    # Separate rows where 'type' is None
+    df_pax_non_supported_tactically = df_pax[df_pax['type'].isnull()].copy()
+    df_supported = df_pax[df_pax['type'].notnull()].copy()
+
+    # Define a function to check validity of the `type` column
+    def is_valid_type(type_str):
+        modes = type_str.split('_')
+        # Only allow 'rail' in the first or last position if it appears
+        if 'rail' in modes[1:-1]:  # If 'rail' is in the middle
+            return False
+        if len(modes) > 1 and all(mode == 'rail' for mode in modes):  # All rail
+            return False
+        return True
+
+    # Apply the validity check to the supported rows
+    df_supported['valid_type'] = df_supported['type'].apply(is_valid_type)
+
+    # Separate valid and invalid rows
+    df_valid_supported = df_supported[df_supported['valid_type']].drop(columns=['valid_type'])
+    df_pax_non_supported_tactically = pd.concat(
+        [df_pax_non_supported_tactically, df_supported[~df_supported['valid_type']]]
+    ).drop(columns=['valid_type'])
+
+    df_pax_non_supported_tactically['type'].drop_duplicates()
+
+    # Helper function to process a row
+    def process_row(row):
+        modes = row['type'].split('_')
+        legs = [row.get(f'nid_f{i + 1}', None) for i in range(len(modes))]
+
+        # Initialize rail_pre and rail_post
+        rail_pre = None
+        rail_post = None
+
+        # Move rail IDs to rail_pre and rail_post
+        if modes[0] == 'rail':
+            rail_pre = legs[0]
+            legs[0] = None
+        if modes[-1] == 'rail':
+            rail_post = legs[-1]
+            legs[-1] = None
+
+        # Remove rail IDs from legs
+        flight_ids = [leg if mode == 'flight' else None for mode, leg in zip(modes, legs)]
+
+        # Compact flight IDs to fill gaps
+        flight_ids = [fid for fid in flight_ids if fid is not None]
+        flight_ids += [None] * (len(legs) - len(flight_ids))  # Pad with None
+
+        # Update the row
+        row['rail_pre'] = rail_pre
+        row['rail_post'] = rail_post
+        for i, flight_id in enumerate(flight_ids):
+            row[f'leg{i + 1}'] = flight_id
+        for j in range(len(flight_ids), len(legs)):  # Set remaining leg columns to None
+            row[f'leg{j + 1}'] = None
+
+        return row
+
+    # Apply processing
+    df_valid_supported = df_valid_supported.copy()
+    df_valid_supported['rail_pre'] = None
+    df_valid_supported['rail_post'] = None
+    df_valid_supported = df_valid_supported.apply(process_row, axis=1)
+
+    # Drop unnecessary leg columns (if needed)
+    max_legs = df_valid_supported['type'].str.count('_').max() + 1
+    extra_cols = [f'leg{i + 1}' for i in
+                  range(max_legs, len([col for col in df_valid_supported.columns if col.startswith('leg')]))]
+    df_valid_supported = df_valid_supported.drop(columns=extra_cols, errors='ignore')
+
+    # Add new columns and initialize with NaN
+    df_valid_supported['origin1'] = np.nan
+    df_valid_supported['destination1'] = np.nan
+    df_valid_supported['origin2'] = np.nan
+    df_valid_supported['destination2'] = np.nan
+
+    # Update origin1 and destination1 based on rail_pre
+    def get_n_from_path(path, n):
+        if type(path)==str:
+            # The list is in a string form
+            path = ast.literal_eval(path)
+        return path[n]
+
+    df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'origin1'] = \
+        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x,0))
+    df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'destination1'] = \
+        df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x, 1))
+
+    # Update origin2 and destination2 based on rail_post
+    df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'origin2'] = \
+        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -2))
+    df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'destination2'] = \
+        df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -1))
+
+    df_valid_supported['gtfs_pre'] = np.nan
+    df_valid_supported['gtfs_post'] = np.nan
+
+    # Filter rows tacitcal pax assignment
+    df_valid_supported = df_valid_supported.rename(
+        columns={'it': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
+    leg_columns = [col for col in df_valid_supported.columns if col.startswith('leg')]
+    df_valid_supported = df_valid_supported[
+        ['nid_x', 'pax', 'avg_fare', 'ticket_type'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
+                                                                     'gtfs_post',
+                                                                     'origin1', 'destination1', 'origin2',
+                                                                     'destination2',
+                                                                     'type']]
+
+    return df_valid_supported, df_pax_non_supported_tactically
+
+
+def transform_fight_schedules_tactical_input(config, path_folder_network, pre_processed_version):
+    path_flight_schedules = (path_folder_network / ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+
+    df_fs = pd.read_csv(path_flight_schedules)
+
+    # Read aircraft related information
+    df_ac_icao_iata = pd.read_csv(config['aircraft']['ac_type_icao_iata_conversion'])
+    dict_ac_iata_icao = pd.Series(df_ac_icao_iata['icao_ac_code'].values,
+                                  index=df_ac_icao_iata['iata_ac_code']).to_dict()
+
+    df_ac_wt = pd.read_csv(config['aircraft']['ac_wtc'])
+    dict_ac_wtc = pd.Series(df_ac_wt['wake'].values, index=df_ac_wt['ac_icao']).to_dict()
+
+    df_mtow = pd.read_csv(config['aircraft']['ac_mtow'])
+    dict_mtow = pd.Series(df_mtow['mtow'].values, index=df_mtow['aircraft_type']).to_dict()
+
+    # Read airline related information
+    df_airline_codes = pd.read_csv(config['airlines']['airline_iata_icao'])
+    dict_aln_codes = pd.Series(df_airline_codes['ICAO_code'].values, index=df_airline_codes['IATA_code']).to_dict()
+
+    df_airline_types = pd.read_csv(config['airlines']['airline_ao_type'])
+    dict_ao_types = pd.Series(df_airline_types['AO_type'].values, index=df_airline_types['ICAO']).to_dict()
+
+    # Read flight schedules
+    df_fs['nid'] = df_fs['service_id']
+    df_fs['flight_id'] = df_fs['service_id']
+    df_fs['callsign'] = df_fs['service_id'].str.split("_").apply(lambda x: x[0] + x[1])
+    df_fs['airline'] = df_fs['provider'].apply(lambda x: dict_aln_codes[x])
+    df_fs['airline_type'] = df_fs['airline'].apply(lambda x: dict_ao_types[x])
+    df_fs['long_short_dist'] = None
+    df_fs['aircraft_type'] = df_fs['act_type'].apply(lambda x: dict_ac_iata_icao[x])
+    df_fs['mtow'] = df_fs['aircraft_type'].apply(lambda x: dict_mtow[x])
+    df_fs['wk_tbl_cat'] = df_fs['aircraft_type'].apply(lambda x: dict_ac_wtc[x])
+    df_fs['registration'] = df_fs['flight_id']
+    df_fs['max_seats'] = df_fs['seats']
+    df_fs['exclude'] = 0
+
+    df_fs['long_short_dist'] = df_fs['gcdistance'].apply(lambda x: 'I' if x * 0.539957 > 500 else 'D')
+
+    df_fs = df_fs[['nid', 'flight_id', 'callsign', 'airline', 'airline_type', 'origin',
+           'destination', 'gcdistance', 'long_short_dist', 'sobt', 'sibt',
+           'aircraft_type', 'mtow', 'wk_tbl_cat', 'registration', 'max_seats',
+           'exclude']]
+
+    return df_fs
