@@ -109,10 +109,10 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
     simulate = {}
     for i in range(1, n_alternatives + 1):
         prob_i = models.logit(V, av, i)
-        trips_i = prob_i * database.variables[weight_column]
+        # trips_i = prob_i * database.variables[weight_column]
 
         simulate[f'prob_{i}'] = prob_i
-        simulate[f'trips_{i}'] = trips_i
+        # simulate[f'trips_{i}'] = trips_i
 
     biosim = bio.BIOGEME(database, simulate)
     biosim.modelName = weight_column + '_test'
@@ -141,13 +141,14 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, o
         fixed_params = {} #set default value in the case there are no fixed parameters
 
     od_matrix = pd.read_csv(database_path)
-
+    
     od_matrix_train, od_matrix_test = train_test_split(
         od_matrix, test_size=0.2, random_state=43)
 
     database_train = db.Database("train", od_matrix_train)
     database_test = db.Database("test", od_matrix_test)
 
+    test_results_archetypes={}
     for k in range(n_archetypes):
         weight_column = f'archetype_{k}'
         archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
@@ -160,7 +161,12 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, o
         beta_values=results.get_beta_values()
         # beta_values.update(archetype_fixed_params)
         test_results=test_data_analysis(database_test, V, av, n_alternatives, weight_column, beta_values)
-        
+        # test_results=pd.merge(test_results,o_d_info_archetype,left_index=True,right_index=True,how="inner") #gets the origin and destination information
+        # for i in range(1,n_alternatives+1):
+        #     trips_i=f"trips_{i}"
+        #     prob_i=f"prob_{i}"
+        #     test_results[trips_i]=test_results[f"trips_per_od_pair_arch_{k}"]*test_results[prob_i]
+        test_results_archetypes[f"test_results_archetype_{k}"]=test_results
 
         print("Training results:")
         print(results.short_summary())
@@ -169,6 +175,8 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, o
         print("Test results:")
         print(beta_values)
         print(test_results)
+    return test_results_archetypes
+        
  
 
 
