@@ -38,7 +38,7 @@ def utility_function(database, n_alternatives: int, fixed_params: dict = None):
                   1 if fixed_params and 'B_COST' in fixed_params else 0)
 
     # B_CO2 is estimated only if B_TIME and B_COST are fixed
-    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 1)
+    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 0)
 
     # Define the utility function for each alternative
     V = {}
