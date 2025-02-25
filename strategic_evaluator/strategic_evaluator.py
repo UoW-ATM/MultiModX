@@ -1873,11 +1873,11 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
     # Step 5: Rename and select the required columns for the final output
     nid_columns = [f'nid_f{i + 1}' for i in range(max_services)]
     # We keep also alternative_id as this is a key to identify demand groups
-    final_columns = ['id', 'option_number', 'alternative_id', 'path'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
-                                                             'fare']
+    final_columns = ['id', 'origin', 'destination', 'option_number', 'alternative_id', 'path'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
+                                                             'fare', 'access_time', 'egress_time']
 
     merged_df = merged_df.rename(columns={'total_cost_opt': 'fare', 'total_waiting_time_opt': 'total_waiting_time',
-                                          'total_travel_time_opt': 'total_time', 'num_pax': 'volume'})
+                                          'total_travel_time_opt': 'total_time', 'num_pax': 'volume', 'origin_opt':'origin', 'destination_opt':'destination'})
 
     options = merged_df[final_columns].copy()
 
@@ -1908,7 +1908,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     nid_f_pattern = r'^nid_f\d+$'  # Matches columns like nid_f1, nid_f2, ...
 
     # Specify fixed columns to include
-    fixed_columns = ['it', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path']
+    fixed_columns = ['option_number', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time']
 
     # Filter dynamically using regex for `leg` and `nid_f` columns
     dynamic_columns = df_pax.filter(regex=f'({leg_pattern}|{nid_f_pattern})').columns.tolist()
@@ -2020,10 +2020,10 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
 
     # Filter rows tacitcal pax assignment
     df_valid_supported = df_valid_supported.rename(
-        columns={'it': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
+        columns={'option_number': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
     leg_columns = [col for col in df_valid_supported.columns if col.startswith('leg')]
     df_valid_supported = df_valid_supported[
-        ['nid_x', 'pax', 'avg_fare', 'ticket_type'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
+        ['nid_x', 'pax', 'avg_fare', 'ticket_type', 'origin', 'destination', 'access_time', 'egress_time'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
                                                                      'gtfs_post',
                                                                      'origin1', 'destination1', 'origin2',
                                                                      'destination2',
