@@ -262,6 +262,9 @@ def format_trips_abroad(trips_abroad:pd.DataFrame,mcc_to_country: dict):
     #sums trips that have the same characteristics
     cols=list(trips_abroad.columns)
     cols.remove("trips")
+
+    #remove ground entries
+    trips_abroad=trips_abroad[(trips_abroad["entry_point"].str.startswith("airport", na=False))|(trips_abroad["exit_point"].str.startswith("airport",na=False))]
     trips_abroad=trips_abroad.groupby(cols,as_index=False, dropna=False)['trips'].sum()
     
     return trips_abroad
