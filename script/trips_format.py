@@ -161,34 +161,20 @@ def remove_abroad_train_trips(trips: pd.DataFrame):
     trips_final=pd.concat([trips_no_abroad,trips_abroad],axis=0)
     return trips_final
 
-def remove_numbers_fr_pt(trips: pd.DataFrame):
-    """Function to group by all the trips going to France and portugal
+def remove_numbers_fr_pt(column: pd.Series):
+    """This function replaces the zones of france and portugal by FR or PT and 
+    the abroad_mcc code by only the code
     
     Args:
-        trips dataframe
-    
-    Returns:
-        trips dataframe
-    """
-    for index,row in trips.iterrows():
-        #remove number from destination
-        string=row["destination_zone"]
-        if row["destination_zone"].startswith("FR"):
-            trips.loc[index,"destination_zone"]=re.sub("[a-zA-Z0-9]{3}$","",string)
-        elif row["destination_zone"].startswith("PT"):
-            trips.loc[index,"destination_zone"]=re.sub("[a-zA-Z0-9]{3}$","",string)
-        elif row["destination_zone"].startswith("abroad_"):
-            trips.loc[index,"destination_zone"]=string.replace("abroad_","")
-
-        #remove numbers from origin
-        string=row["origin_zone"]
-        if row["origin_zone"].startswith("FR"):
-            trips.loc[index,"origin_zone"]=re.sub("[a-zA-Z0-9]{3}$","",string)
-        elif row["origin_zone"].startswith("PT"):
-            trips.loc[index,"origin_zone"]=re.sub("[a-zA-Z0-9]{3}$","",string)
-        elif row["origin_zone"].startswith("abroad_"):
-            trips.loc[index,"origin_zone"]=string.replace("abroad_","")
-    return trips
+        columns of the trips dataframe
+        
+    Returns
+        columns of the trips dataframe"""
+    # Remove numbers for FR and PT
+    column = column.str.replace(r"^(FR|PT)[a-zA-Z0-9]{3}$", r"\1", regex=True)
+    # Remove 'abroad_' prefix
+    column = column.astype(str).str.replace(r"^abroad_", "", regex=True)
+    return column
 
 def map_mcc_to_country(zone, mcc_to_country: dict):
     """This function changes the origin or destination zone of a trips 
@@ -234,40 +220,50 @@ def precise_origin_destination(trips_abroad: pd.DataFrame):
 
     return trips_abroad
 
-def format_trips_abroad(trips_abroad:pd.DataFrame,mcc_to_country: dict):
-    """This is the main function for formatting the trips from or to abroad
+def format_trips_abroad(trips_abroad: pd.DataFrame, mcc_to_country: dict) -> pd.DataFrame:
+    """This is the main function for formatting the trips from or to abroad.
     
     Args:
-        trips_abroad: the original dataframe
-        mcc_to_country: a dictionary containing the equivalence between the
-        mcc code and the country
+        trips_abroad: The original dataframe.
+        mcc_to_country: A dictionary containing the equivalence between the
+                        MCC code and the country.
     
     Returns:
-        The modified trips_abroad dataframe
+        The modified trips_abroad dataframe (a copy of the original).
     """
-    #remove information about the zones in france and portugal since this
-    #is not needed
-    trips_abroad=remove_numbers_fr_pt(trips_abroad)
+    # Create a copy of the DataFrame to avoid modifying the original
+    trips_abroad_copy = trips_abroad.copy()
 
-    # changes the three digit number to the name of the country
-    trips_abroad.loc[:,"destination_zone"]=trips_abroad["destination_zone"].apply(lambda x: map_mcc_to_country(x, mcc_to_country))
-    trips_abroad.loc[:,"origin_zone"]=trips_abroad["origin_zone"].apply(lambda x: map_mcc_to_country(x, mcc_to_country))
+    # Remove information about the zones in France and Portugal since this is not needed
+    trips_abroad_copy.loc[:, "destination_zone"] = remove_numbers_fr_pt(trips_abroad_copy["destination_zone"])
+    trips_abroad_copy.loc[:, "origin_zone"] = remove_numbers_fr_pt(trips_abroad_copy["origin_zone"])
 
-    # changes "abroad" to the exact origin and destination
-    trips_abroad=precise_origin_destination(trips_abroad)
+    # Change the three-digit number to the name of the country
+    trips_abroad_copy.loc[:, "destination_zone"] = trips_abroad_copy["destination_zone"].apply(
+        lambda x: map_mcc_to_country(x, mcc_to_country)
+    )
+    trips_abroad_copy.loc[:, "origin_zone"] = trips_abroad_copy["origin_zone"].apply(
+        lambda x: map_mcc_to_country(x, mcc_to_country)
+    )
 
-    # drops the column containing the weird stations
-    trips_abroad=trips_abroad.drop(["weird_stations"],axis=1)
+    # Change "abroad" to the exact origin and destination
+    trips_abroad_copy = precise_origin_destination(trips_abroad_copy)
 
-    #sums trips that have the same characteristics
-    cols=list(trips_abroad.columns)
+    # Drop the column containing the weird stations
+    trips_abroad_copy = trips_abroad_copy.drop(["weird_stations"], axis=1)
+
+    # Sum trips that have the same characteristics
+    cols = list(trips_abroad_copy.columns)
     cols.remove("trips")
 
-    #remove ground entries
-    trips_abroad=trips_abroad[(trips_abroad["entry_point"].str.startswith("airport", na=False))|(trips_abroad["exit_point"].str.startswith("airport",na=False))]
-    trips_abroad=trips_abroad.groupby(cols,as_index=False, dropna=False)['trips'].sum()
-    
-    return trips_abroad
+    # Remove ground entries
+    trips_abroad_copy = trips_abroad_copy[
+        (trips_abroad_copy["entry_point"].str.startswith("airport", na=False)) |
+        (trips_abroad_copy["exit_point"].str.startswith("airport", na=False))
+    ]
+    trips_abroad_final = trips_abroad_copy.groupby(cols, as_index=False, dropna=False)['trips'].sum()
+
+    return trips_abroad_final
 
 def format_trips_national(trips_national: pd.DataFrame): 
     """This function formats the national trips to match them to the 
