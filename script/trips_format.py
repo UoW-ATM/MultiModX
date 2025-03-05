@@ -286,3 +286,43 @@ def format_trips_national(trips_national: pd.DataFrame):
     trips_national=trips_national.groupby(cols,as_index=False, dropna=False)['trips'].sum()    
 
     return trips_national
+
+def rescale_trips(trips_abroad:pd.DataFrame,coeffs_incoming: pd.DataFrame,coeffs_outgoing: pd.DataFrame):
+    """This function rescales the international trips with the coefficients
+    provided.
+    
+    Args:
+        trips_abroad dataframe
+        incoming_coefficients dataframe
+        outgoing coefficients dataframe
+
+    Returns:
+        trips_abroad dataframe
+    """
+    #creata a copy of the original dataframe
+    trips_abroad_final=trips_abroad.copy()
+    
+    #initialisation columns
+    cols=[f"archetype_{n}" for n in range(6)]
+    cols.append("trips")
+
+    #set the origin and destination rows as indices in the coefficients
+    coeffs_incoming_right_index=coeffs_incoming.set_index("origin")
+    coeffs_outgoing_right_index=coeffs_outgoing.set_index("destination")
+
+    #main iteration
+    for idx,row in trips_abroad.iterrows():
+        origin=row["origin"]
+        destination=row["destination"]
+
+        #selects origin that match the origin in the coefficients
+        if origin in set(coeffs_incoming["origin"]):
+            for col in cols:
+                trips_abroad_final.at[idx,col]=row[col]*coeffs_incoming_right_index["real_vs_predicted_coeff"].loc[origin]
+
+        #does the same with destination
+        if destination in set(coeffs_outgoing["destination"]):
+            for col in cols:
+                trips_abroad_final.at[idx,col]=row[col]*coeffs_outgoing_right_index["real_vs_predicted_coeff"].loc[destination]
+
+    return trips_abroad_final
