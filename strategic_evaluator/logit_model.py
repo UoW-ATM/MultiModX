@@ -489,3 +489,48 @@ def assign_demand_to_paths(
 
 
     return pax_demand_paths, paths_final
+
+def calibration_results_summary(archetypes: dict):
+    data=[]
+    for i in range(6):
+        
+        archetype = archetypes[f"archetype_{i}"] # accesses the values  
+        values=archetype.get_estimated_parameters() # dataframe of the betavalues 
+        
+
+        asc_plane = values.loc['ASC_PLANE']["Value"]  
+        asc_plane_significance=(values.loc["ASC_PLANE"]["Rob. p-value"]<0.05)
+
+        asc_train = values.loc['ASC_TRAIN']["Value"]
+        asc_train_significance=(values.loc["ASC_TRAIN"]["Rob. p-value"]<0.05)
+
+        b_co2 = values.loc['B_CO2']["Value"]      
+        b_co2_significance=(values.loc["B_CO2"]["Rob. p-value"]<0.05)
+
+        b_time = values.loc['B_TIME']["Value"]
+        b_time_significance=(values.loc["B_TIME"]["Rob. p-value"]<0.05)
+
+        b_cost=values.loc["B_COST"]["Value"]
+        b_cost_significance=(values.loc["B_COST"]["Rob. p-value"]<0.05)
+
+        # Create a row dictionary
+        row = {
+            "Archetype": f"Archetype {i}",
+            "ASC_PLANE": asc_plane,
+            "ASC_PLANE_SIGNIFICANCE": asc_plane_significance,
+            "ASC_TRAIN": asc_train,
+            "ASC_TRAIN_SIGNIFICANCE": asc_train_significance,
+            "B_CO2": b_co2,
+            "B_CO2_SIGNIFICANCE": b_co2_significance,
+            "B_TIME": b_time,
+            "B_TIME_SIGNIFICANCE": b_time_significance,
+            "B_COST": b_cost,
+            "B_COST_SIGNIFICANCE": b_cost_significance
+        }
+        
+        # Append the row to the list
+        data.append(row)
+
+    # Create a DataFrame from the data
+    calibration_results = pd.DataFrame(data)
+    return calibration_results
