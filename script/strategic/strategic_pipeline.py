@@ -256,7 +256,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
         network_definition,
         compute_simplified=False,
         heuristics_precomputed=heuristics_precomputed,
-        pre_processed_version=pre_processed_version
+        pre_processed_version=pre_processed_version,
+        policy_package=toml_config.get('policy_package')
     )
 
     # Compute itineraries
