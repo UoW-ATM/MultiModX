@@ -500,7 +500,12 @@ def create_dict_distance_origin_destination(origin_destination_df):
 
 def create_network(path_network_dict, compute_simplified=False, allow_mixed_operators=True,
                    heuristics_precomputed=None,
-                   pre_processed_version=0):
+                   pre_processed_version=0,
+                   policy_package=None):
+
+    if policy_package is None:
+        policy_package = {}
+
     df_regions_access = None
     df_transitions = None
     layers = []
@@ -947,6 +952,35 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         df_transitions = pd.concat(df_transitionsl, ignore_index=True)
 
+        df_transitions['extra_avg_travel_a_b'] = 0
+        df_transitions['extra_avg_travel_b_a'] = 0
+
+        if policy_package.get('integrated_ticketing') is not None:
+            extra_rail_air = policy_package['integrated_ticketing'].get('rail_air_processing_extra', 0)
+            extra_air_rail = policy_package['integrated_ticketing'].get('air_rail_processing_extra', 0)
+
+            # Use np.where for efficient conditional assignment
+            df_transitions['extra_avg_travel_a_b'] = np.where(
+                (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'rail'),
+                extra_air_rail,
+                np.where(
+                    (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'air'),
+                    extra_rail_air,
+                    0
+                )
+            )
+
+            df_transitions['extra_avg_travel_b_a'] = np.where(
+                (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'air'),
+                extra_air_rail,
+                np.where(
+                    (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'rail'),
+                    extra_rail_air,
+                    0
+                )
+            )
+
+
         if 'mct' not in df_transitions.columns:
             # If MCT is in the df_transitions then the format already has the value
             # if not compute it by adding g2k/p2k and k2g/k2p to the travel time between
@@ -960,15 +994,15 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
             # Create two new DataFrames for each direction
             df_a_b = df_transitions[["origin_station", "destination_station", "layer_origin", "layer_destination",
-                         "avg_travel_a_b"]].rename(
-                columns={"avg_travel_a_b": "avg_travel_time"}
+                         "avg_travel_a_b", "extra_avg_travel_a_b"]].rename(
+                columns={"avg_travel_a_b": "avg_travel_time", "extra_avg_travel_a_b": "extra_avg_travel_time"}
             )
 
             df_b_a = df_transitions[["destination_station", "origin_station", "layer_destination", "layer_origin",
-                         "avg_travel_b_a"]].rename(
+                         "avg_travel_b_a", "extra_avg_travel_b_a"]].rename(
                 columns={"destination_station": "origin_station", "origin_station": "destination_station",
                          "layer_destination": "layer_origin", "layer_origin": "layer_destination",
-                         "avg_travel_b_a": "avg_travel_time"}
+                         "avg_travel_b_a": "avg_travel_time", "extra_avg_travel_b_a": "extra_avg_travel_time"}
             )
 
             # Combine the two DataFrames
@@ -1058,10 +1092,10 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                                           "k2g", "k2g_multimodal", "k2p", "k2p_multimodal"])
 
             # Compute MCT to transition between layers
-            df_transitions['mct'] = df_transitions['x2k'] + df_transitions['avg_travel_time'] + df_transitions['k2x']
+            df_transitions['mct'] = (df_transitions['x2k'] + df_transitions['avg_travel_time'] +
+                                     df_transitions['extra_avg_travel_time'] + df_transitions['k2x'])
 
             df_transitions.drop(columns=['x2k', 'k2x'], inplace=True)
-
 
         df_transitions.rename(columns={'origin_station': 'origin', 'destination_station': 'destination',
                                        'layer_origin': 'layer_id_origin', 'layer_destination': 'layer_id_destination'},

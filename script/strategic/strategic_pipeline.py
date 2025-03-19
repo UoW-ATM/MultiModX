@@ -221,7 +221,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                              compute_simplified=True,
                              allow_mixed_operators=allow_mixed_operators_itineraries,
                              heuristics_precomputed=heuristics_precomputed,
-                             pre_processed_version=pre_processed_version)
+                             pre_processed_version=pre_processed_version,
+                             policy_package=toml_config.get('policy_package'))
 
     # Compute potential paths
     # Instead of computing these they could be read from a readily available csv file.
