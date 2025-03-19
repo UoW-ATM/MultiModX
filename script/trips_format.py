@@ -480,7 +480,7 @@ def assign_airport_incoming(trips_incoming: pd.DataFrame,
 def assign_airport_outgoing(trips_outgoing: pd.DataFrame, 
                             flights_capacity: pd.DataFrame, 
                             seats_to: dict):
-    """Recallibrates the number of trips according to the information of the airports
+    """Recalibrates the number of trips according to the information of the airports
     
     Args:
         trips_outgoing dataframe: dataframe with information about the trips going abroad from spain
@@ -563,3 +563,126 @@ def trips_format_to_pipeline(trips):
     combined_df = combined_df.sort_values(by=["origin", "destination", "archetype"])
 
     return combined_df
+
+
+def trips_logit_format(trips_logit: pd.DataFrame):
+    """Function to format the trips used for logit calibration. The trips have to be
+    imported as a csv from the notebook new_trips_to_paths. It will permanently modify the
+    dataframe if run.
+    
+    Args:
+        trips_logit: dataframe with the information about origin, destination, path cost and probabilities
+        
+    Returns:
+        The modified dataframe"""
+    
+    # IMPORTANT TO RUN THIS LINE TO ENSURE THAT WE STAY WITH THE MOST USED ALTERNATIVES
+    trips_logit=trips_logit.sort_values(by=["origin","destination","trips"],ascending=[True,True,False])
+
+    # number the alternatives
+    trips_logit['noption'] = trips_logit.groupby(['origin', 'destination']).cumcount() + 1
+    return trips_logit
+
+
+def generate_calibration_matrix(trips_logit:pd.DataFrame, 
+                                paths_w_costs: pd.DataFrame,
+                                max_num_options=3,
+                                drop_single_paths=False):
+    """Function that generates the calibration matrix for the Logit model.
+    
+    Args:
+        trips_logit: trips dataframe formated using trips_logit_format
+        paths_w_costs
+        max_num_options: maximum number of options that we want to consider. Default is set to 3
+        drop_single_paths: Boolean value. If true, trips with only one option will not be considered for
+        calibration
+
+    Returns:
+        calibration_matrix"""
+    calibration_matrix=trips_logit[trips_logit["noption"]<=max_num_options]
+    calibration_matrix=trips_logit.drop(columns=["path","nmodes","access_time","egress_time","travel_time_0","cost_0","emissions_0","mct_time_0_1","travel_time_1","cost_1","emissions_1","mct_time_1_2","travel_time_2","cost_2","total_cost","total_emissions","total_cost"])
+    calibration_matrix=calibration_matrix.merge(paths_w_costs, on=["origin","destination"],how="left")
+    calibration_matrix=calibration_matrix.rename(columns={"noption":"observed_choice"})
+    calibration_matrix=calibration_matrix.drop(columns=["origin","destination"])
+
+    if drop_single_paths==True:
+        calibration_matrix=calibration_matrix[(calibration_matrix["av_2"]!=0)]
+    return calibration_matrix
+
+
+def generate_paths_w_costs(trips_logit: pd.DataFrame,max_num_option=3):
+    """generates the paths with costs file from the trips_logit dataframe. If a path
+    is not available, it has time, cost and co2 set to -1.
+    
+    Args:
+        trips_logit: dataframe
+        max_num_options: maximum number of options that we want to consider. Default is set to 3
+        
+    Returns:
+        paths_w_cost: dataframe"""
+    cols = [f"{item}_{i}" for i in range(1, 4) for item in ["travel_time", "cost", "emissions", "train", "plane", "multimodal", "av"]]
+    paths_w_costs=pd.DataFrame(columns=cols)
+    # select the origin-destination pairs
+    unique_combinations = trips_logit[['origin', 'destination']].drop_duplicates()
+
+    # copy them
+    paths_w_costs.insert(0,"origin", unique_combinations["origin"])
+    paths_w_costs.insert(1,"destination", unique_combinations["destination"])
+
+    # assign default values for the rest of the columns
+    for col in cols:
+        if col.startswith("av") or col.startswith("plane") or col.startswith("train") or col.startswith("multimodal"):
+            paths_w_costs[col]= 0
+        else:
+            paths_w_costs[col]= float(-1)
+
+
+    # assign values from trips_logit
+    for idx, row in paths_w_costs.iterrows():
+        for i in range(1,max_num_option+1):
+            # retreaves travel_time, travel_cost, and co2
+            travel_time = trips_logit[(trips_logit["origin"] == row["origin"]) & 
+                                        (trips_logit["destination"] == row["destination"]) & 
+                                        (trips_logit["noption"] == i)]["total_travel_time"]
+            
+            travel_cost=trips_logit[(trips_logit["origin"] == row["origin"]) & 
+                                        (trips_logit["destination"] == row["destination"]) & 
+                                        (trips_logit["noption"] == i)]["total_cost"]
+            
+            co2=trips_logit[(trips_logit["origin"] == row["origin"]) & 
+                                        (trips_logit["destination"] == row["destination"]) & 
+                                        (trips_logit["noption"] == i)]["total_emissions"]
+
+            if not travel_time.empty:
+                paths_w_costs.loc[idx, f"travel_time_{i}"] = travel_time.iloc[0]
+
+            if not travel_cost.empty:
+                paths_w_costs.loc[idx, f"cost_{i}"]=travel_cost.iloc[0]
+
+            if not co2.empty:
+                paths_w_costs.loc[idx, f"emissions_{i}"]=co2.iloc[0]
+        # checks for train, plane and multimodal
+
+                # Get the "path" column as a Series and check if it's empty
+            path_series = trips_logit[(trips_logit["origin"] == row["origin"]) & 
+                                    (trips_logit["destination"] == row["destination"]) & 
+                                    (trips_logit["noption"] == i)]["path"]
+
+            # Check if the Series is not empty before accessing its first element
+            if not path_series.empty:
+                path = path_series.iloc[0]  # Extract the first element of the Series (assuming only one match)
+                
+                # Now apply the regex checks on the string `path`
+                if bool(re.search(r'(?=.*[A-Z])(?=.*\d)', path)):  # checks for numbers and capital letters in path
+                    paths_w_costs.loc[idx, f"multimodal_{i}"] = 1
+                    paths_w_costs.loc[idx, f"av_{i}"] = 1
+                elif bool(re.search(r'^[^A-Z]*$', path)):  # checks for the absence of capital letters -> means no airports
+                    paths_w_costs.loc[idx, f"train_{i}"] = 1
+                    paths_w_costs.loc[idx, f"av_{i}"] = 1
+                elif bool(re.search(r'^\D*$', path)):  # checks for the absence of numbers -> means no train stations
+                    paths_w_costs.loc[idx, f"plane_{i}"] = 1
+                    paths_w_costs.loc[idx, f"av_{i}"] = 1
+            else:
+                pass  # If the Series is empty, do nothing
+
+    return paths_w_costs
