@@ -59,6 +59,62 @@ def setup_logging(verbosity, log_to_console=True, log_to_file=None, file_reset=F
         logger.important_info(f"Logging to file: {log_to_file} set to {logging.getLevelName(file_handler.level)}")
 
 
+def process_config_file(toml_file):
+    with open(Path(toml_file), mode="rb") as fp:
+        toml_config = tomli.load(fp)
+
+    toml_config['network_definition']['network_path'] = toml_config['general']['experiment_path']
+    toml_config['network_definition']['processed_folder'] = toml_config['general']['output_folder']
+    if 'output' not in toml_config.keys():
+        toml_config['output'] = {}
+    toml_config['output']['output_folder'] = (Path(toml_config['general']['experiment_path']) /
+                                              toml_config['general']['output_folder'] /
+                                              'paths_itineraries')
+
+    toml_config['demand']['demand'] = toml_config['general']['experiment_path'] + toml_config['demand']['demand']
+
+    if 'policy_package' in toml_config.keys():
+        path_policy_package = (Path(toml_config['general']['experiment_path']) /
+                               toml_config['policy_package']['policy_package'])
+
+        with open(path_policy_package, mode="rb") as fp:
+            policies_to_apply_config = tomli.load(fp)
+
+        toml_config['policy_package'] = policies_to_apply_config
+
+    if 'sensitivities_logit' in toml_config['other_param'].keys():
+        toml_config['other_param']['sensitivities_logit']['sensitivities'] = (Path(toml_config['general']['experiment_path']) /
+                                                                              toml_config['other_param']['sensitivities_logit']['sensitivities'])
+
+    if 'heuristics_precomputed' in toml_config['other_param'].keys():
+        toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_air'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                              toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_air'])
+        toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_rail'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                               toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_rail'])
+
+    if 'tactical_input' in toml_config['other_param'].keys():
+        toml_config['other_param']['tactical_input']['aircraft']['ac_type_icao_iata_conversion'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                                     toml_config['other_param']['tactical_input']['aircraft']['ac_type_icao_iata_conversion'])
+
+        toml_config['other_param']['tactical_input']['aircraft']['ac_mtow'] = (
+                    Path(toml_config['general']['experiment_path']) /
+                    toml_config['other_param']['tactical_input']['aircraft']['ac_mtow'])
+
+        toml_config['other_param']['tactical_input']['aircraft']['ac_wtc'] = (
+                    Path(toml_config['general']['experiment_path']) /
+                    toml_config['other_param']['tactical_input']['aircraft']['ac_wtc'])
+
+
+        toml_config['other_param']['tactical_input']['airlines']['airline_ao_type'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                       toml_config['other_param']['tactical_input']['airlines']['airline_ao_type'])
+
+        toml_config['other_param']['tactical_input']['airlines']['airline_iata_icao'] = (
+                    Path(toml_config['general']['experiment_path']) /
+                    toml_config['other_param']['tactical_input']['airlines']['airline_iata_icao'])
+
+
+    return toml_config
+
 
 def read_origin_demand_matrix(path_demand):
     df_demand = pd.read_csv(Path(path_demand), keep_default_na=False)
@@ -354,8 +410,7 @@ if __name__ == '__main__':
         assign_demand_to_paths
     )
 
-    with open(Path(args.toml_file), mode="rb") as fp:
-        toml_config = tomli.load(fp)
+    toml_config = process_config_file(args.toml_file)
 
     if args.demand_file is not None:
         toml_config['demand']['demand'] = Path(args.demand_file)
@@ -363,7 +418,6 @@ if __name__ == '__main__':
     pc = 1
     if args.n_proc is not None:
         pc = int(args.n_proc)
-
 
     logger.important_info("Running first potential paths and then itineraries")
 
