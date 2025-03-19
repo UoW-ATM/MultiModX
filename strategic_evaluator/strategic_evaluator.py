@@ -958,6 +958,10 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         if policy_package.get('integrated_ticketing') is not None:
             extra_rail_air = policy_package['integrated_ticketing'].get('rail_air_processing_extra', 0)
             extra_air_rail = policy_package['integrated_ticketing'].get('air_rail_processing_extra', 0)
+            # If transferring between two airports
+            extra_air_air = policy_package['integrated_ticketing'].get('air_air_processing_extra', 0)
+            # If transferring between two train stations
+            extra_rail_rail = policy_package['integrated_ticketing'].get('air_air_processing_extra', 0)
 
             # Use np.where for efficient conditional assignment
             df_transitions['extra_avg_travel_a_b'] = np.where(
@@ -966,7 +970,15 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 np.where(
                     (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'air'),
                     extra_rail_air,
-                    0
+                    np.where(
+                        (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'rail'),
+                        extra_rail_rail,
+                        np.where(
+                            (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'air'),
+                            extra_air_air,
+                            0
+                        )
+                    )
                 )
             )
 
@@ -976,10 +988,17 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 np.where(
                     (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'rail'),
                     extra_rail_air,
-                    0
+                    np.where(
+                        (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'rail'),
+                        extra_rail_rail,
+                        np.where(
+                            (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'air'),
+                            extra_air_air,
+                            0
+                        )
+                    )
                 )
             )
-
 
         if 'mct' not in df_transitions.columns:
             # If MCT is in the df_transitions then the format already has the value
