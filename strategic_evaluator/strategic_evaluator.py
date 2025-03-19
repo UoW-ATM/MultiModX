@@ -309,7 +309,7 @@ def preprocess_air_layer(path_network, air_networks, processed_folder, pre_proce
         if 'emissions' not in df_fs.columns:
             df_fs['emissions'] = None
 
-        df_fs['alliance'].fillna(df_fs['provider'], inplace=True)
+        df_fs['alliance'] = df_fs['alliance'].fillna(df_fs['provider'])
 
         if 'alliances' in air_network.keys():
             # Replace alliance for the alliances defined in the alliances.csv file
@@ -834,7 +834,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                            fstops_filename, keep_default_na=False, na_values=[''],
                                               dtype={'origin': str, 'destination': str})
 
-                df_rail_data = df_rail_data.applymap(lambda x: None if pd.isna(x) else x)
+                df_rail_data = df_rail_data.apply(lambda col: col.map(lambda x: None if pd.isna(x) else x))
 
                 df_rail_data['departure_time'] = pd.to_datetime(df_rail_data['departure_time'])
                 df_rail_data['arrival_time'] = pd.to_datetime(df_rail_data['arrival_time'])
@@ -1828,6 +1828,7 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
             origin, destination = row['origin'], row['destination']
             demand_row = agg_demand[(agg_demand['origin'] == origin) & (agg_demand['destination'] == destination)]
 
+            df_clusters_expanded['num_pax'] = df_clusters_expanded['num_pax'].astype(float)
             if not demand_row.empty and alternative_key in demand_row.columns:
                 num_pax = demand_row.iloc[0][alternative_key]
                 df_clusters_expanded.at[index, 'num_pax'] = num_pax
@@ -1902,6 +1903,7 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
 
     # Generate a mapping of service columns to new column names
     columns_map = {f'service_id_{i}': f'nid_f{i + 1}' for i in range(max_services)}
+
     # Rename the columns in one operation
     merged_df = merged_df.rename(columns=columns_map)
 
@@ -2057,14 +2059,20 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
             path = ast.literal_eval(path)
         return path[n]
 
+    df_valid_supported['origin1'] = df_valid_supported['origin1'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'origin1'] = \
         df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x,0))
+
+    df_valid_supported['destination1'] = df_valid_supported['destination1'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'destination1'] = \
         df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x, 1))
 
     # Update origin2 and destination2 based on rail_post
+    df_valid_supported['origin2'] = df_valid_supported['origin2'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'origin2'] = \
         df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -2))
+
+    df_valid_supported['destination2'] = df_valid_supported['destination2'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'destination2'] = \
         df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -1))
 
