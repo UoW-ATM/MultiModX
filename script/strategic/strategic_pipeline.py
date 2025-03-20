@@ -230,7 +230,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     df_potential_paths = compute_possible_itineraries_network(network, o_d, pc=pc, n_itineraries=n_paths,
                                                           max_connections=max_connections,
                                                           allow_mixed_operators=allow_mixed_operators_itineraries,
-                                                          consider_times_constraints=False)
+                                                          consider_times_constraints=False,
+                                                              policy_package=toml_config.get('policy_package'))
 
     ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
     df_potential_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
@@ -266,7 +267,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                                           pc=pc, n_itineraries=n_itineraries,
                                                           max_connections=max_connections,
                                                           allow_mixed_operators=allow_mixed_operators_itineraries,
-                                                          consider_times_constraints=True)
+                                                          consider_times_constraints=True,
+                                                              policy_package=toml_config.get('policy_package'))
 
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     df_itineraries.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)

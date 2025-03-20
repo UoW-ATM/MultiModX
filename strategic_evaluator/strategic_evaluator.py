@@ -1189,7 +1189,17 @@ def compute_itineraries(od_itineraries, network, dict_o_d_routes=None, n_itinera
     return dict_itineraries
 
 
-def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, allow_mixed_operators=False):
+def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, allow_mixed_operators=False,
+                             policy_package=None):
+
+    if policy_package is None:
+        policy_package = {}
+
+    if 'tax_charges' in policy_package.keys():
+        dict_tax_co2 = policy_package['tax_charges']
+    else:
+        dict_tax_co2 = {}
+
     options = []
     origins = []
     destinations = []
@@ -1227,6 +1237,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)] = []
 
         dict_legs_info['cost_' + str(ln)] = []
+        dict_legs_info['service_cost_' + str(ln)] = []
+        dict_legs_info['emissions_cost_' + str(ln)] = []
         dict_legs_info['emissions_' + str(ln)] = []
 
         ln += 1
@@ -1268,6 +1280,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 dict_legs_info['arrival_time_' + str(ln)].append(None)
                 dict_legs_info['travel_time_' + str(ln)].append(None)
                 dict_legs_info['cost_' + str(ln)].append(None)
+                dict_legs_info['service_cost_' + str(ln)].append(None)
+                dict_legs_info['emissions_cost_' + str(ln)].append(None)
                 dict_legs_info['emissions_' + str(ln)].append(None)
                 path = [i.current_node]
                 ln += 1
@@ -1327,12 +1341,23 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                             total_waiting += (s.departure_time - prev_arrival_time).total_seconds() / 60 - i.mcts[
                                 ln - 1].total_seconds() / 60
 
-                dict_legs_info['cost_' + str(ln)].append(s.cost)
+                dict_legs_info['service_cost_' + str(ln)].append(s.cost)
                 dict_legs_info['emissions_' + str(ln)].append(s.emissions)
-                if total_cost is None:
-                    total_cost = s.cost
+                if (s.emissions is None) or (s.mode not in dict_tax_co2.keys()):
+                    cost_emissions = 0
                 else:
-                    total_cost += s.cost
+                    cost_emissions = dict_tax_co2[s.mode]['co2_cost'] * s.emissions
+
+                dict_legs_info['emissions_cost_' + str(ln)].append(cost_emissions)
+
+                total_cost_service = s.cost + cost_emissions
+
+                dict_legs_info['cost_' + str(ln)].append(total_cost_service)
+
+                if total_cost is None:
+                    total_cost = total_cost_service
+                else:
+                    total_cost += total_cost_service
                 if s.emissions is not None:
                     if total_emissions is None:
                         total_emissions = float(s.emissions)
@@ -1358,6 +1383,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                     dict_legs_info['connecting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['waiting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                 dict_legs_info['cost_' + str(lni)].append(None)
+                dict_legs_info['service_cost_' + str(ln)].append(None)
+                dict_legs_info['emissions_cost_' + str(ln)].append(None)
                 dict_legs_info['emissions_' + str(lni)].append(None)
 
             n_modes_i.append(n_modes)
@@ -1399,7 +1426,10 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
 
 def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=1, n_itineraries=10,
                                          max_connections=2, allow_mixed_operators=False,
-                                         consider_times_constraints=True):
+                                         consider_times_constraints=True, policy_package=None):
+
+    if policy_package is None:
+        policy_package = {}
 
     start_time_itineraries = time.time()
     if pc == 1:
@@ -1450,7 +1480,7 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
             dict_itinearies.update(dictionary)
 
     df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints,
-                                              allow_mixed_operators=allow_mixed_operators)
+                                              allow_mixed_operators=allow_mixed_operators, policy_package=policy_package)
     end_time_itineraries = time.time()
     logger.important_info("In total "+str(len(df_itineraries))+" itineraries computed in, "
                           +str(end_time_itineraries - start_time_itineraries)+" seconds.")
