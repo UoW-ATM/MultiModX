@@ -199,7 +199,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     # Preprocess input
     logger.info("Pre-processing input")
-    preprocess_input(toml_config['network_definition'], pre_processed_version=pre_processed_version)
+    preprocess_input(toml_config['network_definition'], pre_processed_version=pre_processed_version,
+                     policy_package=toml_config.get('policy_package'))
 
     # Read demand
     logger.info("Reading demand")

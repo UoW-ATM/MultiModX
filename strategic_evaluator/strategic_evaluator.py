@@ -238,7 +238,10 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
     return nl_rail
 
 
-def preprocess_input(network_definition_config, pre_processed_version=0):
+def preprocess_input(network_definition_config, pre_processed_version=0, policy_package=None):
+    if policy_package is None:
+        policy_package = {}
+
     if 'air_network' in network_definition_config.keys():
         preprocess_air_layer(network_definition_config['network_path'], network_definition_config['air_network'],
                              network_definition_config['processed_folder'],
@@ -248,6 +251,39 @@ def preprocess_input(network_definition_config, pre_processed_version=0):
         pre_process_rail_layer(network_definition_config['network_path'], network_definition_config['rail_network'],
                                network_definition_config['processed_folder'],
                                pre_processed_version=pre_processed_version)
+
+    if (('flight_ban' in policy_package.keys())
+            and ('rail_network' in network_definition_config.keys())
+            and ('air_network' in network_definition_config.keys())):
+        # We have a flight ban with relates to rail operations, so compute which o-d pairs need to be 'removed'
+        # from the flights
+        df_od_banned = compute_od_pairs_banned(network_definition_config, policy_package['flight_ban'],
+                                               pre_processed_version)
+
+        # Now we know which OD pairs we are banning, save it!
+
+        # Read flight_schedules_proc_ and save it again without the banned od pairs
+        path_network = network_definition_config['network_path']
+        processed_folder = network_definition_config['processed_folder']
+        fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+        df_fs = pd.read_csv(Path(path_network) / processed_folder / fflights)
+
+        # merge to flag banned flights
+        df_merged = df_fs.merge(df_od_banned, on=["origin", "destination"], how="left", indicator=True)
+
+        # Split into banned and allowed
+        df_fs_banned = df_merged[df_merged["_merge"] == "both"].drop(columns=["_merge"])
+        df_fs_allowed = df_merged[df_merged["_merge"] == "left_only"].drop(columns=["_merge"])
+
+        # Save flights kept
+        fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+        df_fs_allowed.to_csv(Path(path_network) / processed_folder / fflights, index=False)
+        # Save flights banned
+        fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '_banned.csv'
+        df_fs_banned.to_csv(Path(path_network) / processed_folder / fflights, index=False)
+        # Save od pair banned
+        fodbanned = 'origin_destination_banned_' + str(pre_processed_version) + '.csv'
+        df_od_banned.to_csv(Path(path_network) / processed_folder / fodbanned, index=False)
 
 
 def compute_cost_emissions_air(df_fs):
@@ -274,6 +310,115 @@ def compute_cost_emissions_rail(df_rs):
                                             if pd.isnull(row['cost']) else row['cost'], axis=1)
 
     return df_rs
+
+
+def compute_od_pairs_banned(network_definition_config, flight_ban_def, pre_processed_version):
+    from libs.uow_tool_belt.general_tools import haversine
+
+    path_network = network_definition_config['network_path']
+    processed_folder = network_definition_config['processed_folder']
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+    df_fs = pd.read_csv(Path(path_network) / processed_folder / fflights)
+    df_fs = df_fs[['origin', 'destination', 'gcdistance']]
+    df_fs = df_fs.groupby(["origin", "destination"], as_index=False).agg({"gcdistance": "min"})
+
+    if flight_ban_def['ban_type'] == 'distance':
+        # Remove all flights shorter or equal to the distance, easy!
+        df_fs = df_fs[df_fs['gcdistance'] <= flight_ban_def['ban_length']]
+
+    else:
+        # Remove all flights which have a train faster han a given time...
+        # Need to read the trains first
+        # Need to filter the trains that go between airports (areas)
+        # Then keep the ones which are faster than the threshold
+
+        ftrains = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
+        df_t = pd.read_csv(Path(path_network) / processed_folder / ftrains)
+        df_t['departure_time'] = pd.to_datetime(df_t['departure_time'])
+        df_t['arrival_time'] = pd.to_datetime(df_t['arrival_time'])
+        df_t['time'] = (df_t['arrival_time']-df_t['departure_time']).dt.total_seconds()/60
+
+        # Keep only the trains within the flight ban
+        df_t = df_t[df_t.time <= flight_ban_def['ban_length']]
+        # Keep only one representative for origin - destination
+        df_t = df_t.groupby(['origin', 'destination',
+                             'lat_orig', 'lon_orig',
+                             'lat_dest', 'lon_dest'], as_index=False).agg({"time": "min"})
+
+        df_stops = pd.concat([df_t[['origin', 'lat_orig', 'lon_orig']].rename({'origin': 'stop_id',
+                                                         'lat_orig': 'lat',
+                                                         'lon_orig': 'lon'},
+                                      axis=1),
+                              df_t[['destination', 'lat_dest', 'lon_dest']].rename({'destination': 'stop_id',
+                                                         'lat_dest': 'lat',
+                                                         'lon_dest': 'lon'},
+                                                        axis=1)]).drop_duplicates()
+
+        df_airports = pd.concat([df_fs[['origin']].rename({'origin': 'airport_id'}, axis=1),
+                                 df_fs[['destination']].rename({'destination': 'airport_id'}, axis=1)]).drop_duplicates()
+
+
+        # [0] as in the toml we can have a list of air networks
+        df_airports_st = pd.read_csv(Path(path_network) / network_definition_config['air_network'][0]['airports_static'])
+        df_airports = df_airports.merge(df_airports_st, left_on='airport_id', right_on='icao_id')
+
+        # Threshold to decide rail station and airport serve same origin/destination
+        threshold_km = flight_ban_def.get('distance_rail_serves_airport', 30)
+
+        # Compute all pairwise distances between stops and airports
+        df_stops["key"] = 1  # Temporary key for cross join
+        df_airports["key"] = 1
+
+        df_merged = df_stops.merge(df_airports, on="key").drop(columns=["key"])  # Cross join
+
+        # Compute the GCD using the haversine function
+        df_merged["distance_km"] = df_merged.apply(
+            lambda row: haversine(row["lon_x"], row["lat_x"], row["lon_y"], row["lat_y"]), axis=1)
+
+        # Filter based on threshold
+        df_nearby = df_merged[df_merged["distance_km"] <= threshold_km]
+
+        # Select relevant columns to have relationship between rail stations and airport
+        df_nearby = df_nearby[["stop_id", "airport_id", "distance_km"]].reset_index(drop=True)
+
+        # Filter the origin destination paris from df_fs for which a train exists in the already filtered df_t
+        # Merge df_fs (airports) with df_nearby (to find train stations serving the airports)
+        df_fs_origin_stations = df_fs.merge(df_nearby, left_on="origin", right_on="airport_id") \
+            .rename(columns={"stop_id": "train_origin"}) \
+            .drop(columns=["airport_id", "distance_km"])
+
+        df_fs_dest_stations = df_fs.merge(df_nearby, left_on="destination", right_on="airport_id") \
+            .rename(columns={"stop_id": "train_destination"}) \
+            .drop(columns=["airport_id", "distance_km"])
+
+        # Now, merge the two new dataframes to get all train stations corresponding to each airport-airport route
+        df_possible_routes = df_fs_origin_stations.merge(df_fs_dest_stations, on=["origin", "destination"])
+
+        # Find valid train routes that match the possible routes
+        df_valid_routes = df_possible_routes.merge(df_t, left_on=["train_origin", "train_destination"],
+                                                   right_on=["origin", "destination"]) \
+            .drop(columns=["train_origin", "train_destination"])
+
+        # The final list of origin-destination airport pairs that have train connections
+        df_final_filtered_fs = df_valid_routes[["origin_x", "destination_x"]].drop_duplicates().rename({'origin_x': 'origin',
+                                                                                                        'destination_x': 'destination'}, axis=1)
+
+        df_fs = df_final_filtered_fs
+        # Ensure that if a given o-d pair is in the list the return d-o is also banned
+        # Create a set of existing (origin, destination) pairs
+        existing_pairs = set(zip(df_fs["origin"], df_fs["destination"]))
+
+        # Find missing reverse pairs
+        missing_pairs = {(dest, orig) for orig, dest in existing_pairs if (dest, orig) not in existing_pairs}
+
+        # Create a DataFrame with missing pairs
+        df_missing = pd.DataFrame(missing_pairs, columns=["origin", "destination"])
+
+        # Append missing pairs to the original DataFrame
+        df_fs = pd.concat([df_fs, df_missing], ignore_index=True)
+
+
+    return df_fs[['origin', 'destination']]
 
 
 def preprocess_air_layer(path_network, air_networks, processed_folder, pre_processed_version=0):
