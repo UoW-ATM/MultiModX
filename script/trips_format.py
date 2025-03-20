@@ -565,14 +565,15 @@ def trips_format_to_pipeline(trips):
     return combined_df
 
 
-def trips_logit_format(trips_logit: pd.DataFrame):
+def trips_logit_format(trips_logit: pd.DataFrame,drop_single_paths=False):
     """Function to format the trips used for logit calibration. The trips have to be
     imported as a csv from the notebook new_trips_to_paths. It will permanently modify the
     dataframe if run.
     
     Args:
         trips_logit: dataframe with the information about origin, destination, path cost and probabilities
-        
+        drop_single_paths: option to filter O-D pairs with only one option between them
+
     Returns:
         The modified dataframe"""
     
@@ -581,6 +582,18 @@ def trips_logit_format(trips_logit: pd.DataFrame):
 
     # number the alternatives
     trips_logit['noption'] = trips_logit.groupby(['origin', 'destination']).cumcount() + 1
+    if drop_single_paths==True:
+        # Group by 'origin' and 'destination' and count occurrences
+        counts = trips_logit.groupby(['origin', 'destination']).size()
+
+        # Filter out combinations that appear only once
+        filtered_counts = counts[counts > 1]
+
+        # Create a new DataFrame from the filtered combinations
+        df_filtered = filtered_counts.reset_index().drop(0, axis=1)
+
+        # Merge the filtered combinations back with the original DataFrame to keep only matching rows
+        trips_logit = pd.merge(trips_logit, df_filtered, on=['origin', 'destination'], how='inner')
     return trips_logit
 
 
