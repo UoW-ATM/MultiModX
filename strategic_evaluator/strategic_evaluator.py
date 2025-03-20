@@ -729,6 +729,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
             df_fs.replace('', None, inplace=True)
 
+            df_fs['emissions'] = pd.to_numeric(df_fs['emissions'], errors='coerce')
+
             if 'lat_orig' not in df_fs.columns:
                 df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='origin', right_on='icao_id')
                 df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='destination', right_on='icao_id',
