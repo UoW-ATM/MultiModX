@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 import argparse
 import tomli
+import tomli_w
 import pandas as pd
 from collections import defaultdict
 import logging
@@ -59,11 +60,114 @@ def setup_logging(verbosity, log_to_console=True, log_to_file=None, file_reset=F
         logger.important_info(f"Logging to file: {log_to_file} set to {logging.getLevelName(file_handler.level)}")
 
 
+def process_config_file(toml_file, end_output_folder=None):
+    with open(Path(toml_file), mode="rb") as fp:
+        toml_config = tomli.load(fp)
+
+    toml_config['network_definition']['network_path'] = toml_config['general']['experiment_path']
+    if end_output_folder is not None:
+        toml_config['general']['output_folder'] = toml_config['general']['output_folder'] + end_output_folder
+
+    toml_config['network_definition']['processed_folder'] = toml_config['general']['output_folder']
+    if 'output' not in toml_config.keys():
+        toml_config['output'] = {}
+    toml_config['output']['output_folder'] = (Path(toml_config['general']['experiment_path']) /
+                                              toml_config['general']['output_folder'] /
+                                              'paths_itineraries')
+
+    toml_config['demand']['demand'] = toml_config['general']['experiment_path'] + toml_config['demand']['demand']
+
+    if 'policy_package' in toml_config.keys():
+        path_policy_package = (Path(toml_config['general']['experiment_path']) /
+                               toml_config['policy_package']['policy_package'])
+
+        with open(path_policy_package, mode="rb") as fp:
+            policies_to_apply_config = tomli.load(fp)
+
+        toml_config['policy_package'] = policies_to_apply_config
+
+    if 'sensitivities_logit' in toml_config['other_param'].keys():
+        toml_config['other_param']['sensitivities_logit']['sensitivities'] = (Path(toml_config['general']['experiment_path']) /
+                                                                              toml_config['other_param']['sensitivities_logit']['sensitivities'])
+
+    if 'heuristics_precomputed' in toml_config['other_param'].keys():
+        toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_air'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                              toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_air'])
+        toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_rail'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                               toml_config['other_param']['heuristics_precomputed']['heuristics_precomputed_rail'])
+
+    if 'tactical_input' in toml_config['other_param'].keys():
+        toml_config['other_param']['tactical_input']['aircraft']['ac_type_icao_iata_conversion'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                                     toml_config['other_param']['tactical_input']['aircraft']['ac_type_icao_iata_conversion'])
+
+        toml_config['other_param']['tactical_input']['aircraft']['ac_mtow'] = (
+                    Path(toml_config['general']['experiment_path']) /
+                    toml_config['other_param']['tactical_input']['aircraft']['ac_mtow'])
+
+        toml_config['other_param']['tactical_input']['aircraft']['ac_wtc'] = (
+                    Path(toml_config['general']['experiment_path']) /
+                    toml_config['other_param']['tactical_input']['aircraft']['ac_wtc'])
+
+
+        toml_config['other_param']['tactical_input']['airlines']['airline_ao_type'] = (Path(toml_config['general']['experiment_path']) /
+                                                                                       toml_config['other_param']['tactical_input']['airlines']['airline_ao_type'])
+
+        toml_config['other_param']['tactical_input']['airlines']['airline_iata_icao'] = (
+                    Path(toml_config['general']['experiment_path']) /
+                    toml_config['other_param']['tactical_input']['airlines']['airline_iata_icao'])
+
+    return toml_config
+
+
+def save_information_config_used(toml_config, args):
+
+    # Function to recursively convert booleans and None to string
+    def convert_boolean_none_to_str(value):
+        if isinstance(value, bool):  # Convert booleans to strings
+            return str(value)
+        elif value is None:  # Convert None to the string 'None'
+            return "None"
+        else:
+            return value  # Return other types unchanged
+
+    # Function to convert Namespace to dictionary
+    def namespace_to_dict(namespace):
+        # Convert Namespace to dict
+        return {key: convert_boolean_none_to_str(value) for key, value in vars(namespace).items()}
+
+    def convert_paths_to_strings(obj):
+        """Recursively convert PosixPath objects to strings in a dictionary or list."""
+        if isinstance(obj, dict):  # If it's a dictionary, recurse on its values
+            return {key: convert_paths_to_strings(value) for key, value in obj.items()}
+        elif isinstance(obj, list):  # If it's a list, recurse on each item
+            return [convert_paths_to_strings(item) for item in obj]
+        elif isinstance(obj, Path):  # If it's a PosixPath, convert it to a string
+            return str(obj)
+        else:
+            return obj  # Return other types unchanged
+
+    # Convert Namespace to dictionary
+    args_dict = namespace_to_dict(args)
+
+    # Convert PosixPaths to strings
+    toml_config_str = convert_paths_to_strings(toml_config)
+
+    # Add the converted args dictionary to toml_config
+    toml_config_str = {**toml_config_str, 'args': args_dict}
+
+    config_used_path = Path(toml_config['general']['experiment_path']) / toml_config['general'][
+        'output_folder'] / 'config_used.toml'
+    os.makedirs(config_used_path.parent, exist_ok=True)
+
+    with open(config_used_path, "wb") as fp:
+        tomli_w.dump(toml_config_str, fp)
+
 
 def read_origin_demand_matrix(path_demand):
     df_demand = pd.read_csv(Path(path_demand), keep_default_na=False)
     df_demand.replace('', None, inplace=True)
     return df_demand
+
 
 def recreate_output_folder(folder_path: Path):
     """
@@ -80,16 +184,17 @@ def recreate_output_folder(folder_path: Path):
     logger.important_info(f"Folder {folder_path} is ready.")
 
 
-
 def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                 max_connections=1, pre_processed_version=0,
                                 allow_mixed_operators_itineraries=False,
-                                use_heuristics_precomputed=False):
+                                use_heuristics_precomputed=False,
+                                recreate_output_folder=True):
 
-    # Check if output folder exists, if not create it
-    recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
-                           toml_config['network_definition']['processed_folder'])
-    recreate_output_folder(Path(toml_config['output']['output_folder']))
+    if recreate_output_folder:
+        # Check if output folder exists, if not create it
+        recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
+                               toml_config['network_definition']['processed_folder'])
+        recreate_output_folder(Path(toml_config['output']['output_folder']))
 
 
     # Preprocess input
@@ -116,7 +221,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                              compute_simplified=True,
                              allow_mixed_operators=allow_mixed_operators_itineraries,
                              heuristics_precomputed=heuristics_precomputed,
-                             pre_processed_version=pre_processed_version)
+                             pre_processed_version=pre_processed_version,
+                             policy_package=toml_config.get('policy_package'))
 
     # Compute potential paths
     # Instead of computing these they could be read from a readily available csv file.
@@ -150,7 +256,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
         network_definition,
         compute_simplified=False,
         heuristics_precomputed=heuristics_precomputed,
-        pre_processed_version=pre_processed_version
+        pre_processed_version=pre_processed_version,
+        policy_package=toml_config.get('policy_package')
     )
 
     # Compute itineraries
@@ -325,9 +432,13 @@ if __name__ == '__main__':
 
     parser.add_argument('-cpp', '--compute_potential_paths', help='Compute only potential paths',
                         required=False, action='store_true')
+
     parser.add_argument('-upp', '--use_potential_paths', help='Compute itineraries from list of potential '
                                                               'paths only',
                         required=False, action='store_true')
+
+    parser.add_argument('-eo', '--end_output_folder', help='Ending to be added to output folder',
+                        required=False)
 
     # Examples of usage
     # python ./strategic_pipeline.py -tf ../../data/es_full_AW/es_full_AW.toml -ni 50 -np 20 -mc 3 -hpc -pc 20 -v
@@ -354,8 +465,7 @@ if __name__ == '__main__':
         assign_demand_to_paths
     )
 
-    with open(Path(args.toml_file), mode="rb") as fp:
-        toml_config = tomli.load(fp)
+    toml_config = process_config_file(args.toml_file, args.end_output_folder)
 
     if args.demand_file is not None:
         toml_config['demand']['demand'] = Path(args.demand_file)
@@ -364,6 +474,12 @@ if __name__ == '__main__':
     if args.n_proc is not None:
         pc = int(args.n_proc)
 
+    # Check if output folder exists, if not create it
+    recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
+                           toml_config['network_definition']['processed_folder'])
+    recreate_output_folder(Path(toml_config['output']['output_folder']))
+
+    save_information_config_used(toml_config, args)
 
     logger.important_info("Running first potential paths and then itineraries")
 
@@ -374,7 +490,8 @@ if __name__ == '__main__':
                                 max_connections=int(args.max_connections),
                                 pre_processed_version=int(args.preprocessed_version),
                                 allow_mixed_operators_itineraries=args.allow_mixed_operators,
-                                use_heuristics_precomputed=args.use_heuristics_precomputed)
+                                use_heuristics_precomputed=args.use_heuristics_precomputed,
+                                recreate_output_folder=False)
 
     # Improvements
     # TODO: day in rail

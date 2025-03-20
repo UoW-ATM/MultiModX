@@ -309,7 +309,7 @@ def preprocess_air_layer(path_network, air_networks, processed_folder, pre_proce
         if 'emissions' not in df_fs.columns:
             df_fs['emissions'] = None
 
-        df_fs['alliance'].fillna(df_fs['provider'], inplace=True)
+        df_fs['alliance'] = df_fs['alliance'].fillna(df_fs['provider'])
 
         if 'alliances' in air_network.keys():
             # Replace alliance for the alliances defined in the alliances.csv file
@@ -500,7 +500,12 @@ def create_dict_distance_origin_destination(origin_destination_df):
 
 def create_network(path_network_dict, compute_simplified=False, allow_mixed_operators=True,
                    heuristics_precomputed=None,
-                   pre_processed_version=0):
+                   pre_processed_version=0,
+                   policy_package=None):
+
+    if policy_package is None:
+        policy_package = {}
+
     df_regions_access = None
     df_transitions = None
     layers = []
@@ -829,7 +834,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                            fstops_filename, keep_default_na=False, na_values=[''],
                                               dtype={'origin': str, 'destination': str})
 
-                df_rail_data = df_rail_data.applymap(lambda x: None if pd.isna(x) else x)
+                df_rail_data = df_rail_data.apply(lambda col: col.map(lambda x: None if pd.isna(x) else x))
 
                 df_rail_data['departure_time'] = pd.to_datetime(df_rail_data['departure_time'])
                 df_rail_data['arrival_time'] = pd.to_datetime(df_rail_data['arrival_time'])
@@ -947,6 +952,54 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         df_transitions = pd.concat(df_transitionsl, ignore_index=True)
 
+        df_transitions['extra_avg_travel_a_b'] = 0
+        df_transitions['extra_avg_travel_b_a'] = 0
+
+        if policy_package.get('integrated_ticketing') is not None:
+            extra_rail_air = policy_package['integrated_ticketing'].get('rail_air_processing_extra', 0)
+            extra_air_rail = policy_package['integrated_ticketing'].get('air_rail_processing_extra', 0)
+            # If transferring between two airports
+            extra_air_air = policy_package['integrated_ticketing'].get('air_air_processing_extra', 0)
+            # If transferring between two train stations
+            extra_rail_rail = policy_package['integrated_ticketing'].get('air_air_processing_extra', 0)
+
+            # Use np.where for efficient conditional assignment
+            df_transitions['extra_avg_travel_a_b'] = np.where(
+                (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'rail'),
+                extra_air_rail,
+                np.where(
+                    (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'air'),
+                    extra_rail_air,
+                    np.where(
+                        (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'rail'),
+                        extra_rail_rail,
+                        np.where(
+                            (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'air'),
+                            extra_air_air,
+                            0
+                        )
+                    )
+                )
+            )
+
+            df_transitions['extra_avg_travel_b_a'] = np.where(
+                (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'air'),
+                extra_air_rail,
+                np.where(
+                    (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'rail'),
+                    extra_rail_air,
+                    np.where(
+                        (df_transitions['layer_origin'] == 'rail') & (df_transitions['layer_destination'] == 'rail'),
+                        extra_rail_rail,
+                        np.where(
+                            (df_transitions['layer_origin'] == 'air') & (df_transitions['layer_destination'] == 'air'),
+                            extra_air_air,
+                            0
+                        )
+                    )
+                )
+            )
+
         if 'mct' not in df_transitions.columns:
             # If MCT is in the df_transitions then the format already has the value
             # if not compute it by adding g2k/p2k and k2g/k2p to the travel time between
@@ -960,15 +1013,15 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
             # Create two new DataFrames for each direction
             df_a_b = df_transitions[["origin_station", "destination_station", "layer_origin", "layer_destination",
-                         "avg_travel_a_b"]].rename(
-                columns={"avg_travel_a_b": "avg_travel_time"}
+                         "avg_travel_a_b", "extra_avg_travel_a_b"]].rename(
+                columns={"avg_travel_a_b": "avg_travel_time", "extra_avg_travel_a_b": "extra_avg_travel_time"}
             )
 
             df_b_a = df_transitions[["destination_station", "origin_station", "layer_destination", "layer_origin",
-                         "avg_travel_b_a"]].rename(
+                         "avg_travel_b_a", "extra_avg_travel_b_a"]].rename(
                 columns={"destination_station": "origin_station", "origin_station": "destination_station",
                          "layer_destination": "layer_origin", "layer_origin": "layer_destination",
-                         "avg_travel_b_a": "avg_travel_time"}
+                         "avg_travel_b_a": "avg_travel_time", "extra_avg_travel_b_a": "extra_avg_travel_time"}
             )
 
             # Combine the two DataFrames
@@ -1058,10 +1111,10 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                                           "k2g", "k2g_multimodal", "k2p", "k2p_multimodal"])
 
             # Compute MCT to transition between layers
-            df_transitions['mct'] = df_transitions['x2k'] + df_transitions['avg_travel_time'] + df_transitions['k2x']
+            df_transitions['mct'] = (df_transitions['x2k'] + df_transitions['avg_travel_time'] +
+                                     df_transitions['extra_avg_travel_time'] + df_transitions['k2x'])
 
             df_transitions.drop(columns=['x2k', 'k2x'], inplace=True)
-
 
         df_transitions.rename(columns={'origin_station': 'origin', 'destination_station': 'destination',
                                        'layer_origin': 'layer_id_origin', 'layer_destination': 'layer_id_destination'},
@@ -1775,6 +1828,7 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
             origin, destination = row['origin'], row['destination']
             demand_row = agg_demand[(agg_demand['origin'] == origin) & (agg_demand['destination'] == destination)]
 
+            df_clusters_expanded['num_pax'] = df_clusters_expanded['num_pax'].astype(float)
             if not demand_row.empty and alternative_key in demand_row.columns:
                 num_pax = demand_row.iloc[0][alternative_key]
                 df_clusters_expanded.at[index, 'num_pax'] = num_pax
@@ -1849,6 +1903,7 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
 
     # Generate a mapping of service columns to new column names
     columns_map = {f'service_id_{i}': f'nid_f{i + 1}' for i in range(max_services)}
+
     # Rename the columns in one operation
     merged_df = merged_df.rename(columns=columns_map)
 
@@ -2004,14 +2059,20 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
             path = ast.literal_eval(path)
         return path[n]
 
+    df_valid_supported['origin1'] = df_valid_supported['origin1'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'origin1'] = \
         df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x,0))
+
+    df_valid_supported['destination1'] = df_valid_supported['destination1'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'destination1'] = \
         df_valid_supported.loc[df_valid_supported['rail_pre'].notna(), 'path'].apply(lambda x: get_n_from_path(x, 1))
 
     # Update origin2 and destination2 based on rail_post
+    df_valid_supported['origin2'] = df_valid_supported['origin2'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'origin2'] = \
         df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -2))
+
+    df_valid_supported['destination2'] = df_valid_supported['destination2'].astype('object')
     df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'destination2'] = \
         df_valid_supported.loc[df_valid_supported['rail_post'].notna(), 'path'].apply(lambda x: get_n_from_path(x, -1))
 
