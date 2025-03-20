@@ -125,7 +125,7 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
     # df.groupby(['observed_choice'])['trips'].sum() / df['trips'].sum()
 
 
-def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, o_d_info: pd.DataFrame, fixed_params: dict=None,):
+def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, fixed_params: dict=None,):
     """Main function to calibrate the logit model
 
     Args:
