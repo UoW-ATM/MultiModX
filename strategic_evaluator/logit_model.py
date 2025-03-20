@@ -10,6 +10,8 @@ import re
 import logging
 from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
 from sklearn.model_selection import train_test_split
+from scipy.stats import pearsonr, spearmanr
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 
 logger = logging.getLogger(__name__)
@@ -534,3 +536,77 @@ def calibration_results_summary(archetypes: dict):
     # Create a DataFrame from the data
     calibration_results = pd.DataFrame(data)
     return calibration_results
+
+def test_logit(test: dict, trips_logit: pd.DataFrame, n_alternatives=5):
+    """generates the test of the logit model. Note that the trips_logit dataframe has to to
+    match whether we considered rows with only one alternative or not
+    
+    Args:
+        test: dictionary obtained in the calibration
+        trips_logit: dataframe that contains the information for logit calibration
+        n_alternatives: the max number of alternatives. Default set to 3"""
+    final_test={}
+
+    for i in range(n_alternatives+1):
+        #initialise strings
+        archetype=f"archetype_{i}"
+        test_results=f"test_results_archetype_{i}"
+        test_archetype=test[test_results]
+
+        #define the dataframe that will contain the final comparison
+        final_test[archetype]=pd.DataFrame(columns=["location","prob_predicted","prob_observed"])
+        final_test[archetype]["location"]=test_archetype.index
+
+        #iterate over the index and row to fetch the probabilites
+        for idx, row in final_test[archetype].iterrows():
+            num=trips_logit.iloc[row["location"]]["noption"]
+            final_test[archetype].loc[idx,"prob_predicted"]=test_archetype.loc[row["location"],f"prob_{num}"]
+            final_test[archetype].loc[idx,"prob_observed"]=trips_logit.iloc[row["location"]]["prob_per_od_pair_arch_0"]
+    return final_test
+
+def evaluate_model(test_data, model_name):
+    """
+    Evaluate the model's performance by calculating MSE, MAE, Pearson correlation, and Spearman correlation.
+
+    Args:
+    - test_data (pd.DataFrame): A DataFrame containing 'prob_observed' and 'prob_predicted' columns.
+    - model_name (str): The name of the model being evaluated.
+
+    Returns:
+    - mse (float): Mean Squared Error.
+    - mae (float): Mean Absolute Error.
+    - pearson_corr (float): Pearson correlation coefficient.
+    - spearman_corr (float): Spearman correlation coefficient.
+    """
+
+    # Convert columns to numeric (in case they are not already)    test_data['prob_observed'] = pd.to_numeric(test_data['prob_observed'], errors='coerce')
+    test_data['prob_predicted'] = pd.to_numeric(test_data['prob_predicted'], errors='coerce')
+    test_data['prob_observed'] = pd.to_numeric(test_data['prob_observed'], errors='coerce')
+    
+    # Remove rows with NaN values in 'prob_observed' or 'prob_predicted'
+    test_data = test_data.dropna(subset=['prob_observed', 'prob_predicted'])
+
+    # Extract true and predicted values
+    y_true = test_data['prob_observed']
+    y_pred = test_data['prob_predicted']
+
+    # calculate residuals
+    residuals = y_true - y_pred
+
+    # Calculate evaluation metrics
+    mse = mean_squared_error(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred)
+    pearson_corr, _ = pearsonr(y_true, y_pred)
+    spearman_corr, _ = spearmanr(y_true, y_pred)
+
+    # Calculate dispersion of residuals (standard deviation of residuals)
+    residual_dispersion = np.std(residuals)
+
+    # Print evaluation results
+    print(f"{model_name} Evaluation:")
+    print(f"Mean Squared Error: {mse:.4f}")
+    print(f"Mean Absolute Error: {mae:.4f}")
+    print(f"Pearson Correlation: {pearson_corr:.4f}")
+    print(f"Spearman Correlation: {spearman_corr:.4f}")
+    print(f"Standard deviation: {residual_dispersion:.4f}")
+    return mse, mae, pearson_corr, spearman_corr, residual_dispersion
