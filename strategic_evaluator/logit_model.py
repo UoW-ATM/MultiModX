@@ -1,6 +1,7 @@
 from pathlib import Path
 from biogeme import models
 from biogeme.expressions import Beta
+import numpy as np
 import biogeme.database as db
 import biogeme.results as res
 import biogeme.biogeme as bio
@@ -14,15 +15,15 @@ from sklearn.model_selection import train_test_split
 logger = logging.getLogger(__name__)
 
 
-def utility_function(database, n_alternatives: int):
-    """This function define the parameters to be estimated and the utility dunction of each alternative
+def utility_function(database, n_alternatives: int, fixed_params: dict = None):
+    """This function defines the parameters to be estimated and the utility function of each alternative
 
     Args:
         database (biogeme.database): biogeme database with the information of alternatives
         n_alternatives (int): number of alternatives between OD pairs
 
     Returns:
-        dict: dictionary with the utiity function of each alternative
+        dict: dictionary with the utility function of each alternative
     """
 
     # Parameters to be estimated
@@ -30,26 +31,30 @@ def utility_function(database, n_alternatives: int):
     ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0)
     ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1)
 
-    B_TIME = Beta('B_TIME', 0, None, None, 0)
-    B_COST = Beta('B_COST', 0, None, None, 0)
-    B_CO2 = Beta('B_CO2', 0, None, None, 0)
+    # Retrieve fixed values for B_COST and B_TIME, or estimate them if not provided
+    B_TIME = Beta('B_TIME', fixed_params['B_TIME'] if fixed_params and 'B_TIME' in fixed_params else 0, None, None, 
+                  1 if fixed_params and 'B_TIME' in fixed_params else 0)
+    B_COST = Beta('B_COST', fixed_params['B_COST'] if fixed_params and 'B_COST' in fixed_params else 0, None, None, 
+                  1 if fixed_params and 'B_COST' in fixed_params else 0)
 
-    # We define the utility function for each alternative
-    i = 1
+    # B_CO2 is estimated only if B_TIME and B_COST are fixed
+    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 0)
+
+    # Define the utility function for each alternative
     V = {}
-    while i <= n_alternatives:
-        V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + ASC_PLANE * database.variables[f'plane_{i}'] + ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
+    for i in range(1, n_alternatives + 1):
+        V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + 
+                ASC_PLANE * database.variables[f'plane_{i}'] + 
+                ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
                 B_TIME * database.variables[f'travel_time_{i}'] +
                 B_COST * database.variables[f'cost_{i}'] +
                 B_CO2 * database.variables[f'emissions_{i}'])
-
-        i += 1
 
     return V
 
 
 def alternative_availability(database, n_alternatives: int):
-    """This function define the variable in the database that defines the availability of each alternative
+    """This function defines the variable in the database that defines the availability of each alternative
 
     Args:
         database (biogeme.database): biogeme database with the information of alternatives
@@ -75,7 +80,7 @@ def logit_model(database, V: dict, av: dict, weight_column: str):
 
     Returns:
         the_biogeme (biogeme object): the object defining the biogeme model
-        reuslts (biogeme object): the object containing the results of the calibration
+        results (biogeme object): the object containing the results of the calibration
     """
 
     number_of_observations = database.getNumberOfObservations()
@@ -104,14 +109,15 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
     simulate = {}
     for i in range(1, n_alternatives + 1):
         prob_i = models.logit(V, av, i)
-        trips_i = prob_i * database.variables[weight_column]
+        # trips_i = prob_i * database.variables[weight_column]
 
         simulate[f'prob_{i}'] = prob_i
-        simulate[f'trips_{i}'] = trips_i
+        # simulate[f'trips_{i}'] = trips_i
 
     biosim = bio.BIOGEME(database, simulate)
     biosim.modelName = weight_column + '_test'
     test_results = biosim.simulate(theBetaValues=beta_values)
+    return test_results
 
     # df = pd.DataFrame({'observed_choice': database_test.valuesFromDatabase(database_test.variables['observed_choice']),
     #           'trips': database_test.valuesFromDatabase(database_test.variables['trips'])})
@@ -119,36 +125,59 @@ def test_data_analysis(database, V: dict, av: dict, n_alternatives: int, weight_
     # df.groupby(['observed_choice'])['trips'].sum() / df['trips'].sum()
 
 
-def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int):
+def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, fixed_params: dict=None,):
     """Main function to calibrate the logit model
 
     Args:
         database_path (str): path to the csv file with the information to calibrate the model
         n_archetypes (int): number of archetypes
         n_alternatives (int): number of alternatives between OD pairs
+        o_d_info (pd.Dataframe): information about the origin and destination of the trips
+        fixed_params (dict): dictionary with the fixed parameters coming from a previous calibration
     """
     # TO DO: create a configuration file. The input will only be the configuration file. For now we include other inputs
 
-    od_matrix = pd.read_csv(database_path)
+    if fixed_params is None:
+        fixed_params = {} #set default value in the case there are no fixed parameters
 
+    od_matrix = pd.read_csv(database_path)
+    
     od_matrix_train, od_matrix_test = train_test_split(
-        od_matrix, test_size=0.2, random_state=42)
+        od_matrix, test_size=0.2, random_state=43)
 
     database_train = db.Database("train", od_matrix_train)
-    database_test = db.Database("train", od_matrix_test)
+    database_test = db.Database("test", od_matrix_test)
 
+    test_results_archetypes={}
     for k in range(n_archetypes):
         weight_column = f'archetype_{k}'
+        archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
 
-        V = utility_function(database_train, n_alternatives)
+        V = utility_function(database_train, n_alternatives,archetype_fixed_params)
         av = alternative_availability(database_train, n_alternatives)
 
         the_biogeme, results = logit_model(
             database_train, V, av, weight_column)
+        beta_values=results.get_beta_values()
+        # beta_values.update(archetype_fixed_params)
+        test_results=test_data_analysis(database_test, V, av, n_alternatives, weight_column, beta_values)
+        # test_results=pd.merge(test_results,o_d_info_archetype,left_index=True,right_index=True,how="inner") #gets the origin and destination information
+        # for i in range(1,n_alternatives+1):
+        #     trips_i=f"trips_{i}"
+        #     prob_i=f"prob_{i}"
+        #     test_results[trips_i]=test_results[f"trips_per_od_pair_arch_{k}"]*test_results[prob_i]
+        test_results_archetypes[f"test_results_archetype_{k}"]=test_results
 
+        print("Training results:")
         print(results.short_summary())
         print(results.getEstimatedParameters())
         print(results.getBetaValues())
+        print("Test results:")
+        print(beta_values)
+        print(test_results)
+    return test_results_archetypes
+        
+ 
 
 
 def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weight_column: str, beta_values: dict):
@@ -178,7 +207,7 @@ def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weig
     return probabilities
 
 
-def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str):
+def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str, fixed_params: dict = None):
     """_summary_
 
     Args:
@@ -206,17 +235,22 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
 
     df_results = paths[['origin', 'destination']].copy()
 
+    if fixed_params is None:
+        fixed_params = {} #set default value in the case there are no fixed parameters
+
     for k in range(n_archetypes):
-        logger.important_info(
-            f"Predicting number of passenger on each path for archetype {k}."
-        )
+        # logger.important_info(
+            # f"Predicting number of passenger on each path for archetype {k}."
+        # )
         weight_column = f'archetype_{k}'
+        archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
         beta_values = res.bioResults(
             pickleFile=(
                 Path(sensitivities["sensitivities"]) / f"{weight_column}.pickle")
         ).getBetaValues()
+        # beta_values.update(archetype_fixed_params)
 
-        V = utility_function(database, n_alternatives)
+        V = utility_function(database, n_alternatives, archetype_fixed_params)
         av = alternative_availability(database, n_alternatives)
 
         probabilities = predict_probabilities(
@@ -231,7 +265,7 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
 
 
 def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
-    """Assign how many passengers belonging to an acrhetype choose the alternative i for the OD pair
+    """Assign how many passengers belonging to an archetype choose the alternative i for the OD pair
 
     Args:
         row (_type_): row of the pax_demand csv
@@ -239,7 +273,7 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
         alternative_i (int): alternative id
 
     Returns:
-        float: volumne of trips for an archetype and alternative
+        float: volume of trips for an archetype and alternative
     """
     O = row['origin']
     D = row['destination']
@@ -250,7 +284,8 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
     if (O, D) in paths_prob_dict.keys():
         return trips * paths_prob_dict[(O, D)][name]
     else:
-        logger.important_info(f"No paths on OD pair {O, D}")
+        pass
+        # logger.important_info(f"No paths on OD pair {O, D}")
 
 def get_probability_path_archetype(row, paths_prob_dict: dict, alternative_i: int):
     O = row['origin']
@@ -262,7 +297,8 @@ def get_probability_path_archetype(row, paths_prob_dict: dict, alternative_i: in
     if (O, D) in paths_prob_dict.keys():
         return paths_prob_dict[(O, D)][name]
     else:
-        logger.important_info(f"No paths on OD pair {O, D}")
+        pass
+        # logger.important_info(f"No paths on OD pair {O, D}")
 
 
 
@@ -453,3 +489,48 @@ def assign_demand_to_paths(
 
 
     return pax_demand_paths, paths_final
+
+def calibration_results_summary(archetypes: dict):
+    data=[]
+    for i in range(6):
+        
+        archetype = archetypes[f"archetype_{i}"] # accesses the values  
+        values=archetype.get_estimated_parameters() # dataframe of the betavalues 
+        
+
+        asc_plane = values.loc['ASC_PLANE']["Value"]  
+        asc_plane_significance=(values.loc["ASC_PLANE"]["Rob. p-value"]<0.05)
+
+        asc_train = values.loc['ASC_TRAIN']["Value"]
+        asc_train_significance=(values.loc["ASC_TRAIN"]["Rob. p-value"]<0.05)
+
+        b_co2 = values.loc['B_CO2']["Value"]      
+        b_co2_significance=(values.loc["B_CO2"]["Rob. p-value"]<0.05)
+
+        b_time = values.loc['B_TIME']["Value"]
+        b_time_significance=(values.loc["B_TIME"]["Rob. p-value"]<0.05)
+
+        b_cost=values.loc["B_COST"]["Value"]
+        b_cost_significance=(values.loc["B_COST"]["Rob. p-value"]<0.05)
+
+        # Create a row dictionary
+        row = {
+            "Archetype": f"Archetype {i}",
+            "ASC_PLANE": asc_plane,
+            "ASC_PLANE_SIGNIFICANCE": asc_plane_significance,
+            "ASC_TRAIN": asc_train,
+            "ASC_TRAIN_SIGNIFICANCE": asc_train_significance,
+            "B_CO2": b_co2,
+            "B_CO2_SIGNIFICANCE": b_co2_significance,
+            "B_TIME": b_time,
+            "B_TIME_SIGNIFICANCE": b_time_significance,
+            "B_COST": b_cost,
+            "B_COST_SIGNIFICANCE": b_cost_significance
+        }
+        
+        # Append the row to the list
+        data.append(row)
+
+    # Create a DataFrame from the data
+    calibration_results = pd.DataFrame(data)
+    return calibration_results

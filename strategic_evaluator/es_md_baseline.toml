@@ -1,0 +1,118 @@
+[demand]
+    demand = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\demand\\demand_ES_MD_intra_v0.4.csv"
+
+[output]
+	output_folder = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\processed_1_connection\\paths_itineraries"
+
+[network_definition]
+    network_path = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8"
+    processed_folder = "processed_baseline_1_connection"
+    [[network_definition.air_network]]
+        flight_schedules = "flights_schedules\\flight_schedules_oag_es_v0.3.csv"
+        alliances = "flights_schedules\\air_alliances_v0.1.csv"
+        airports_static = "infrastructure\\airports_info\\airports_coordinates_v1.1.csv"
+        mct_air = "infrastructure\\mct\\mct_air_v0.2.csv"
+        mct_default = 30
+    [[network_definition.rail_network]]
+        gtfs = "gtfs_es_UIC_v1.0"
+        date_rail = "20230920" # Date to use to filter GTFS
+        date_to_set_rail = "20190906" # Date from flights to make rail and flights 'compatible'
+        rail_stations_considered = "infrastructure\\rail_info\\rail_stations_considered_GTFS_2022v0.1.csv"
+        mct_rail = "infrastructure\\mct\\mct_rail_v0.1.csv"
+        mct_default = 15
+        create_rail_layer_from = 'services' #gtfs / services
+        country = "LE"
+    [[network_definition.processing_time]]
+        airport_processes = "infrastructure\\pax_processes\\airport_processes_v0.1.csv"
+        iata_icao_static = "infrastructure\\airports_info\\IATA_ICAO_Airport_codes_v1.3.csv"
+        rail_stations_processes = "infrastructure\\pax_processes\\rail_stations_processes_v0.1.csv"
+        default_process_time_k2g = 90
+        default_process_time_g2k = 30
+        default_process_time_k2p = 15
+        default_process_time_p2k = 10
+    [[network_definition.multimodal]]
+        air_rail_transitions = "infrastructure\\infrastructure_transitions\\infrastructure_transitions_v0.1.csv"
+	[[network_definition.regions_access]]
+		regions_access = "infrastructure\\regions_access\\regions_access_v0.4.csv"
+        iata_icao_static = "infrastructure\\airports_info\\IATA_ICAO_Airport_codes_v1.3.csv"
+
+[other_param]
+    [other_param.heuristics_precomputed]
+        heuristics_precomputed_air = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\heuristics\\air_time_heuristics_v0.1.csv"
+        heuristics_precomputed_rail = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\heuristics\\rail_time_heuristics_v0.1.csv"
+
+    [other_param.kpi_cluster_itineraries]
+        # Can define, or not kpis_to_use for the clustering of itineraries
+        # Then, thresholds can be provided. if category doesn't exit (e.g. no rail, or no some
+        # kpi for some category), the values from 'all' will be taken (if given)
+        # if nothing is provided, the threshold will be computed as the std of the kpi for the
+        # category being clustered
+        kpis_to_use = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time', 'nservices']
+        [other_param.kpi_cluster_itineraries.thresholds.all]
+            total_cost = 30
+            total_travel_time = 50
+            total_emissions = 15
+            total_waiting_time = 30
+            nservices = 0
+        [other_param.kpi_cluster_itineraries.thresholds.air]
+            total_emissions = 20
+
+    [other_param.thresholds_pareto_dominance]
+        total_travel_time = 15
+        total_cost = 10
+        total_emissions = 5
+        total_waiting_time = 30
+
+    [other_param.sensitivities_logit]
+        sensitivities = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\sensitivities_v0.2"
+
+    [other_param.pax_assigner]
+        fillers_in_not_used_flights = 1 #Flights in the schedule but without any pax from the pax itineraries flow also fill with fillers. Otherwise, these flights will be empty.
+        train_seats_per_segment = 'combined' # 'segment' each train segment is treated independently, 'combined', but then if a pax uses x_1_2 and another x_3_5 the seats are 'shared' for the whole train 1_5...
+        type_of_optimisation = 'lexicographic' #Type of optimisation lexicographic or max_assinged_only
+        [other_param.pax_assigner.max_assinged_only]
+            problem_file = 'problem' #Save the Gurobi LP problem in a file
+            compute_leg2_plus_first = 1 # Either 1 or 0 to select if doing 2+ legs assigment first
+        [other_param.pax_assigner.lexicographic]
+            nprocs = 23 # For parallel computing
+            objectives = [['total_pax_connecting','maximize'],
+                          ['total_pax', 'maximize']]
+                          #['total_pax_combined_utilisation', 'maximize']]
+            [other_param.pax_assigner.lexicographic.thresholds]
+                [other_param.pax_assigner.lexicographic.thresholds.total_pax_connecting]
+                    type = 'relative'
+                    value = 0.05
+        [other_param.pax_assigner.target_load_factor]
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.75,0.95,1]
+            [other_param.pax_assigner.target_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.75,0.95,1]
+            [other_param.pax_assigner.target_load_factor.rail]
+                type = 'fix' # triangular | fix. If something else then flights will be at full capacity
+                param = 1
+
+        [other_param.pax_assigner.minimum_load_factor]
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.rail]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+
+    [other_param.tactical_input]
+        [other_param.tactical_input.aircraft]
+            ac_type_icao_iata_conversion = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\ac_airline_info\\ac_type_icao_iata_v0.1.csv"
+            ac_mtow = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\ac_airline_info\\mtow_v0.1.csv"
+            ac_wtc = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\ac_airline_info\\wtc_v0.1.csv"
+        [other_param.tactical_input.airlines]
+            airline_ao_type = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\ac_airline_info\\airline_icao_ao_type_v1.1.csv"
+            airline_iata_icao = "G:\\Unidades compartidas\\04_PROYECTOS I+D+i\\2023 MultiModX\\iii) Project\\WP3 Scenario definition\\Case study input data\\Spain\\v=0.8\\ac_airline_info\\iata_icao_airlines_codes_v1.1.csv"
+
+
+#  python ./strategic_pipeline.py -tf C:\Users\LMENENDEZ\GitHub\MultiModX\strategic_evaluator\es_md_baseline.toml -ni 50 -np 100 -mc 1 -hpc -pc 23  -lf ./test_loggin.log -v
+# ni number of itineraries
+# np number of paths
+# mc max number of connections
