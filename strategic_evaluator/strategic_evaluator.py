@@ -99,6 +99,7 @@ def create_air_layer(df_fs, df_as, df_mct, mct_default=None, df_ra_air=None, kee
                                                      gcdistance=x.gcdistance,
                                                      country_origin=x.country_origin,
                                                      country_destination=x.country_destination,
+                                                     mode='air',
                                                      #coordinates_origin=(x.lat_orig, x.lon_orig),
                                                      #coordinates_destination=(x.lat_dest, x.lon_dest)
                                                      ), axis=1)
@@ -196,6 +197,7 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                                                  gcdistance=x.gcdistance,
                                                                  country_origin=x.country,
                                                                  country_destination=x.country,
+                                                                 mode='rail',
                                                                  #coordinates_origin=(x.lat_orig, x.lon_orig),
                                                                  #coordinates_destination=(x.lat_dest, x.lon_dest)
                                                                  ),
