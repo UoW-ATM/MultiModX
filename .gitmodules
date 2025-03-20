@@ -1,10 +1,4 @@
-[submodule "tactical_evaluator"]
-	path = tactical_evaluator
-	url = https://github.com/UoW-ATM/Mercury.git
-	branch = multimodx
+
 [submodule "libs/uow_tool_belt"]
 	path = libs/uow_tool_belt
 	url = https://github.com/UoW-ATM/uow_tool_belt.git
-[submodule "libs/passenger_assigner"]
-	path = libs/passenger_assigner
-	url = https://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@github.com/UoW-ATM/passenger_assigner.git
