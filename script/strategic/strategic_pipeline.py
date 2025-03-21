@@ -198,9 +198,29 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
 
     # Preprocess input
-    logger.info("Pre-processing input")
-    preprocess_input(toml_config['network_definition'], pre_processed_version=pre_processed_version,
-                     policy_package=toml_config.get('policy_package'))
+    if pre_processed_version == 0:
+        # First time processing the input, if > 1 then use directly flight_schedules_proc_#.csv and rail_timetable_proc_#.csv
+        logger.info("Pre-processing input")
+        preprocess_input(toml_config['network_definition'],
+                         pre_processed_version=pre_processed_version,
+                         policy_package=toml_config.get('policy_package'))
+    else:
+        # We don't preprocess but just copy the preprocessed values
+        if 'air_network' in toml_config['network_definition']:
+            # We have air network, copy the processed file
+            flight_schedule_pre_proc_path = (Path(toml_config['general']['experiment_path']) /
+                                             toml_config['general']['pre_processed_input_path'] /
+                                             ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+
+            flight_schedule_pre_proc_dest = (Path(toml_config['network_definition']['network_path']) /
+                                             toml_config['network_definition']['processed_folder'] /
+                                             ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+
+            shutil.copy2(flight_schedule_pre_proc_path, flight_schedule_pre_proc_dest)
+
+        if 'rail_network' in toml_config['network_definition']:
+            # TODO
+            print("RAIL NETWORK DEFINITION")
 
     # Read demand
     logger.info("Reading demand")
