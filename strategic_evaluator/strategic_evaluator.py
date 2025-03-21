@@ -7,6 +7,7 @@ import ast
 import time
 import logging
 import sys
+import shutil
 
 from joblib import Parallel, delayed
 
@@ -238,52 +239,80 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
     return nl_rail
 
 
+def apply_ban_policy(network_definition_config, flight_ban_policy, pre_processed_version=0):
+    # We have a flight ban with relates to rail operations, so compute which o-d pairs need to be 'removed'
+    # from the flights
+    df_od_banned = compute_od_pairs_banned(network_definition_config, flight_ban_policy,
+                                           pre_processed_version)
+
+    # Now we know which OD pairs we are banning, save it!
+
+    # Read flight_schedules_proc_ and save it again without the banned od pairs
+    path_network = network_definition_config['network_path']
+    processed_folder = network_definition_config['processed_folder']
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+    df_fs = pd.read_csv(Path(path_network) / processed_folder / fflights)
+
+    # merge to flag banned flights
+    df_merged = df_fs.merge(df_od_banned, on=["origin", "destination"], how="left", indicator=True)
+
+    # Split into banned and allowed
+    df_fs_banned = df_merged[df_merged["_merge"] == "both"].drop(columns=["_merge"])
+    df_fs_allowed = df_merged[df_merged["_merge"] == "left_only"].drop(columns=["_merge"])
+
+    # Save flights kept
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+    df_fs_allowed.to_csv(Path(path_network) / processed_folder / fflights, index=False)
+    # Save flights banned
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '_banned.csv'
+    df_fs_banned.to_csv(Path(path_network) / processed_folder / fflights, index=False)
+    # Save od pair banned
+    fodbanned = 'origin_destination_banned_' + str(pre_processed_version) + '.csv'
+    df_od_banned.to_csv(Path(path_network) / processed_folder / fodbanned, index=False)
+
+
 def preprocess_input(network_definition_config, pre_processed_version=0, policy_package=None):
-    if policy_package is None:
-        policy_package = {}
+    if pre_processed_version == 0:
+        # Read from raw data and create proc_#.csv files for air and/or rail
+        if 'air_network' in network_definition_config.keys():
+            preprocess_air_layer(network_definition_config['network_path'], network_definition_config['air_network'],
+                                 network_definition_config['processed_folder'],
+                                 pre_processed_version=pre_processed_version)
 
-    if 'air_network' in network_definition_config.keys():
-        preprocess_air_layer(network_definition_config['network_path'], network_definition_config['air_network'],
-                             network_definition_config['processed_folder'],
-                             pre_processed_version=pre_processed_version)
+        if 'rail_network' in network_definition_config.keys():
+            pre_process_rail_layer(network_definition_config['network_path'], network_definition_config['rail_network'],
+                                   network_definition_config['processed_folder'],
+                                   pre_processed_version=pre_processed_version)
 
-    if 'rail_network' in network_definition_config.keys():
-        pre_process_rail_layer(network_definition_config['network_path'], network_definition_config['rail_network'],
-                               network_definition_config['processed_folder'],
-                               pre_processed_version=pre_processed_version)
+        if ((policy_package is not None) and
+                (('flight_ban' in policy_package.keys())
+                 and ('rail_network' in network_definition_config.keys())
+                 and ('air_network' in network_definition_config.keys()))):
+            apply_ban_policy(network_definition_config, policy_package['flight_ban'],pre_processed_version)
 
-    if (('flight_ban' in policy_package.keys())
-            and ('rail_network' in network_definition_config.keys())
-            and ('air_network' in network_definition_config.keys())):
-        # We have a flight ban with relates to rail operations, so compute which o-d pairs need to be 'removed'
-        # from the flights
-        df_od_banned = compute_od_pairs_banned(network_definition_config, policy_package['flight_ban'],
-                                               pre_processed_version)
+    else:
+        # We don't preprocess but just copy the preprocessed values
+        if 'air_network' in network_definition_config:
+            # We have air network, copy the processed file
+            print(network_definition_config)
 
-        # Now we know which OD pairs we are banning, save it!
+            flight_schedule_pre_proc_path = (Path(network_definition_config['network_path']) /
+                                             network_definition_config['pre_processed_input_folder'] /
+                                             ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
 
-        # Read flight_schedules_proc_ and save it again without the banned od pairs
-        path_network = network_definition_config['network_path']
-        processed_folder = network_definition_config['processed_folder']
-        fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
-        df_fs = pd.read_csv(Path(path_network) / processed_folder / fflights)
+            flight_schedule_pre_proc_dest = (Path(network_definition_config['network_path']) /
+                                             network_definition_config['processed_folder'] /
+                                             ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
 
-        # merge to flag banned flights
-        df_merged = df_fs.merge(df_od_banned, on=["origin", "destination"], how="left", indicator=True)
+            shutil.copy2(flight_schedule_pre_proc_path, flight_schedule_pre_proc_dest)
 
-        # Split into banned and allowed
-        df_fs_banned = df_merged[df_merged["_merge"] == "both"].drop(columns=["_merge"])
-        df_fs_allowed = df_merged[df_merged["_merge"] == "left_only"].drop(columns=["_merge"])
+        if 'rail_network' in network_definition_config:
+            # We have rail network, copy the processed file, it might need some preprocessing
+            print("RAIL NETWORK DEFINITION")
+            print(toml_config['network_definition']['rail_network'])
 
-        # Save flights kept
-        fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
-        df_fs_allowed.to_csv(Path(path_network) / processed_folder / fflights, index=False)
-        # Save flights banned
-        fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '_banned.csv'
-        df_fs_banned.to_csv(Path(path_network) / processed_folder / fflights, index=False)
-        # Save od pair banned
-        fodbanned = 'origin_destination_banned_' + str(pre_processed_version) + '.csv'
-        df_od_banned.to_csv(Path(path_network) / processed_folder / fodbanned, index=False)
+            # create_rail_layer_from
+
 
 
 def compute_cost_emissions_air(df_fs):
@@ -2041,6 +2070,11 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         # Convert the result to a dictionary
         service_max_seats_avg_dict = service_max_seats_group.to_dict()
         service_max_gcdistance_dict = service_max_gcdistance.to_dict()
+
+        import pickle
+        with open("./pax_assigment_tests/df_schedules_pre_cap.pkl", "wb") as file:
+            pickle.dump({'df_schedules': df_schedules, 'df_demand': df_demand,
+                         'df_possible_itineraries': df_possible_itineraries}, file)
 
         df_schedules['seats'] = df_schedules['nid'].apply(lambda x: service_max_seats_avg_dict[x])
         df_schedules['gcdistance'] = df_schedules['nid'].apply(lambda x: service_max_gcdistance_dict[x])
