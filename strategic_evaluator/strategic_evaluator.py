@@ -167,7 +167,6 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                             (rail_services_df.destination.isin(df_stops_considered.stop_id))].copy()
 
     # Create Service objects
-
     if df_stops is not None:
         df_stops = df_stops.copy().rename({'stop_id': 'node', 'stop_lat': 'lat', 'stop_lon': 'lon'},
                                           axis=1)[['node', 'lat', 'lon']]
@@ -294,8 +293,6 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
         # We don't preprocess but just copy the preprocessed values
         if 'air_network' in network_definition_config:
             # We have air network, copy the processed file
-            print(network_definition_config)
-
             flight_schedule_pre_proc_path = (Path(network_definition_config['network_path']) /
                                              network_definition_config['pre_processed_input_folder'] /
                                              ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
@@ -308,10 +305,24 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
 
         if 'rail_network' in network_definition_config:
             # We have rail network, copy the processed file, it might need some preprocessing
-            print("RAIL NETWORK DEFINITION")
-            print(toml_config['network_definition']['rail_network'])
+            rnd = network_definition_config['rail_network'][0]  # TODO now working only with one rail network
 
-            # create_rail_layer_from
+            if rnd['create_rail_layer_from'] == 'services':
+                # All is done then just copy the rail_timetable_proc_#.csv and we're done
+                rail_services_pre_proc_path = (Path(network_definition_config['network_path']) /
+                                                 network_definition_config['pre_processed_input_folder'] /
+                                                 ('rail_timetable_proc_' + str(pre_processed_version) + '.csv'))
+
+                rail_services_pre_proc_dest = (Path(network_definition_config['network_path']) /
+                                                 network_definition_config['processed_folder'] /
+                                                 ('rail_timetable_proc_' + str(pre_processed_version) + '.csv'))
+
+                shutil.copy2(rail_services_pre_proc_path, rail_services_pre_proc_dest)
+
+            else:
+                # We have them in gtfs format... might need some processing
+                print("TODO GTFS HANDLING")
+
 
 
 
@@ -988,11 +999,14 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_mctl = []
         mct_defaultl = []
         mct_default = None
+        df_stops = None
+        date_rail_str = None
         need_save = False
         for rn in path_network_dict['rail_network']:
             date_rail_str = rn['date_to_set_rail']
             date_rail = pd.to_datetime(date_rail_str, format='%Y%m%d')
 
+            df_stops = None
             if rn.get('create_rail_layer_from') == 'gtfs':
                 # Create the services file (regarless if it exists or not) and then process downstream as from services
                 fstops_filename = 'rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'
@@ -1000,7 +1014,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                            fstops_filename, keep_default_na=False, na_values=[''],
                                               dtype={'stop_id': str})
 
-                df_stops = pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt')
+                df_stops = pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt', dtype={'stop_id': str})
 
                 df_rail_data_l += [pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops)]
                 need_save = True
@@ -1038,9 +1052,9 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
                 df_rail_data_l += [df_rail_data]
 
-            # Need the stops to have its coordinates
-            df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
-                                      'stops.txt', dtype={'stop_id': str})]
+            if df_stops is not None:
+                # Need the stops to have its coordinates
+                df_stopsl += [df_stops] #pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt', dtype={'stop_id': str})]
 
             # Read MCTs between rail services
             if rn.get('mct_rail') is not None:
@@ -1053,7 +1067,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
         df_rail_data = compute_cost_emissions_rail(df_rail_data)
-        df_stops = pd.concat(df_stopsl, ignore_index=True)
+        if len(df_stopsl) > 0:
+            df_stops = pd.concat(df_stopsl, ignore_index=True)
 
         df_mct = None
         if len(df_mctl)>0:
