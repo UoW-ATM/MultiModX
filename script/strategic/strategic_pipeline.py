@@ -269,7 +269,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                                           max_connections=max_connections,
                                                           allow_mixed_operators=allow_mixed_operators_itineraries,
                                                           consider_times_constraints=True,
-                                                              policy_package=toml_config.get('policy_package'))
+                                                          policy_package=toml_config.get('policy_package'))
 
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     df_itineraries.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
@@ -433,12 +433,6 @@ if __name__ == '__main__':
     parser.add_argument('-amo', '--allow_mixed_operators', help='Allow mix operators',
                         required=False, action='store_true')
 
-    parser.add_argument('-cpp', '--compute_potential_paths', help='Compute only potential paths',
-                        required=False, action='store_true')
-
-    parser.add_argument('-upp', '--use_potential_paths', help='Compute itineraries from list of potential '
-                                                              'paths only',
-                        required=False, action='store_true')
 
     parser.add_argument('-eo', '--end_output_folder', help='Ending to be added to output folder',
                         required=False)
