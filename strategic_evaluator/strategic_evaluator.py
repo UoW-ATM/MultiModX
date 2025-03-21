@@ -393,30 +393,16 @@ def compute_od_pairs_banned(network_definition_config, flight_ban_def, pre_proce
     df_fs = pd.read_csv(Path(path_network) / processed_folder / fflights)
     df_fs = df_fs[['origin', 'destination', 'gcdistance']]
     df_fs = df_fs.groupby(["origin", "destination"], as_index=False).agg({"gcdistance": "min"})
+    ftrains = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
+    df_t = pd.read_csv(Path(path_network) / processed_folder / ftrains)
 
-    if flight_ban_def['ban_type'] == 'distance':
-        # Remove all flights shorter or equal to the distance, easy!
-        # TODO: only remove the flights if there are trains between cities served even if distance <= threshold!
-        df_fs = df_fs[df_fs['gcdistance'] <= flight_ban_def['ban_length']]
-
-    else:
-        # Remove all flights which have a train faster han a given time...
-        # Need to read the trains first
-        # Need to filter the trains that go between airports (areas)
-        # Then keep the ones which are faster than the threshold
-
-        ftrains = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
-        df_t = pd.read_csv(Path(path_network) / processed_folder / ftrains)
-        df_t['departure_time'] = pd.to_datetime(df_t['departure_time'])
-        df_t['arrival_time'] = pd.to_datetime(df_t['arrival_time'])
-        df_t['time'] = (df_t['arrival_time']-df_t['departure_time']).dt.total_seconds()/60
-
-        # Keep only the trains within the flight ban
-        df_t = df_t[df_t.time <= flight_ban_def['ban_length']]
+    def get_od_flights_from_rail(df_fs, df_t):
+        # Get all the o-d pairs in the df_fs which have a train in the df_t file
+        
         # Keep only one representative for origin - destination
-        df_t = df_t.groupby(['origin', 'destination',
-                             'lat_orig', 'lon_orig',
-                             'lat_dest', 'lon_dest'], as_index=False).agg({"time": "min"})
+        df_t = df_t[['origin', 'destination',
+                     'lat_orig', 'lon_orig',
+                     'lat_dest', 'lon_dest']].drop_duplicates()
 
         df_stops = pd.concat([df_t[['origin', 'lat_orig', 'lon_orig']].rename({'origin': 'stop_id',
                                                          'lat_orig': 'lat',
@@ -490,6 +476,34 @@ def compute_od_pairs_banned(network_definition_config, flight_ban_def, pre_proce
         # Append missing pairs to the original DataFrame
         df_fs = pd.concat([df_fs, df_missing], ignore_index=True)
 
+        return df_fs
+
+
+    if flight_ban_def['ban_type'] == 'distance':
+        # Remove all flights shorter or equal to the distance, easy!
+        # Need to read the trains first
+        # Need to filter the trains that go between airports (areas)
+
+        # Keep only flights which could be impacted by the ban
+        df_fs = df_fs[df_fs['gcdistance'] <= flight_ban_def['ban_length']]
+
+        # Filter the flights which appear in the rails that are kept
+        df_fs = get_od_flights_from_rail(df_fs, df_t)
+
+    else:
+        # Remove all flights which have a train faster han a given time...
+        # Need to read the trains first
+        # Need to filter the trains that go between airports (areas)
+        # Then keep the ones which are faster than the threshold
+
+        # Keep only the trains within the flight ban
+        df_t['departure_time'] = pd.to_datetime(df_t['departure_time'])
+        df_t['arrival_time'] = pd.to_datetime(df_t['arrival_time'])
+        df_t['time'] = (df_t['arrival_time']-df_t['departure_time']).dt.total_seconds()/60
+        df_t = df_t[df_t.time <= flight_ban_def['ban_length']]
+
+        # Filter the flights which appear in the rails that are kept
+        df_fs = get_od_flights_from_rail(df_fs, df_t)
 
     return df_fs[['origin', 'destination']]
 
