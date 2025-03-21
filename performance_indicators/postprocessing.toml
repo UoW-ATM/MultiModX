@@ -1,0 +1,5 @@
+[input]
+    path_to_strategic_output = "../../data/CS-ES-MD/v=0.8/processed_baseline/paths_itineraries"
+	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/3.1_9_1_0_ground_mobility__delay_mean_0/"
+	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
+    path_to_scenario = "/home/michal/Documents/westminster/multimodx/input/scenario=1/scenario_config.toml"

@@ -1930,7 +1930,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
         # Only allow 'rail' in the first or last position if it appears
         if 'rail' in modes[1:-1]:  # If 'rail' is in the middle
             return False
-        if len(modes) > 1 and all(mode == 'rail' for mode in modes):  # All rail
+        if len(modes) >= 1 and all(mode == 'rail' for mode in modes):  # All rail
             return False
         return True
 
