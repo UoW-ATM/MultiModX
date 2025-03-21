@@ -321,8 +321,39 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
 
             else:
                 # We have them in gtfs format... might need some processing
-                print("TODO GTFS HANDLING")
+                def copy_if_exist(orig_path, destination_path):
+                    if os.path.exists(orig_path):
+                        shutil.copy2(orig_path, destination_path)
 
+                # Check if rail_timetable_all_gtfs_#.csv exist and if sc copy it
+                rail_gtfs_all_pre_proc_path = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['pre_processed_input_folder'] /
+                                               ('rail_timetable_all_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                rail_gtfs_all_pre_proc_dest = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['processed_folder'] /
+                                               ('rail_timetable_all_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                copy_if_exist(rail_gtfs_all_pre_proc_path, rail_gtfs_all_pre_proc_dest)
+
+                # Check if rail_timetable_proc_gtfs_#.csv exist and if sc copy it
+                rail_gtfs_proc_pre_path = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['pre_processed_input_folder'] /
+                                               ('rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                rail_gtfs_proc_pre_dest = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['processed_folder'] /
+                                               ('rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                copy_if_exist(rail_gtfs_proc_pre_path, rail_gtfs_proc_pre_dest)
+
+                if not os.path.exists(rail_gtfs_proc_pre_dest):
+                    # We don't have the filtered version
+                    df_stops_considered = pd.read_csv(Path(network_definition_config['network_path']) /
+                                                      rnd['rail_stations_considered'], dtype={'stop_id': str})
+                    df_gtfs_all_pre = pd.read_csv(rail_gtfs_all_pre_proc_dest, dtype={'stop_id': str})
+                    df_gtfs_proc_pre = df_gtfs_all_pre[df_gtfs_all_pre['stop_id'].isin(df_stops_considered['stop_id'])]
+                    df_gtfs_proc_pre.to_csv(rail_gtfs_proc_pre_dest, index=False)
 
 
 
