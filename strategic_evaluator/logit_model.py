@@ -12,6 +12,7 @@ from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
 from sklearn.model_selection import train_test_split
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+import matplotlib.pyplot as plt
 
 
 logger = logging.getLogger(__name__)
@@ -610,3 +611,53 @@ def evaluate_model(test_data, model_name):
     print(f"Spearman Correlation: {spearman_corr:.4f}")
     print(f"Standard deviation: {residual_dispersion:.4f}")
     return mse, mae, pearson_corr, spearman_corr, residual_dispersion
+
+
+def drop_nan(test_data):
+    """Function to clean the data before using the dispersion plot
+    
+    Args:
+        test data: dataframe with columns prob_predicted
+        
+    Returns:
+        data cleaned"""
+    initial_rows=test_data.shape[0]
+
+    #we drop rows with nan values
+    data_cleaned=test_data.dropna()
+
+    #we remove the row that have prob=1
+    data_cleaned=data_cleaned[data_cleaned["prob_predicted"]!=1]
+    final_rows=data_cleaned.shape[0]
+
+    #we print how many rows we have removed
+    rows_removed=initial_rows - final_rows
+    print(f"{rows_removed} rows were removed")
+    return data_cleaned
+
+def calibration_plot(test_data, model_name):
+    """Function that does a dispersion plot. It makes 10 linear bins and 
+    groups probabilities predicted vs observed in these bins
+    
+    Args: 
+        test_data: dataframe with columns prob_observed and prob_predicted"""
+    #clean the data if needed
+    data_cleaned=drop_nan(test_data)
+
+    #convert to numeric data if needed
+    data_cleaned.loc[:,'prob_observed'] = pd.to_numeric(data_cleaned['prob_observed'], errors='coerce')
+    data_cleaned.loc[:,'prob_predicted'] = pd.to_numeric(data_cleaned['prob_predicted'], errors='coerce')
+
+    #creates bins
+    bins = np.linspace(0, 1, 11)
+    data_cleaned.loc[:,'bin'] = pd.cut(data_cleaned['prob_predicted'], bins)
+    grouped = data_cleaned.groupby('bin',observed=False).mean()
+    
+    #plot options
+    plt.plot(grouped['prob_predicted'], grouped['prob_observed'], "s-", label=model_name)
+    plt.plot([0, 1], [0, 1], "k--", label="Perfect Calibration")
+    plt.xlabel("Mean Predicted Probability")
+    plt.ylabel("Mean Observed Probability")
+    plt.legend()
+    plt.title("Calibration Plot")
+    plt.show()
