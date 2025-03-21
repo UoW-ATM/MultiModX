@@ -8,6 +8,7 @@ import time
 import logging
 import sys
 import shutil
+import os
 
 from joblib import Parallel, delayed
 
@@ -395,6 +396,7 @@ def compute_od_pairs_banned(network_definition_config, flight_ban_def, pre_proce
 
     if flight_ban_def['ban_type'] == 'distance':
         # Remove all flights shorter or equal to the distance, easy!
+        # TODO: only remove the flights if there are trains between cities served even if distance <= threshold!
         df_fs = df_fs[df_fs['gcdistance'] <= flight_ban_def['ban_length']]
 
     else:
@@ -1111,22 +1113,29 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             # TODO: Allow different MCTs per definition of rail layer
             mct_default = round(sum(mct_defaultl) / len(mct_defaultl))
 
-        # Compute departure and arrival times in UTC times
+        # Compute departure and arrival times in UTC times if departure and arrival times in UTC are missing
         # Vectorized processing for departure times
-        df_rail_data[['departure_time_utc', 'departure_time_utc_tz',
-                      'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
-            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
-                                for lon, lat, local_time in
-                                zip(df_rail_data['lon_orig'], df_rail_data['lat_orig'], df_rail_data['departure_time']))
-        )
+        if 'departure_time_utc' not in df_rail_data.columns:
+            df_rail_data[['departure_time_utc', 'departure_time_utc_tz',
+                          'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
+                Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                    for lon, lat, local_time in
+                                    zip(df_rail_data['lon_orig'], df_rail_data['lat_orig'], df_rail_data['departure_time']))
+            )
 
-        # Vectorized processing for arrival times
-        df_rail_data[['arrival_time_utc', 'arrival_time_utc_tz',
-                      'arrival_time_local', 'arrival_time_local_tz']] = pd.DataFrame(
-            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
-                                for lon, lat, local_time in
-                                zip(df_rail_data['lon_dest'], df_rail_data['lat_dest'], df_rail_data['arrival_time']))
-        )
+            # Vectorized processing for arrival times
+            df_rail_data[['arrival_time_utc', 'arrival_time_utc_tz',
+                          'arrival_time_local', 'arrival_time_local_tz']] = pd.DataFrame(
+                Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                    for lon, lat, local_time in
+                                    zip(df_rail_data['lon_dest'], df_rail_data['lat_dest'], df_rail_data['arrival_time']))
+            )
+        else:
+            # The rail_timetable_proc_#.csv already had the times in UTC and local available
+            df_rail_data['departure_time_utc'] = pd.to_datetime(df_rail_data['departure_time_utc'])
+            df_rail_data['arrival_time_utc'] = pd.to_datetime(df_rail_data['arrival_time_utc'])
+            df_rail_data['departure_time_local'] = pd.to_datetime(df_rail_data['departure_time_local'])
+            df_rail_data['arrival_time_local'] = pd.to_datetime(df_rail_data['arrival_time_local'])
 
         # Move arrival and departure times to UTC
         df_rail_data['arrival_time'] = df_rail_data['arrival_time_utc']
@@ -1136,6 +1145,12 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             frail = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
             df_rail_data.to_csv((Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
                          index=False)
+        else:
+            # We save it still for reference as this is the dataframe used downstream
+            frail = 'rail_timetable_proc_' + str(pre_processed_version) + '_used_internally.csv'
+            df_rail_data.to_csv(
+                (Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
+                index=False)
 
         # Get regions access for rail
         df_ra_rail = None
