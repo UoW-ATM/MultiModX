@@ -65,6 +65,9 @@ def process_config_file(toml_file, end_output_folder=None):
         toml_config = tomli.load(fp)
 
     toml_config['network_definition']['network_path'] = toml_config['general']['experiment_path']
+    if 'pre_processed_input_folder' in toml_config['general'].keys():
+        toml_config['network_definition']['pre_processed_input_folder'] = toml_config['general']['pre_processed_input_folder']
+
     if end_output_folder is not None:
         toml_config['general']['output_folder'] = toml_config['general']['output_folder'] + end_output_folder
 
@@ -188,9 +191,9 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                 max_connections=1, pre_processed_version=0,
                                 allow_mixed_operators_itineraries=False,
                                 use_heuristics_precomputed=False,
-                                recreate_output_folder=True):
+                                recreate_output_fld=True):
 
-    if recreate_output_folder:
+    if recreate_output_fld:
         # Check if output folder exists, if not create it
         recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
                                toml_config['network_definition']['processed_folder'])
@@ -199,7 +202,9 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     # Preprocess input
     logger.info("Pre-processing input")
-    preprocess_input(toml_config['network_definition'], pre_processed_version=pre_processed_version)
+    preprocess_input(toml_config['network_definition'],
+                     pre_processed_version=pre_processed_version,
+                     policy_package=toml_config.get('policy_package'))
 
     # Read demand
     logger.info("Reading demand")
@@ -230,7 +235,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     df_potential_paths = compute_possible_itineraries_network(network, o_d, pc=pc, n_itineraries=n_paths,
                                                           max_connections=max_connections,
                                                           allow_mixed_operators=allow_mixed_operators_itineraries,
-                                                          consider_times_constraints=False)
+                                                          consider_times_constraints=False,
+                                                              policy_package=toml_config.get('policy_package'))
 
     ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
     df_potential_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
@@ -266,7 +272,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                                           pc=pc, n_itineraries=n_itineraries,
                                                           max_connections=max_connections,
                                                           allow_mixed_operators=allow_mixed_operators_itineraries,
-                                                          consider_times_constraints=True)
+                                                          consider_times_constraints=True,
+                                                          policy_package=toml_config.get('policy_package'))
 
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     df_itineraries.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
@@ -430,12 +437,6 @@ if __name__ == '__main__':
     parser.add_argument('-amo', '--allow_mixed_operators', help='Allow mix operators',
                         required=False, action='store_true')
 
-    parser.add_argument('-cpp', '--compute_potential_paths', help='Compute only potential paths',
-                        required=False, action='store_true')
-
-    parser.add_argument('-upp', '--use_potential_paths', help='Compute itineraries from list of potential '
-                                                              'paths only',
-                        required=False, action='store_true')
 
     parser.add_argument('-eo', '--end_output_folder', help='Ending to be added to output folder',
                         required=False)

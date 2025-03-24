@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class Service:
     def __init__(self, service_id, origin, destination, departure_time, arrival_time, cost, provider, alliance,
-                 emissions=None, seats=None, **kwargs):
+                 emissions=None, seats=None, mode=None, **kwargs):
         self.id = service_id
         self.origin = origin
         self.destination = destination
@@ -21,6 +21,7 @@ class Service:
         self.alliance = alliance
         self.emissions = emissions
         self.seats = seats
+        self.mode = mode
 
         for key, value in kwargs.items():
             setattr(self, key, value)

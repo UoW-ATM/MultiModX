@@ -7,6 +7,8 @@ import ast
 import time
 import logging
 import sys
+import shutil
+import os
 
 from joblib import Parallel, delayed
 
@@ -99,6 +101,7 @@ def create_air_layer(df_fs, df_as, df_mct, mct_default=None, df_ra_air=None, kee
                                                      gcdistance=x.gcdistance,
                                                      country_origin=x.country_origin,
                                                      country_destination=x.country_destination,
+                                                     mode='air',
                                                      #coordinates_origin=(x.lat_orig, x.lon_orig),
                                                      #coordinates_destination=(x.lat_dest, x.lon_dest)
                                                      ), axis=1)
@@ -165,7 +168,6 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                             (rail_services_df.destination.isin(df_stops_considered.stop_id))].copy()
 
     # Create Service objects
-
     if df_stops is not None:
         df_stops = df_stops.copy().rename({'stop_id': 'node', 'stop_lat': 'lat', 'stop_lon': 'lon'},
                                           axis=1)[['node', 'lat', 'lon']]
@@ -196,6 +198,7 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
                                                                  gcdistance=x.gcdistance,
                                                                  country_origin=x.country,
                                                                  country_destination=x.country,
+                                                                 mode='rail',
                                                                  #coordinates_origin=(x.lat_orig, x.lon_orig),
                                                                  #coordinates_destination=(x.lat_dest, x.lon_dest)
                                                                  ),
@@ -236,16 +239,123 @@ def create_rail_layer(df_rail, from_gtfs=True, date_considered='20240101', df_st
     return nl_rail
 
 
-def preprocess_input(network_definition_config, pre_processed_version=0):
-    if 'air_network' in network_definition_config.keys():
-        preprocess_air_layer(network_definition_config['network_path'], network_definition_config['air_network'],
-                             network_definition_config['processed_folder'],
-                             pre_processed_version=pre_processed_version)
+def apply_ban_policy(network_definition_config, flight_ban_policy, pre_processed_version=0):
+    # We have a flight ban with relates to rail operations, so compute which o-d pairs need to be 'removed'
+    # from the flights
+    df_od_banned = compute_od_pairs_banned(network_definition_config, flight_ban_policy,
+                                           pre_processed_version)
 
-    if 'rail_network' in network_definition_config.keys():
-        pre_process_rail_layer(network_definition_config['network_path'], network_definition_config['rail_network'],
-                               network_definition_config['processed_folder'],
-                               pre_processed_version=pre_processed_version)
+    # Now we know which OD pairs we are banning, save it!
+
+    # Read flight_schedules_proc_ and save it again without the banned od pairs
+    path_network = network_definition_config['network_path']
+    processed_folder = network_definition_config['processed_folder']
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+    df_fs = pd.read_csv(Path(path_network) / processed_folder / fflights)
+
+    # merge to flag banned flights
+    df_merged = df_fs.merge(df_od_banned, on=["origin", "destination"], how="left", indicator=True)
+
+    # Split into banned and allowed
+    df_fs_banned = df_merged[df_merged["_merge"] == "both"].drop(columns=["_merge"])
+    df_fs_allowed = df_merged[df_merged["_merge"] == "left_only"].drop(columns=["_merge"])
+
+    # Save flights kept
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+    df_fs_allowed.to_csv(Path(path_network) / processed_folder / fflights, index=False)
+    # Save flights banned
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '_banned.csv'
+    df_fs_banned.to_csv(Path(path_network) / processed_folder / fflights, index=False)
+    # Save od pair banned
+    fodbanned = 'origin_destination_banned_' + str(pre_processed_version) + '.csv'
+    df_od_banned.to_csv(Path(path_network) / processed_folder / fodbanned, index=False)
+
+
+def preprocess_input(network_definition_config, pre_processed_version=0, policy_package=None):
+    if pre_processed_version == 0:
+        # Read from raw data and create proc_#.csv files for air and/or rail
+        if 'air_network' in network_definition_config.keys():
+            preprocess_air_layer(network_definition_config['network_path'], network_definition_config['air_network'],
+                                 network_definition_config['processed_folder'],
+                                 pre_processed_version=pre_processed_version)
+
+        if 'rail_network' in network_definition_config.keys():
+            pre_process_rail_layer(network_definition_config['network_path'], network_definition_config['rail_network'],
+                                   network_definition_config['processed_folder'],
+                                   pre_processed_version=pre_processed_version)
+
+        if ((policy_package is not None) and
+                (('flight_ban' in policy_package.keys())
+                 and ('rail_network' in network_definition_config.keys())
+                 and ('air_network' in network_definition_config.keys()))):
+            apply_ban_policy(network_definition_config, policy_package['flight_ban'],pre_processed_version)
+
+    else:
+        # We don't preprocess but just copy the preprocessed values
+        if 'air_network' in network_definition_config:
+            # We have air network, copy the processed file
+            flight_schedule_pre_proc_path = (Path(network_definition_config['network_path']) /
+                                             network_definition_config['pre_processed_input_folder'] /
+                                             ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+
+            flight_schedule_pre_proc_dest = (Path(network_definition_config['network_path']) /
+                                             network_definition_config['processed_folder'] /
+                                             ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
+
+            shutil.copy2(flight_schedule_pre_proc_path, flight_schedule_pre_proc_dest)
+
+        if 'rail_network' in network_definition_config:
+            # We have rail network, copy the processed file, it might need some preprocessing
+            rnd = network_definition_config['rail_network'][0]  # TODO now working only with one rail network
+
+            if rnd['create_rail_layer_from'] == 'services':
+                # All is done then just copy the rail_timetable_proc_#.csv and we're done
+                rail_services_pre_proc_path = (Path(network_definition_config['network_path']) /
+                                                 network_definition_config['pre_processed_input_folder'] /
+                                                 ('rail_timetable_proc_' + str(pre_processed_version) + '.csv'))
+
+                rail_services_pre_proc_dest = (Path(network_definition_config['network_path']) /
+                                                 network_definition_config['processed_folder'] /
+                                                 ('rail_timetable_proc_' + str(pre_processed_version) + '.csv'))
+
+                shutil.copy2(rail_services_pre_proc_path, rail_services_pre_proc_dest)
+
+            else:
+                # We have them in gtfs format... might need some processing
+                def copy_if_exist(orig_path, destination_path):
+                    if os.path.exists(orig_path):
+                        shutil.copy2(orig_path, destination_path)
+
+                # Check if rail_timetable_all_gtfs_#.csv exist and if sc copy it
+                rail_gtfs_all_pre_proc_path = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['pre_processed_input_folder'] /
+                                               ('rail_timetable_all_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                rail_gtfs_all_pre_proc_dest = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['processed_folder'] /
+                                               ('rail_timetable_all_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                copy_if_exist(rail_gtfs_all_pre_proc_path, rail_gtfs_all_pre_proc_dest)
+
+                # Check if rail_timetable_proc_gtfs_#.csv exist and if sc copy it
+                rail_gtfs_proc_pre_path = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['pre_processed_input_folder'] /
+                                               ('rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                rail_gtfs_proc_pre_dest = (Path(network_definition_config['network_path']) /
+                                               network_definition_config['processed_folder'] /
+                                               ('rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'))
+
+                copy_if_exist(rail_gtfs_proc_pre_path, rail_gtfs_proc_pre_dest)
+
+                if not os.path.exists(rail_gtfs_proc_pre_dest):
+                    # We don't have the filtered version
+                    df_stops_considered = pd.read_csv(Path(network_definition_config['network_path']) /
+                                                      rnd['rail_stations_considered'], dtype={'stop_id': str})
+                    df_gtfs_all_pre = pd.read_csv(rail_gtfs_all_pre_proc_dest, dtype={'stop_id': str})
+                    df_gtfs_proc_pre = df_gtfs_all_pre[df_gtfs_all_pre['stop_id'].isin(df_stops_considered['stop_id'])]
+                    df_gtfs_proc_pre.to_csv(rail_gtfs_proc_pre_dest, index=False)
+
 
 
 def compute_cost_emissions_air(df_fs):
@@ -272,6 +382,130 @@ def compute_cost_emissions_rail(df_rs):
                                             if pd.isnull(row['cost']) else row['cost'], axis=1)
 
     return df_rs
+
+
+def compute_od_pairs_banned(network_definition_config, flight_ban_def, pre_processed_version):
+    from libs.uow_tool_belt.general_tools import haversine
+
+    path_network = network_definition_config['network_path']
+    processed_folder = network_definition_config['processed_folder']
+    fflights = 'flight_schedules_proc_' + str(pre_processed_version) + '.csv'
+    df_fs = pd.read_csv(Path(path_network) / processed_folder / fflights)
+    df_fs = df_fs[['origin', 'destination', 'gcdistance']]
+    df_fs = df_fs.groupby(["origin", "destination"], as_index=False).agg({"gcdistance": "min"})
+    ftrains = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
+    df_t = pd.read_csv(Path(path_network) / processed_folder / ftrains)
+
+    def get_od_flights_from_rail(df_fs, df_t):
+        # Get all the o-d pairs in the df_fs which have a train in the df_t file
+        
+        # Keep only one representative for origin - destination
+        df_t = df_t[['origin', 'destination',
+                     'lat_orig', 'lon_orig',
+                     'lat_dest', 'lon_dest']].drop_duplicates()
+
+        df_stops = pd.concat([df_t[['origin', 'lat_orig', 'lon_orig']].rename({'origin': 'stop_id',
+                                                         'lat_orig': 'lat',
+                                                         'lon_orig': 'lon'},
+                                      axis=1),
+                              df_t[['destination', 'lat_dest', 'lon_dest']].rename({'destination': 'stop_id',
+                                                         'lat_dest': 'lat',
+                                                         'lon_dest': 'lon'},
+                                                        axis=1)]).drop_duplicates()
+
+        df_airports = pd.concat([df_fs[['origin']].rename({'origin': 'airport_id'}, axis=1),
+                                 df_fs[['destination']].rename({'destination': 'airport_id'}, axis=1)]).drop_duplicates()
+
+
+        # [0] as in the toml we can have a list of air networks
+        df_airports_st = pd.read_csv(Path(path_network) / network_definition_config['air_network'][0]['airports_static'])
+        df_airports = df_airports.merge(df_airports_st, left_on='airport_id', right_on='icao_id')
+
+        # Threshold to decide rail station and airport serve same origin/destination
+        threshold_km = flight_ban_def.get('distance_rail_serves_airport', 30)
+
+        # Compute all pairwise distances between stops and airports
+        df_stops["key"] = 1  # Temporary key for cross join
+        df_airports["key"] = 1
+
+        df_merged = df_stops.merge(df_airports, on="key").drop(columns=["key"])  # Cross join
+
+        # Compute the GCD using the haversine function
+        df_merged["distance_km"] = df_merged.apply(
+            lambda row: haversine(row["lon_x"], row["lat_x"], row["lon_y"], row["lat_y"]), axis=1)
+
+        # Filter based on threshold
+        df_nearby = df_merged[df_merged["distance_km"] <= threshold_km]
+
+        # Select relevant columns to have relationship between rail stations and airport
+        df_nearby = df_nearby[["stop_id", "airport_id", "distance_km"]].reset_index(drop=True)
+
+        # Filter the origin destination paris from df_fs for which a train exists in the already filtered df_t
+        # Merge df_fs (airports) with df_nearby (to find train stations serving the airports)
+        df_fs_origin_stations = df_fs.merge(df_nearby, left_on="origin", right_on="airport_id") \
+            .rename(columns={"stop_id": "train_origin"}) \
+            .drop(columns=["airport_id", "distance_km"])
+
+        df_fs_dest_stations = df_fs.merge(df_nearby, left_on="destination", right_on="airport_id") \
+            .rename(columns={"stop_id": "train_destination"}) \
+            .drop(columns=["airport_id", "distance_km"])
+
+        # Now, merge the two new dataframes to get all train stations corresponding to each airport-airport route
+        df_possible_routes = df_fs_origin_stations.merge(df_fs_dest_stations, on=["origin", "destination"])
+
+        # Find valid train routes that match the possible routes
+        df_valid_routes = df_possible_routes.merge(df_t, left_on=["train_origin", "train_destination"],
+                                                   right_on=["origin", "destination"]) \
+            .drop(columns=["train_origin", "train_destination"])
+
+        # The final list of origin-destination airport pairs that have train connections
+        df_final_filtered_fs = df_valid_routes[["origin_x", "destination_x"]].drop_duplicates().rename({'origin_x': 'origin',
+                                                                                                        'destination_x': 'destination'}, axis=1)
+
+        df_fs = df_final_filtered_fs
+        # Ensure that if a given o-d pair is in the list the return d-o is also banned
+        # Create a set of existing (origin, destination) pairs
+        existing_pairs = set(zip(df_fs["origin"], df_fs["destination"]))
+
+        # Find missing reverse pairs
+        missing_pairs = {(dest, orig) for orig, dest in existing_pairs if (dest, orig) not in existing_pairs}
+
+        # Create a DataFrame with missing pairs
+        df_missing = pd.DataFrame(missing_pairs, columns=["origin", "destination"])
+
+        # Append missing pairs to the original DataFrame
+        df_fs = pd.concat([df_fs, df_missing], ignore_index=True)
+
+        return df_fs
+
+
+    if flight_ban_def['ban_type'] == 'distance':
+        # Remove all flights shorter or equal to the distance, easy!
+        # Need to read the trains first
+        # Need to filter the trains that go between airports (areas)
+
+        # Keep only flights which could be impacted by the ban
+        df_fs = df_fs[df_fs['gcdistance'] <= flight_ban_def['ban_length']]
+
+        # Filter the flights which appear in the rails that are kept
+        df_fs = get_od_flights_from_rail(df_fs, df_t)
+
+    else:
+        # Remove all flights which have a train faster han a given time...
+        # Need to read the trains first
+        # Need to filter the trains that go between airports (areas)
+        # Then keep the ones which are faster than the threshold
+
+        # Keep only the trains within the flight ban
+        df_t['departure_time'] = pd.to_datetime(df_t['departure_time'])
+        df_t['arrival_time'] = pd.to_datetime(df_t['arrival_time'])
+        df_t['time'] = (df_t['arrival_time']-df_t['departure_time']).dt.total_seconds()/60
+        df_t = df_t[df_t.time <= flight_ban_def['ban_length']]
+
+        # Filter the flights which appear in the rails that are kept
+        df_fs = get_od_flights_from_rail(df_fs, df_t)
+
+    return df_fs[['origin', 'destination']]
 
 
 def preprocess_air_layer(path_network, air_networks, processed_folder, pre_processed_version=0):
@@ -727,6 +961,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
             df_fs.replace('', None, inplace=True)
 
+            df_fs['emissions'] = pd.to_numeric(df_fs['emissions'], errors='coerce')
+
             if 'lat_orig' not in df_fs.columns:
                 df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='origin', right_on='icao_id')
                 df_fs = df_fs.merge(df_as[['icao_id', 'lat', 'lon']], left_on='destination', right_on='icao_id',
@@ -810,11 +1046,14 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_mctl = []
         mct_defaultl = []
         mct_default = None
+        df_stops = None
+        date_rail_str = None
         need_save = False
         for rn in path_network_dict['rail_network']:
             date_rail_str = rn['date_to_set_rail']
             date_rail = pd.to_datetime(date_rail_str, format='%Y%m%d')
 
+            df_stops = None
             if rn.get('create_rail_layer_from') == 'gtfs':
                 # Create the services file (regarless if it exists or not) and then process downstream as from services
                 fstops_filename = 'rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'
@@ -822,7 +1061,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                                            fstops_filename, keep_default_na=False, na_values=[''],
                                               dtype={'stop_id': str})
 
-                df_stops = pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt')
+                df_stops = pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt', dtype={'stop_id': str})
 
                 df_rail_data_l += [pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops)]
                 need_save = True
@@ -860,9 +1099,9 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
                 df_rail_data_l += [df_rail_data]
 
-            # Need the stops to have its coordinates
-            df_stopsl += [pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] /
-                                      'stops.txt', dtype={'stop_id': str})]
+            if df_stops is not None:
+                # Need the stops to have its coordinates
+                df_stopsl += [df_stops] #pd.read_csv(Path(path_network_dict['network_path']) / rn['gtfs'] / 'stops.txt', dtype={'stop_id': str})]
 
             # Read MCTs between rail services
             if rn.get('mct_rail') is not None:
@@ -875,7 +1114,8 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         df_rail_data = pd.concat(df_rail_data_l, ignore_index=True)
         df_rail_data = compute_cost_emissions_rail(df_rail_data)
-        df_stops = pd.concat(df_stopsl, ignore_index=True)
+        if len(df_stopsl) > 0:
+            df_stops = pd.concat(df_stopsl, ignore_index=True)
 
         df_mct = None
         if len(df_mctl)>0:
@@ -887,22 +1127,29 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             # TODO: Allow different MCTs per definition of rail layer
             mct_default = round(sum(mct_defaultl) / len(mct_defaultl))
 
-        # Compute departure and arrival times in UTC times
+        # Compute departure and arrival times in UTC times if departure and arrival times in UTC are missing
         # Vectorized processing for departure times
-        df_rail_data[['departure_time_utc', 'departure_time_utc_tz',
-                      'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
-            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
-                                for lon, lat, local_time in
-                                zip(df_rail_data['lon_orig'], df_rail_data['lat_orig'], df_rail_data['departure_time']))
-        )
+        if 'departure_time_utc' not in df_rail_data.columns:
+            df_rail_data[['departure_time_utc', 'departure_time_utc_tz',
+                          'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
+                Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                    for lon, lat, local_time in
+                                    zip(df_rail_data['lon_orig'], df_rail_data['lat_orig'], df_rail_data['departure_time']))
+            )
 
-        # Vectorized processing for arrival times
-        df_rail_data[['arrival_time_utc', 'arrival_time_utc_tz',
-                      'arrival_time_local', 'arrival_time_local_tz']] = pd.DataFrame(
-            Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
-                                for lon, lat, local_time in
-                                zip(df_rail_data['lon_dest'], df_rail_data['lat_dest'], df_rail_data['arrival_time']))
-        )
+            # Vectorized processing for arrival times
+            df_rail_data[['arrival_time_utc', 'arrival_time_utc_tz',
+                          'arrival_time_local', 'arrival_time_local_tz']] = pd.DataFrame(
+                Parallel(n_jobs=-1)(delayed(convert_to_utc_vectorized)(lon, lat, local_time)
+                                    for lon, lat, local_time in
+                                    zip(df_rail_data['lon_dest'], df_rail_data['lat_dest'], df_rail_data['arrival_time']))
+            )
+        else:
+            # The rail_timetable_proc_#.csv already had the times in UTC and local available
+            df_rail_data['departure_time_utc'] = pd.to_datetime(df_rail_data['departure_time_utc'])
+            df_rail_data['arrival_time_utc'] = pd.to_datetime(df_rail_data['arrival_time_utc'])
+            df_rail_data['departure_time_local'] = pd.to_datetime(df_rail_data['departure_time_local'])
+            df_rail_data['arrival_time_local'] = pd.to_datetime(df_rail_data['arrival_time_local'])
 
         # Move arrival and departure times to UTC
         df_rail_data['arrival_time'] = df_rail_data['arrival_time_utc']
@@ -912,6 +1159,12 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
             frail = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
             df_rail_data.to_csv((Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
                          index=False)
+        else:
+            # We save it still for reference as this is the dataframe used downstream
+            frail = 'rail_timetable_proc_' + str(pre_processed_version) + '_used_internally.csv'
+            df_rail_data.to_csv(
+                (Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
+                index=False)
 
         # Get regions access for rail
         df_ra_rail = None
@@ -1185,7 +1438,17 @@ def compute_itineraries(od_itineraries, network, dict_o_d_routes=None, n_itinera
     return dict_itineraries
 
 
-def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, allow_mixed_operators=False):
+def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, allow_mixed_operators=False,
+                             policy_package=None):
+
+    if policy_package is None:
+        policy_package = {}
+
+    if 'tax_charges' in policy_package.keys():
+        dict_tax_co2 = policy_package['tax_charges']
+    else:
+        dict_tax_co2 = {}
+
     options = []
     origins = []
     destinations = []
@@ -1223,6 +1486,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)] = []
 
         dict_legs_info['cost_' + str(ln)] = []
+        dict_legs_info['service_cost_' + str(ln)] = []
+        dict_legs_info['emissions_cost_' + str(ln)] = []
         dict_legs_info['emissions_' + str(ln)] = []
 
         ln += 1
@@ -1264,6 +1529,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 dict_legs_info['arrival_time_' + str(ln)].append(None)
                 dict_legs_info['travel_time_' + str(ln)].append(None)
                 dict_legs_info['cost_' + str(ln)].append(None)
+                dict_legs_info['service_cost_' + str(ln)].append(None)
+                dict_legs_info['emissions_cost_' + str(ln)].append(None)
                 dict_legs_info['emissions_' + str(ln)].append(None)
                 path = [i.current_node]
                 ln += 1
@@ -1323,12 +1590,23 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                             total_waiting += (s.departure_time - prev_arrival_time).total_seconds() / 60 - i.mcts[
                                 ln - 1].total_seconds() / 60
 
-                dict_legs_info['cost_' + str(ln)].append(s.cost)
+                dict_legs_info['service_cost_' + str(ln)].append(s.cost)
                 dict_legs_info['emissions_' + str(ln)].append(s.emissions)
-                if total_cost is None:
-                    total_cost = s.cost
+                if (s.emissions is None) or (s.mode not in dict_tax_co2.keys()):
+                    cost_emissions = 0
                 else:
-                    total_cost += s.cost
+                    cost_emissions = dict_tax_co2[s.mode]['co2_cost'] * s.emissions
+
+                dict_legs_info['emissions_cost_' + str(ln)].append(cost_emissions)
+
+                total_cost_service = s.cost + cost_emissions
+
+                dict_legs_info['cost_' + str(ln)].append(total_cost_service)
+
+                if total_cost is None:
+                    total_cost = total_cost_service
+                else:
+                    total_cost += total_cost_service
                 if s.emissions is not None:
                     if total_emissions is None:
                         total_emissions = float(s.emissions)
@@ -1354,6 +1632,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                     dict_legs_info['connecting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['waiting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                 dict_legs_info['cost_' + str(lni)].append(None)
+                dict_legs_info['service_cost_' + str(ln)].append(None)
+                dict_legs_info['emissions_cost_' + str(ln)].append(None)
                 dict_legs_info['emissions_' + str(lni)].append(None)
 
             n_modes_i.append(n_modes)
@@ -1395,7 +1675,10 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
 
 def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=1, n_itineraries=10,
                                          max_connections=2, allow_mixed_operators=False,
-                                         consider_times_constraints=True):
+                                         consider_times_constraints=True, policy_package=None):
+
+    if policy_package is None:
+        policy_package = {}
 
     start_time_itineraries = time.time()
     if pc == 1:
@@ -1446,7 +1729,7 @@ def compute_possible_itineraries_network(network, o_d, dict_o_d_routes=None, pc=
             dict_itinearies.update(dictionary)
 
     df_itineraries = process_dict_itineraries(dict_itinearies, consider_times_constraints=consider_times_constraints,
-                                              allow_mixed_operators=allow_mixed_operators)
+                                              allow_mixed_operators=allow_mixed_operators, policy_package=policy_package)
     end_time_itineraries = time.time()
     logger.important_info("In total "+str(len(df_itineraries))+" itineraries computed in, "
                           +str(end_time_itineraries - start_time_itineraries)+" seconds.")
@@ -1863,6 +2146,11 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         service_max_seats_avg_dict = service_max_seats_group.to_dict()
         service_max_gcdistance_dict = service_max_gcdistance.to_dict()
 
+        import pickle
+        with open("./pax_assigment_tests/df_schedules_pre_cap.pkl", "wb") as file:
+            pickle.dump({'df_schedules': df_schedules, 'df_demand': df_demand,
+                         'df_possible_itineraries': df_possible_itineraries}, file)
+
         df_schedules['seats'] = df_schedules['nid'].apply(lambda x: service_max_seats_avg_dict[x])
         df_schedules['gcdistance'] = df_schedules['nid'].apply(lambda x: service_max_gcdistance_dict[x])
 
@@ -1985,7 +2273,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
         # Only allow 'rail' in the first or last position if it appears
         if 'rail' in modes[1:-1]:  # If 'rail' is in the middle
             return False
-        if len(modes) > 1 and all(mode == 'rail' for mode in modes):  # All rail
+        if len(modes) >= 1 and all(mode == 'rail' for mode in modes):  # All rail
             return False
         return True
 

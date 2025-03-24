@@ -1,3 +1,4 @@
+import pandas as pd
 from datetime import timedelta
 
 
@@ -92,6 +93,13 @@ def initialise_rail_network(obj):
     obj.dict_heuristics_explored = {}
 
     # Create dictionary of coordinates
+    if obj.nodes_coordinates is None:
+        # Need to initialise the nodes_coordinates with tht info from the df_services
+        df_nodes_coord = pd.concat([obj.df_services[['origin', 'lat_orig', 'lon_orig']].rename({'origin': 'node', 'lat_orig': 'lat', 'lon_orig': 'lon'}, axis=1),
+                                    obj.df_services[['destination', 'lat_dest', 'lon_dest']].rename(
+                                        {'destination': 'node', 'lat_dest': 'lat', 'lon_dest': 'lon'}, axis=1)]).drop_duplicates()
+        obj.nodes_coordinates = df_nodes_coord
+
     obj.dict_coordinates = {row['node']: {'lat': row['lat'], 'lon': row['lon']} for _, row in obj.nodes_coordinates.iterrows()}
 
 
