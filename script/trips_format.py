@@ -1,5 +1,6 @@
 import pandas as pd
 import re
+import numpy as np
 
 
 def remove_useless_columns(trips: pd.DataFrame):
@@ -565,26 +566,27 @@ def trips_format_to_pipeline(trips):
     return combined_df
 
 
-def trips_logit_format(trips_logit: pd.DataFrame,drop_single_paths=False):
+def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_paths=False):
     """Function to format the trips used for logit calibration. The trips have to be
     imported as a csv from the notebook new_trips_to_paths. It will permanently modify the
     dataframe if run.
     
     Args:
         trips_logit: dataframe with the information about origin, destination, path cost and probabilities
+        max_num_options: maximum number of options that we want to consider. Default is set to 3
         drop_single_paths: option to filter O-D pairs with only one option between them
 
     Returns:
         The modified dataframe"""
     
     # IMPORTANT TO RUN THIS LINE TO ENSURE THAT WE STAY WITH THE MOST USED ALTERNATIVES
-    trips_logit=trips_logit.sort_values(by=["origin","destination","trips"],ascending=[True,True,False])
+    trips_logit_formatted=trips_logit.sort_values(by=["origin","destination","trips"],ascending=[True,True,False])
 
     # number the alternatives
-    trips_logit['noption'] = trips_logit.groupby(['origin', 'destination']).cumcount() + 1
+    trips_logit_formatted['noption'] = trips_logit_formatted.groupby(['origin', 'destination']).cumcount() + 1
     if drop_single_paths==True:
         # Group by 'origin' and 'destination' and count occurrences
-        counts = trips_logit.groupby(['origin', 'destination']).size()
+        counts = trips_logit_formatted.groupby(['origin', 'destination']).size()
 
         # Filter out combinations that appear only once
         filtered_counts = counts[counts > 1]
@@ -593,27 +595,57 @@ def trips_logit_format(trips_logit: pd.DataFrame,drop_single_paths=False):
         df_filtered = filtered_counts.reset_index().drop(0, axis=1)
 
         # Merge the filtered combinations back with the original DataFrame to keep only matching rows
-        trips_logit = pd.merge(trips_logit, df_filtered, on=['origin', 'destination'], how='inner')
-    return trips_logit
+        trips_logit_formatted = pd.merge(trips_logit_formatted, df_filtered, on=['origin', 'destination'], how='inner')
+
+        trips_logit_formatted["trips_per_od_pair"]=trips_logit_formatted.groupby(["origin","destination"])["trips"].transform("sum")
+
+    # stay with only the selected options
+    trips_logit_formatted=trips_logit_formatted[trips_logit_formatted["noption"]<=max_num_options]
+
+    for i in range(6):
+        archetype=f"archetype_{i}"
+        name=f"trips_per_od_pair_arch_{i}"
+        trips_logit_formatted[name]=trips_logit_formatted.groupby(["origin","destination"])[archetype].transform("sum")
+        name_prob=f"prob_per_od_pair_arch_{i}"
+        trips_logit_formatted[name_prob]=trips_logit_formatted[archetype]/trips_logit_formatted[name]
+    return trips_logit_formatted
 
 
 def generate_calibration_matrix(trips_logit:pd.DataFrame, 
                                 paths_w_costs: pd.DataFrame,
-                                max_num_options=3,
                                 drop_single_paths=False):
     """Function that generates the calibration matrix for the Logit model.
     
     Args:
         trips_logit: trips dataframe formated using trips_logit_format
         paths_w_costs
-        max_num_options: maximum number of options that we want to consider. Default is set to 3
         drop_single_paths: Boolean value. If true, trips with only one option will not be considered for
         calibration
 
     Returns:
         calibration_matrix"""
-    calibration_matrix=trips_logit[trips_logit["noption"]<=max_num_options]
-    calibration_matrix=trips_logit.drop(columns=["path","nmodes","access_time","egress_time","travel_time_0","cost_0","emissions_0","mct_time_0_1","travel_time_1","cost_1","emissions_1","mct_time_1_2","travel_time_2","cost_2","total_cost","total_emissions","total_cost"])
+    calibration_matrix=trips_logit.copy()
+    static_columns = ["path", "nmodes", "access_time", "egress_time", "total_cost", "total_emissions"]
+
+    # Regex patterns for dynamic columns (travel_time_*, cost_*, emissions_*, mct_time_*_*)
+    dynamic_patterns = [
+        r"travel_time_\d+",    # matches travel_time_0, travel_time_1, etc.
+        r"cost_\d+",           # matches cost_0, cost_1, etc.
+        r"emissions_\d+",      # matches emissions_0, emissions_1, etc.
+        r"mct_time_\d+_\d+"    # matches mct_time_0_1, mct_time_1_2, etc.
+    ]
+
+    # Combine static columns and regex-matched columns
+    columns_to_drop = static_columns + [
+        col for col in trips_logit.columns 
+        if any(re.fullmatch(pattern, col) for pattern in dynamic_patterns)
+    ]
+
+    # Safely drop only columns that exist
+    calibration_matrix = calibration_matrix.drop(
+        columns=[col for col in columns_to_drop if col in trips_logit.columns]
+    )
+    
     calibration_matrix=calibration_matrix.merge(paths_w_costs, on=["origin","destination"],how="left")
     calibration_matrix=calibration_matrix.rename(columns={"noption":"observed_choice"})
     calibration_matrix=calibration_matrix.drop(columns=["origin","destination"])
@@ -699,3 +731,146 @@ def generate_paths_w_costs(trips_logit: pd.DataFrame,max_num_option=3):
                 pass  # If the Series is empty, do nothing
 
     return paths_w_costs
+
+
+def format_itineraries(itineraries: pd.DataFrame):
+    """Function to format itineraries to assign the costs to a path
+    
+    Args:
+        itineraries: dataframe that comes from the pipeline (itineraries clustered)
+        
+    Returns:
+        itineraries_formatted"""
+    # creates a copy of the dataframe and eliminates the only access/egress trips
+    itineraries_formatted=itineraries[itineraries["nservices"] != 0].copy()
+    
+    # Select the columns to iterate through
+    mode_columns = [col for col in itineraries_formatted.columns if col.startswith("mode_")]
+    
+    # Safely assign the new 'mode_tp' column using .loc
+    if mode_columns!=[]:
+        itineraries_formatted.loc[:, "mode_tp"] = itineraries_formatted.apply(
+            lambda row: [row[col] for col in mode_columns if str(row[col]) != "nan"],
+            axis=1
+        )
+
+    # change format of column 
+    itineraries_formatted["mode_tp"]=itineraries_formatted["mode_tp"].astype(str)
+
+    # groupby
+    # Define the grouping columns (static)
+    group_cols = ["origin", "destination", "path", "nmodes", "mode_tp"]
+
+    # Dynamically detect all columns to aggregate (travel_time_*, cost_*, emissions_*, mct_time_*_*)
+    agg_cols = [
+        col for col in itineraries_formatted.columns 
+        if re.match(r"access_time|egress_time|travel_time_\d+|cost_\d+|emissions_\d+|mct_time_\d+_\d+", col)
+    ]
+
+    # Group by and compute mean (keeping the structure as a DataFrame)
+    itineraries_formatted = itineraries_formatted.groupby(
+        group_cols, 
+        as_index=False
+    )[agg_cols].mean()
+
+    # remove itineraries that have nmodes=0
+    itineraries_formatted=itineraries_formatted[itineraries_formatted["nmodes"]!=0]
+
+    # assign costs
+    itineraries_formatted=assign_cost(itineraries_formatted)
+
+    return itineraries_formatted
+
+def assign_cost(itineraries: pd.DataFrame):
+    """sums all the costs of the itineraries dataframe to generate the total cost, 
+    total emissions, and total travel time. It works regardless of the number of connections
+    considered
+    
+    Args: 
+        itineraries: dataframe
+        
+    Returns:
+        itineraries with the columns total_travel_time, total_emissions, and total_cost"""
+    itineraries_formatted=itineraries.copy()
+
+    # get access and egress time
+    itineraries_formatted["total_travel_time"] = (
+    itineraries_formatted.get("access_time", 0).fillna(0) +
+    itineraries_formatted.get("egress_time", 0).fillna(0)
+    )
+
+    # Sum all travel_time_* columns (travel_time_0, travel_time_1, ...)
+    travel_time_cols = [col for col in itineraries_formatted if re.match(r"travel_time_\d+", col)]
+    for col in travel_time_cols:
+        itineraries_formatted["total_travel_time"] += itineraries_formatted[col].fillna(0)
+
+    # Sum all mct_time_*_* columns (mct_time_0_1, mct_time_1_2, ...)
+    mct_time_cols = [col for col in itineraries_formatted if re.match(r"mct_time_\d+_\d+", col)]
+    for col in mct_time_cols:
+        itineraries_formatted["total_travel_time"] += itineraries_formatted[col].fillna(0)
+
+    # Sum all cost_* columns (cost_0, cost_1, ...)
+    cost_cols = [col for col in itineraries_formatted if re.match(r"cost_\d+", col)]
+    itineraries_formatted["total_cost"] = 0
+    for col in cost_cols:
+        itineraries_formatted["total_cost"] += itineraries_formatted[col].fillna(0)
+
+    # Sum all emissions_* columns (emissions_0, emissions_1, ...)
+    emissions_cols = [col for col in itineraries_formatted if re.match(r"emissions_\d+", col)]
+    itineraries_formatted["total_emissions"] = 0
+    for col in emissions_cols:
+        itineraries_formatted["total_emissions"] += itineraries_formatted[col].fillna(0)
+
+    return itineraries_formatted
+
+
+def format_train_stations_considered(train_stations_considered: pd.DataFrame,station_to_nuts: dict):
+    train_stations_considered["modified_id"]=train_stations_considered["stop_id"].apply(lambda x : "train_" + str(x)[4:])
+    train_stations_considered['NUTS'] = train_stations_considered['modified_id'].map(station_to_nuts)
+    return train_stations_considered
+
+def process_row(row, train_stations_MMX: list, IATA_to_ICAO: dict):
+    """Processes a single row to extract MMX-compatible node sequences."""
+    node_sequence = row['node_sequence_reduced']
+    if not isinstance(node_sequence, str):
+        return np.nan
+    
+    result = []
+    for split in node_sequence.split("-"):
+        if split.startswith("train"):
+            split = split.replace("train_", "")
+            if split.isalpha():
+                return np.nan
+            elif f"0071{int(split):05d}" in train_stations_MMX:
+                result.append(f"0071{int(split):05d}")
+            else:
+                return np.nan
+        elif split.startswith("airport_"):
+            iata_code = split.replace("airport_", "")
+            icao_code = IATA_to_ICAO.get(iata_code)
+            if icao_code:
+                result.append(icao_code)
+            else:
+                return np.nan
+    return str(result) if result else np.nan
+
+def process_node_sequence_MMX(trips: pd.DataFrame, train_stations_MMX: list, IATA_to_ICAO: dict):
+    """Finds the MMX node sequence from the column node sequence reduced with two dictionaries
+    
+    Args:
+        trips: dataframe. Has to have a node sequence reduced column
+        train_station_MMX: list of all the stations considered in MMX
+        IATA_to_ICAO: dictionary with the IATA to ICAO codes
+        
+    Returns:
+        trips: dataframe with a new column called node_sequence_MMX"""
+    # finds node sequence in MMX (first attempt)
+    trips = trips.copy()
+    #Apply the processing function to each row in the dataframe
+    trips = trips.copy()
+    trips.loc[:, 'node_sequence_MMX'] = trips.apply(
+        lambda row: process_row(row, train_stations_MMX, IATA_to_ICAO),
+        axis=1
+    )
+    # trips.loc[:,"node_sequence_MMX"]=trips.loc[:,"node_sequence_MMX"].astype(str)
+    return trips    
