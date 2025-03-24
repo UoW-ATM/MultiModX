@@ -545,7 +545,7 @@ def test_logit(test: dict, trips_logit: pd.DataFrame, n_alternatives=5):
     Args:
         test: dictionary obtained in the calibration
         trips_logit: dataframe that contains the information for logit calibration
-        n_alternatives: the max number of alternatives. Default set to 3"""
+        n_alternatives: the max number of alternatives. Default set to 5"""
     final_test={}
 
     for i in range(n_alternatives+1):
