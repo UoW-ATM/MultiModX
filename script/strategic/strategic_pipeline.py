@@ -492,7 +492,7 @@ if __name__ == '__main__':
                                 pre_processed_version=int(args.preprocessed_version),
                                 allow_mixed_operators_itineraries=args.allow_mixed_operators,
                                 use_heuristics_precomputed=args.use_heuristics_precomputed,
-                                recreate_output_folder=False)
+                                recreate_output_fld=False)
 
     # Improvements
     # TODO: day in rail
