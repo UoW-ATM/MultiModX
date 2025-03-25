@@ -597,7 +597,7 @@ def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_p
         # Merge the filtered combinations back with the original DataFrame to keep only matching rows
         trips_logit_formatted = pd.merge(trips_logit_formatted, df_filtered, on=['origin', 'destination'], how='inner')
 
-        trips_logit_formatted["trips_per_od_pair"]=trips_logit_formatted.groupby(["origin","destination"])["trips"].transform("sum")
+    trips_logit_formatted["trips_per_od_pair"]=trips_logit_formatted.groupby(["origin","destination"])["trips"].transform("sum")
 
     # stay with only the selected options
     trips_logit_formatted=trips_logit_formatted[trips_logit_formatted["noption"]<=max_num_options]
@@ -605,9 +605,12 @@ def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_p
     for i in range(6):
         archetype=f"archetype_{i}"
         name=f"trips_per_od_pair_arch_{i}"
-        trips_logit_formatted[name]=trips_logit_formatted.groupby(["origin","destination"])[archetype].transform("sum")
-        name_prob=f"prob_per_od_pair_arch_{i}"
-        trips_logit_formatted[name_prob]=trips_logit_formatted[archetype]/trips_logit_formatted[name]
+        if name not in list(trips_logit_formatted.columns):
+            trips_logit_formatted[name]=trips_logit_formatted.groupby(["origin","destination"])[archetype].transform("sum")
+            name_prob=f"prob_per_od_pair_arch_{i}"
+            trips_logit_formatted[name_prob]=trips_logit_formatted[archetype]/trips_logit_formatted[name]
+        else:
+            print(f"no need to calculate probabilities for {archetype}")
     return trips_logit_formatted
 
 
@@ -625,14 +628,16 @@ def generate_calibration_matrix(trips_logit:pd.DataFrame,
     Returns:
         calibration_matrix"""
     calibration_matrix=trips_logit.copy()
-    static_columns = ["path", "nmodes", "access_time", "egress_time", "total_cost", "total_emissions"]
+    static_columns = ["path", "nmodes", "access_time", "egress_time", "total_cost", "total_emissions","trips_per_od_pair"]
 
     # Regex patterns for dynamic columns (travel_time_*, cost_*, emissions_*, mct_time_*_*)
     dynamic_patterns = [
         r"travel_time_\d+",    # matches travel_time_0, travel_time_1, etc.
         r"cost_\d+",           # matches cost_0, cost_1, etc.
         r"emissions_\d+",      # matches emissions_0, emissions_1, etc.
-        r"mct_time_\d+_\d+"    # matches mct_time_0_1, mct_time_1_2, etc.
+        r"mct_time_\d+_\d+",    # matches mct_time_0_1, mct_time_1_2, etc.
+        r"trips_per_od_pair_arch_\d+",   # matches trips_per_od_pair_arch_1
+        r"prob_per_od_pair_arch_\d+"    # matches prob_per_od_pair_arch_1
     ]
 
     # Combine static columns and regex-matched columns
