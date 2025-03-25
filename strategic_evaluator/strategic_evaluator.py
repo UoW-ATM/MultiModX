@@ -1632,8 +1632,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                     dict_legs_info['connecting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['waiting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                 dict_legs_info['cost_' + str(lni)].append(None)
-                dict_legs_info['service_cost_' + str(ln)].append(None)
-                dict_legs_info['emissions_cost_' + str(ln)].append(None)
+                dict_legs_info['service_cost_' + str(lni)].append(None)
+                dict_legs_info['emissions_cost_' + str(lni)].append(None)
                 dict_legs_info['emissions_' + str(lni)].append(None)
 
             n_modes_i.append(n_modes)
