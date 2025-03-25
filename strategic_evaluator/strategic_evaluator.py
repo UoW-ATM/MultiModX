@@ -26,7 +26,6 @@ from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_fl
 from libs.time_converstions import  convert_to_utc_vectorized
 from libs.passenger_assigner.passenger_assigner import assign_passengers_options_solver, fill_flights_too_empy
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -398,7 +397,7 @@ def compute_od_pairs_banned(network_definition_config, flight_ban_def, pre_proce
 
     def get_od_flights_from_rail(df_fs, df_t):
         # Get all the o-d pairs in the df_fs which have a train in the df_t file
-        
+
         # Keep only one representative for origin - destination
         df_t = df_t[['origin', 'destination',
                      'lat_orig', 'lon_orig',
@@ -2129,7 +2128,6 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
 def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, paras):
 
     if paras['train_seats_per_segment'].lower() == 'combined'.lower():
-        # TODO: rail option of capacities considering stops
         # If combined need to remove the stops from the train ids so from xxx_stop1_stop2 to xxx on the id
         # of the trains and on the df_possible_itineraries
         # Also for seats keep the mean number of seats and for distance the max
@@ -2146,10 +2144,10 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         service_max_seats_avg_dict = service_max_seats_group.to_dict()
         service_max_gcdistance_dict = service_max_gcdistance.to_dict()
 
-        import pickle
-        with open("./pax_assigment_tests/df_schedules_pre_cap.pkl", "wb") as file:
-            pickle.dump({'df_schedules': df_schedules, 'df_demand': df_demand,
-                         'df_possible_itineraries': df_possible_itineraries}, file)
+        #import pickle
+        #with open("./pax_assigment_tests/df_schedules_pre_cap.pkl", "wb") as file:
+        #    pickle.dump({'df_schedules': df_schedules, 'df_demand': df_demand,
+        #                 'df_possible_itineraries': df_possible_itineraries}, file)
 
         df_schedules['seats'] = df_schedules['nid'].apply(lambda x: service_max_seats_avg_dict[x])
         df_schedules['gcdistance'] = df_schedules['nid'].apply(lambda x: service_max_gcdistance_dict[x])
@@ -2160,14 +2158,17 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         service_cols = [col for col in df_possible_itineraries.columns if col.startswith('service_id_')]
         mode_cols = [col for col in df_possible_itineraries.columns if col.startswith('mode_')]
 
-        for service_col, mode_col in zip(service_cols, mode_cols):
+        for service_col, mode_col in zip(sorted(service_cols), sorted(mode_cols)):
             # Apply the transformation only to rows where mode_col is 'rail'
-            df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col] = \
-                df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col].str.replace(
+            mask = (df_possible_itineraries[mode_col] == 'rail') & df_possible_itineraries[service_col].notna()
+            df_possible_itineraries.loc[mask, service_col] = \
+                df_possible_itineraries.loc[mask, service_col].astype(str).str.replace(
                     r'_.*', '', regex=True)
 
     # Initialize unique IDs for df_demand
-    df_demand['id'] = np.arange(1, len(df_demand) + 1)
+    #print(df_demand)
+    #sys.exit(0)
+    #df_demand['id'] = np.arange(1, len(df_demand) + 1)
 
     # Step 0: If journey_type is none then mode should be none too
     df_possible_itineraries.loc[(df_possible_itineraries['journey_type']=='none'), 'mode_0'] = None
@@ -2213,28 +2214,35 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
     # if type=='' put None
     merged_df.loc[(merged_df['type']==''), 'type'] = None
 
+    merged_df = merged_df.rename(columns={'cluster_id_opt': 'cluster_id', 'total_cost_opt': 'fare',
+                                          'total_waiting_time_opt': 'total_waiting_time',
+                                          'total_travel_time_opt': 'total_time', 'num_pax': 'volume',
+                                          'origin_opt': 'origin', 'destination_opt': 'destination',
+                                          'option_number': 'option_cluster_number'})
+
     # Step 5: Rename and select the required columns for the final output
     nid_columns = [f'nid_f{i + 1}' for i in range(max_services)]
     # We keep also alternative_id as this is a key to identify demand groups
-    final_columns = ['id', 'origin', 'destination', 'option_number', 'alternative_id', 'path'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
-                                                             'fare', 'access_time', 'egress_time']
 
-    merged_df = merged_df.rename(columns={'total_cost_opt': 'fare', 'total_waiting_time_opt': 'total_waiting_time',
-                                          'total_travel_time_opt': 'total_time', 'num_pax': 'volume', 'origin_opt':'origin', 'destination_opt':'destination'})
+    final_columns = ['cluster_id', 'option_cluster_number', 'alternative_id', 'option', 'origin', 'destination', 'path'] + nid_columns + [
+        'total_waiting_time', 'total_time', 'type', 'volume',
+        'fare', 'access_time', 'egress_time']
 
     options = merged_df[final_columns].copy()
 
+    options['cluster_id'] = options['alternative_id']
+
     # Create unique id for option_number
-    options['option_number'] = range(1, len(options) + 1)
+    #    options['option_number'] = range(1, len(options) + 1)
 
     it_gen, d_seats_max, options = assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
 
     # it_gen = fill_flights_too_empy(it_gen, df_schedules, d_seats_max, options, paras, verbose=False)
 
     # For ach option add pax assigned
-    df_options_w_pax = options.merge(it_gen[['it', 'option', 'pax', 'avg_fare', 'generated_info']],
-                                     left_on=['id', 'option_number'],
-                                        right_on=['it', 'option'], how='left').drop(columns=['option'])
+    df_options_w_pax = options.merge(it_gen[['cluster_id', 'option', 'pax', 'avg_fare', 'generated_info']],
+                                     left_on=['cluster_id', 'option'],
+                                        right_on=['cluster_id', 'option'], how='left')#.drop(columns=['option'])
     df_options_w_pax['pax'] = df_options_w_pax['pax'].fillna(0)
 
     return it_gen, d_seats_max, df_options_w_pax
@@ -2251,7 +2259,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     nid_f_pattern = r'^nid_f\d+$'  # Matches columns like nid_f1, nid_f2, ...
 
     # Specify fixed columns to include
-    fixed_columns = ['option_number', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time']
+    fixed_columns = ['cluster_id', 'option', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time']
 
     # Filter dynamically using regex for `leg` and `nid_f` columns
     dynamic_columns = df_pax.filter(regex=f'({leg_pattern}|{nid_f_pattern})').columns.tolist()
@@ -2367,9 +2375,9 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     df_valid_supported['gtfs_pre'] = np.nan
     df_valid_supported['gtfs_post'] = np.nan
 
-    # Filter rows tacitcal pax assignment
+    # Filter rows tactical pax assignment
     df_valid_supported = df_valid_supported.rename(
-        columns={'option_number': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
+        columns={'option': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
     leg_columns = [col for col in df_valid_supported.columns if col.startswith('leg')]
     df_valid_supported = df_valid_supported[
         ['nid_x', 'pax', 'avg_fare', 'ticket_type', 'origin', 'destination', 'access_time', 'egress_time'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',

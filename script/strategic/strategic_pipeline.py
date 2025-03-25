@@ -375,7 +375,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     ofp = 'pax_assigned_seats_max_target_' + str(pre_processed_version) + '.csv'
     d_seats_max.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
     ofp = 'pax_assigned_to_itineraries_options_' + str(pre_processed_version) + '.csv'
-    df_options_w_pax_save = df_options_w_pax.copy().drop(columns=['it','generated_info','avg_fare'])
+    df_options_w_pax_save = df_options_w_pax.copy().drop(columns=['generated_info','avg_fare'])
     df_options_w_pax_save.rename(columns={'volume': 'total_volume_pax_cluster',
                                           'volume_ceil': 'total_volume_pax_cluster_ceil'})
     df_options_w_pax_save.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
