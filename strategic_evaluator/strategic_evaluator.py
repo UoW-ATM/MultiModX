@@ -1879,79 +1879,84 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     return df_paths_avg
 
 
+def filter_similar_options(group, kpis, thresholds=None):
+    filtered_options = []
+    clusters = {}
+    # Remove the dropna as we want to keep options even if some KPIs are missing. They'll be replaced
+    # by 0, which maybe it's not great, but at least not loosing options.
+    # group = group.dropna(subset=kpis)
+    for category in group['journey_type'].unique():
+        category_group = group[group['journey_type'] == category]
+
+        if thresholds is None:
+            # Calculate data-driven thresholds as std of group
+            # Else provide dictionary with values per KPI
+            thresholds_in_func = {kpi: category_group[kpi].std() for kpi in kpis}
+        else:
+            # process thresholds given to generate thresholds to use
+            thresholds_in_func = {}
+            # iterate through kpis to use
+            for kpi in kpis:
+                # Check if kpi defined in thresholds given category
+                # if not, check if defined for all
+                # if not use std
+                thresholds_in_func[kpi] = thresholds.get(category, {}).get(kpi,
+                                                                           thresholds.get('all', {}).get(kpi))
+                if thresholds_in_func[kpi] is None:
+                    thresholds_in_func[kpi] = category_group[kpi].std()
+
+        for _, option in category_group.iterrows():
+            similar = False
+            for idx, existing_option in enumerate(filtered_options):
+                # Loop through all KPIs provided by the user
+                is_similar = True  # Flag to check if option is similar based on all KPIs
+                for kpi in kpis:
+                    value_kpi_option = option[kpi]
+                    existing_kpi_option = existing_option[kpi]
+                    if pd.isnull(option[kpi]):
+                        value_kpi_option = 0
+                    if pd.isnull(existing_kpi_option):
+                        existing_kpi_option = 0
+                    if abs(value_kpi_option - existing_kpi_option) > thresholds_in_func[kpi]:
+                        is_similar = False   # If any KPI difference is greater than the threshold, it's not similar
+                        break
+
+                # Check if total_waiting_time is also part of the KPIs or not
+                if is_similar:
+                    clusters[filtered_options[idx]['option']].append(option['option'])
+                    similar = True
+                    break
+
+            if not similar:
+                filtered_options.append(option)
+                clusters[option['option']] = [option['option']]
+
+    return [opt['option'] for opt in filtered_options], clusters
+
+
+def process_group_clustering(name, group, kpis, thresholds):
+    options_cluster = filter_similar_options(group, kpis, thresholds)
+    return (name[0], name[1], options_cluster)
+
+
 def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):
+    start_time_clustering = time.time()
+
     # Default KPIs if none are provided
     if kpis is None:
         kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time', 'nservices']
-
-    def filter_similar_options(group, kpis, thresholds=None):
-        filtered_options = []
-        clusters = {}
-        # Remove the dropna as we want to keep options even if some KPIs are missing. They'll be replaced
-        # by 0, which maybe it's not great, but at least not loosing options.
-        # group = group.dropna(subset=kpis)
-        for category in group['journey_type'].unique():
-            category_group = group[group['journey_type'] == category]
-
-            if thresholds is None:
-                # Calculate data-driven thresholds as std of group
-                # Else provide dictionary with values per KPI
-                thresholds_in_func = {kpi: category_group[kpi].std() for kpi in kpis}
-            else:
-                # process thresholds given to generate thresholds to use
-                thresholds_in_func = {}
-                # iterate through kpis to use
-                for kpi in kpis:
-                    # Check if kpi defined in thresholds given category
-                    # if not, check if defined for all
-                    # if not use std
-                    thresholds_in_func[kpi] = thresholds.get(category, {}).get(kpi,
-                                                                               thresholds.get('all', {}).get(kpi))
-                    if thresholds_in_func[kpi] is None:
-                        thresholds_in_func[kpi] = category_group[kpi].std()
-
-            for _, option in category_group.iterrows():
-                similar = False
-                for idx, existing_option in enumerate(filtered_options):
-                    # Loop through all KPIs provided by the user
-                    is_similar = True  # Flag to check if option is similar based on all KPIs
-                    for kpi in kpis:
-                        value_kpi_option = option[kpi]
-                        existing_kpi_option = existing_option[kpi]
-                        if pd.isnull(option[kpi]):
-                            value_kpi_option = 0
-                        if pd.isnull(existing_kpi_option):
-                            existing_kpi_option = 0
-                        if abs(value_kpi_option - existing_kpi_option) > thresholds_in_func[kpi]:
-                            is_similar = False   # If any KPI difference is greater than the threshold, it's not similar
-                            break
-
-                    # Check if total_waiting_time is also part of the KPIs or not
-                    if is_similar:
-                        clusters[filtered_options[idx]['option']].append(option['option'])
-                        similar = True
-                        break
-
-                if not similar:
-                    filtered_options.append(option)
-                    clusters[option['option']] = [option['option']]
-
-        return [opt['option'] for opt in filtered_options], clusters
 
     # Group by origin-destination and apply filtering
     df_itineraries.loc[df_itineraries.total_waiting_time.isnull(), 'total_waiting_time'] = 0
 
     grouped_data = df_itineraries.groupby(['origin', 'destination'])
 
-    def process_group(name, group):
-        options_cluster = filter_similar_options(group, kpis, thresholds)
-        return (name[0], name[1], options_cluster)
-
     # If pc > 1, use parallel computing, otherwise proceed sequentially
     if pc > 1:
-        results = Parallel(n_jobs=pc)(delayed(process_group)(name, group) for name, group in grouped_data)
+        results = Parallel(n_jobs=pc, backend='multiprocessing')(
+            delayed(process_group_clustering)(name, group, kpis, thresholds) for name, group in grouped_data)
     else:
-        results = [process_group(name, group) for name, group in grouped_data]
+        results = [process_group_clustering(name, group, kpis, thresholds) for name, group in grouped_data]
 
     # Convert results to DataFrame
     result = pd.DataFrame(results, columns=['origin', 'destination', 'options_cluster'])
@@ -1965,27 +1970,74 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     result.drop(columns='options_cluster', inplace=True)
 
     # Prepare the final DataFrame with clusters and averaged KPIs
-    final_clusters = []
+    '''
+        Previous version of the code more readable but much slower --> from 351 sec to 12 sec
+        final_clusters = []
+        
+        for _, row in result.iterrows():
+            origin = row['origin']
+            destination = row['destination']
+            for cluster_id, options in row['clusters'].items():
+                cluster_data = df_itineraries[(df_itineraries['option'].isin(options)) &
+                                              (df_itineraries['origin'] == origin) &
+                                              (df_itineraries['destination'] == destination)]
+                journey_type = cluster_data.iloc[0]['journey_type']
+                avg_kpis = cluster_data[kpis+['nservices']].mean().to_dict()
+                final_clusters.append({
+                    'origin': origin,
+                    'destination': destination,
+                    'journey_type': journey_type,
+                    'cluster_id': cluster_id,
+                    'options_in_cluster': options,
+                    **avg_kpis
+                })
 
-    for _, row in result.iterrows():
-        origin = row['origin']
-        destination = row['destination']
-        for cluster_id, options in row['clusters'].items():
-            cluster_data = df_itineraries[(df_itineraries['option'].isin(options)) &
-                                          (df_itineraries['origin'] == origin) &
-                                          (df_itineraries['destination'] == destination)]
-            journey_type = cluster_data.iloc[0]['journey_type']
-            avg_kpis = cluster_data[kpis+['nservices']].mean().to_dict()
-            final_clusters.append({
-                'origin': origin,
-                'destination': destination,
-                'journey_type': journey_type,
-                'cluster_id': cluster_id,
-                'options_in_cluster': options,
-                **avg_kpis
-            })
+        final_df = pd.DataFrame(final_clusters)
+    '''
 
-    final_df = pd.DataFrame(final_clusters)
+    # Explode clusters dictionary into separate rows
+    result['cluster_pairs'] = result['clusters'].apply(lambda x: list(x.items()))
+    exploded = result.explode('cluster_pairs')
+
+    # Split the tuple into separate columns
+    exploded[['cluster_id', 'options_in_cluster']] = pd.DataFrame(exploded['cluster_pairs'].tolist(), index=exploded.index)
+
+    # Explode 'options_in_cluster' if it contains lists
+    exploded = exploded.explode('options_in_cluster')
+
+    # Drop intermediate column
+    exploded.drop(columns=['cluster_pairs'], inplace=True)
+
+    # Transform clusters into a DataFrame
+    clusters_df = exploded[['origin', 'destination', 'clusters']].copy()
+
+    clusters_df['cluster_id'] = clusters_df['clusters'].apply(lambda x: list(x.keys()))
+    clusters_df['options_in_cluster'] = clusters_df['clusters'].apply(lambda x: list(x.values()))
+
+    # Expand cluster_id and options_in_cluster into separate rows
+    clusters_df = clusters_df.explode(['cluster_id', 'options_in_cluster'])
+
+    # Flatten options list
+    clusters_df = clusters_df.explode('options_in_cluster')
+
+    # Merge with df_itineraries once instead of filtering in a loop
+    merged_df = clusters_df.merge(df_itineraries, left_on=['options_in_cluster', 'origin', 'destination'],
+                                  right_on=['option', 'origin', 'destination'], how='left')
+
+    # Group by cluster, origin, destination
+    grouped = merged_df.groupby(['origin', 'destination', 'cluster_id'])
+
+    # Aggregate KPIs
+    final_df = grouped.agg({
+        **{kpi: 'mean' for kpi in kpis},  # Compute mean for KPIs
+        'nservices': 'mean',  # Compute mean for nservices
+        'journey_type': 'first',  # Take the first journey_type
+        'options_in_cluster': lambda x: list(set(x))  # Keep unique options in cluster
+    }).reset_index()
+
+    # Rename column
+    final_df.rename(columns={'options_in_cluster': 'options_in_cluster'}, inplace=True)
+
 
     for k in kpis:
         final_df[k] = final_df[k].apply(lambda x: round(x, 2))
@@ -1996,7 +2048,14 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     # Get the current list of columns
     all_columns = list(final_df.columns)
 
-    # Find the position after 'cluser_id'
+    columns_first = ['origin', 'destination', 'journey_type', 'cluster_id', 'options_in_cluster']
+
+    all_columns = columns_first + [item for item in all_columns if item not in columns_first]
+
+    # Order options in cluster
+    final_df['options_in_cluster'] = final_df['options_in_cluster'].apply(lambda x: sorted(x))
+
+    # Find the position after 'cluster_id'
     position_after = all_columns.index('cluster_id') + 1
 
     # Create a new list of columns with 'a' and 'b' moved
@@ -2010,6 +2069,9 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     # Reorder the DataFrame
     final_df = final_df[new_column_order]
 
+    end_time_clustering = time.time()
+    logger.important_info("Filtering and clustering done in, "
+                          + str(end_time_clustering - start_time_clustering) + " seconds.")
     return final_df
 
 
