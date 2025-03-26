@@ -123,11 +123,20 @@ class NetworkLayer:
     def get_access_time(self, node, origin):
         # Dictionary form region to station to add in the travel time the access to the station (if origin is a region)
         dict_access_time = self.dict_mode_access.get((node, origin), {})
-        return timedelta(minutes=dict_access_time.get('all', 0))
+        return timedelta(minutes=dict_access_time.get('all', 0)['total_time'])
 
     def get_egress_time(self, node, destination):
         dict_egress_time = self.dict_mode_egress.get((node, destination), {})
-        return timedelta(minutes=dict_egress_time.get('all', 0))
+        return timedelta(minutes=dict_egress_time.get('all', 0)['total_time'])
+
+    def get_d2i_time(self, node, origin):
+        # Dictionary form region to station to add in the travel time the access to the station (if origin is a region)
+        dict_access_time = self.dict_mode_access.get((node, origin), {})
+        return timedelta(minutes=dict_access_time.get('all', 0)['avg_time'])
+
+    def get_i2d_time(self, node, destination):
+        dict_egress_time = self.dict_mode_egress.get((node, destination), {})
+        return timedelta(minutes=dict_egress_time.get('all', 0)['avg_time'])
 
     def get_services_from(self, node):
         return self.dict_s_departing.get(node, set())
@@ -205,7 +214,9 @@ class Network:
                 value = {
                     'layer_id': row['layer_id_destination'],
                     'destination': row['destination'],
-                    'mct': row['mct']
+                    'mct': row['mct'],
+                    'avg_travel_time': row['avg_travel_time'],
+                    'extra_avg_travel_time': row['extra_avg_travel_time']
                 }
                 if key in self.dict_transitions:
                     self.dict_transitions[key].append(value)
@@ -309,9 +320,11 @@ class Network:
                 for service in services:
                     access_time = self.dict_layers[layer].get_access_time(service.origin, origin)
                     egress_time = self.dict_layers[layer].get_egress_time(service.destination, destination)
+                    d2i_time = self.dict_layers[layer].get_d2i_time(service.origin, origin)
+                    i2d_time = self.dict_layers[layer].get_i2d_time(service.destination, destination)
                     travel_time = access_time + service.duration + egress_time
                     i = Itinerary(itinerary=[service], current_node=service.destination, total_travel_time=travel_time,
-                                  layer_id=layer, access_time=access_time, egress_time=egress_time)
+                                  layer_id=layer, access_time=access_time, egress_time=egress_time, d2i_time=d2i_time, i2d_time=i2d_time)
                     i.arrived = True
                     itineraries += [i]
                     if (max_time_direct is None) or (max_time_direct < travel_time):
@@ -340,8 +353,9 @@ class Network:
                 # Either we don't have a dictionary of valid nodes or the origin is in the keys of the dictionary
                 if (dict_next_valid_nodes is None) or (tuple([o]) in dict_next_valid_nodes.keys()) > 0:
                     access_time = self.dict_layers[layer].get_access_time(o, origin)
+                    d2i_time = self.dict_layers[layer].get_d2i_time(o, origin)
                     i = Itinerary(itinerary=[], current_node=o, total_travel_time=access_time,
-                                  layer_id=layer, access_time=access_time)
+                                  layer_id=layer, access_time=access_time, d2i_time=d2i_time)
                     pq += [i]
 
         # Heapify the priority queue using the wrapper function
@@ -370,7 +384,9 @@ class Network:
             elif ((i.current_layer_id in dict_destination_nodes_layers.keys()) and
                     (i.current_node in dict_destination_nodes_layers[i.current_layer_id])):
                 egress_time = self.dict_layers[i.current_layer_id].get_egress_time(i.current_node, destination)
+                i2d_time = self.dict_layers[i.current_layer_id].get_i2d_time(i.current_node, destination)
                 i.egress_time = egress_time
+                i.i2d_time = i2d_time
                 i.total_travel_time += egress_time
                 i.expected_minimum_travel_time = i.total_travel_time
                 i.arrived = True
@@ -426,7 +442,9 @@ class Network:
                                                              current_node=service.destination,
                                                              total_travel_time=new_total_time,
                                                              layer_id=i.current_layer_id,
-                                                             access_time=i.access_time)
+                                                             access_time=i.access_time,
+                                                             d2i_time=i.d2i_time,
+                                                             i2d_time=i.i2d_time)
 
                                 # Add heuristic to destination
                                 # Check how many layers we can reach from the service.destination node
@@ -474,6 +492,7 @@ class Network:
 
                                         # Get the MCT between the two services: previous service (i.itinerary[-1]), new service
                                         mct = self.dict_layers[i.current_layer_id].get_mct(i.itinerary[-1], service)
+                                        ground_mobility_time = timedelta(minutes=0)
                                         if (mct is not None) or (not consider_times_constraints):
                                             # If there is no MCT we cannot connect between them. Probably shouldn't
                                             # already have been part of possible_following_services_same_layer
@@ -507,7 +526,7 @@ class Network:
 
                                                 new_path.add_service_itinerary(service, heuristic_time=ht,
                                                                                time_from_path=consider_times_constraints,
-                                                                               mct=mct)
+                                                                               mct=mct, ground_mobility_time=ground_mobility_time)
                                                 heapq.heappush(pq, new_path)
 
                 # Check now if we can do a transition to another layer
@@ -526,6 +545,7 @@ class Network:
                             # The transition is to a layer that is part of the Network
                             # Get the connecting time to transition the layers
                             connecting_time_btw_layers = self.get_connecting_time_btw_layers(pt.get('mct', {}))
+                            ground_mobility_time = self.get_connecting_time_btw_layers(pt.get('avg_travel_time', {})) + self.get_connecting_time_btw_layers(pt.get('extra_avg_travel_time', {}))
 
                             if consider_times_constraints:
                                 # Possible services that can be used from the other layer considering
@@ -552,7 +572,7 @@ class Network:
                                                                                             destination_nodes)
                                         new_path.add_service_itinerary(service, heuristic_time=ht, layer_id=pt['layer_id'],
                                                                        time_from_path=consider_times_constraints,
-                                                                       mct=connecting_time_btw_layers)
+                                                                       mct=connecting_time_btw_layers, ground_mobility_time=ground_mobility_time)
                                         heapq.heappush(pq, new_path)
 
         # If target airport is not reachable or not all itineraries requested found
@@ -560,7 +580,7 @@ class Network:
 
 
 class Itinerary:
-    def __init__(self, itinerary, current_node, total_travel_time, layer_id, access_time=None, egress_time=None, **kwargs):
+    def __init__(self, itinerary, current_node, total_travel_time, layer_id, access_time=None, egress_time=None, d2i_time=None, i2d_time=None, **kwargs):
         self.itinerary = itinerary
         self.current_layer_id = layer_id
         self.current_node = current_node
@@ -571,6 +591,7 @@ class Itinerary:
             self.nodes_visited += [s.origin, s.destination]
 
         self.mcts = []
+        self.ground_mobility = []
 
         self.access_time = access_time
         if access_time is None:
@@ -578,6 +599,12 @@ class Itinerary:
         self.egress_time = egress_time
         if egress_time is None:
             self.egress_time = timedelta(minutes=0)
+        self.d2i_time = d2i_time
+        if d2i_time is None:
+            self.d2i_time = timedelta(minutes=0)
+        self.i2d_time = i2d_time
+        if i2d_time is None:
+            self.i2d_time = timedelta(minutes=0)
 
         self.expected_minimum_travel_time = total_travel_time
 
@@ -586,9 +613,10 @@ class Itinerary:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    def add_service_itinerary(self, s, heuristic_time=None, layer_id=None, time_from_path=True, mct=None):
+    def add_service_itinerary(self, s, heuristic_time=None, layer_id=None, time_from_path=True, mct=None, ground_mobility_time=None):
         self.itinerary += [s]
         self.mcts += [mct]
+        self.ground_mobility += [ground_mobility_time]
         self.nodes_visited += [s.origin, s.destination]
         self.current_node = s.destination
         if time_from_path:
@@ -643,6 +671,7 @@ class Itinerary:
         new_itinerary.layers_used = self.layers_used[:]
         new_itinerary.nodes_visited = self.nodes_visited[:]
         new_itinerary.mcts = self.mcts[:]
+        new_itinerary.ground_mobility = self.ground_mobility[:]
 
         # Copy remaining attributes
         new_itinerary.expected_minimum_travel_time = self.expected_minimum_travel_time
@@ -650,7 +679,7 @@ class Itinerary:
 
         # Copy any additional attributes set by kwargs
         for key in self.__dict__.keys():
-            if key not in ['itinerary', 'layers_used', 'nodes_visited', 'mcts', 'current_layer_id', 'current_node',
+            if key not in ['itinerary', 'layers_used', 'nodes_visited', 'mcts', 'ground_mobility', 'current_layer_id', 'current_node',
                            'total_travel_time', 'access_time', 'egress_time', 'expected_minimum_travel_time',
                            'arrived']:
                 setattr(new_itinerary, key, copy.copy(getattr(self, key)))

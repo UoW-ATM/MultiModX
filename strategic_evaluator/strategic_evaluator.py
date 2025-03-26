@@ -51,7 +51,7 @@ def create_region_access_dict(df_ra_air):
             dict_info_station[r.access_type] = dict_info_access
 
         #dict_info_access[r.pax_type] = r.avg_time
-        dict_info_access[r.pax_type] = r.total_time
+        dict_info_access[r.pax_type] = {'total_time':r.total_time,'avg_time':r.avg_time}
 
     return regions_access_air
 
@@ -1380,13 +1380,26 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         if 'pax_type' not in df_transitions:
             df_transitions['mct'] = df_transitions['mct'].apply(lambda x: {'all': x})
+            df_transitions['avg_travel_time'] = df_transitions['avg_travel_time'].apply(lambda x: {'all': x})
+            df_transitions['extra_avg_travel_time'] = df_transitions['extra_avg_travel_time'].apply(lambda x: {'all': x})
         else:
             # Group by origin, destination, layer_id_origin, and layer_id_destination, and aggregate mct into a dictionary by pax_type
-            df_transitions = df_transitions.groupby(
+            df_transitions1 = df_transitions.groupby(
                 ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
             ).apply(
                 lambda group: group.set_index('pax_type')['mct'].to_dict()
             ).reset_index(name='mct')
+            df_transitions2 = df_transitions.groupby(
+                ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
+            ).apply(
+                lambda group: group.set_index('pax_type')['avg_travel_time'].to_dict()
+            ).reset_index(name='avg_travel_time')
+            df_transitions3 = df_transitions.groupby(
+                ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
+            ).apply(
+                lambda group: group.set_index('pax_type')['extra_avg_travel_time'].to_dict()
+            ).reset_index(name='extra_avg_travel_time')
+            df_transitions = pd.concat([df_transitions1,df_transitions2[['avg_travel_time']],df_transitions3[['extra_avg_travel_time']]],axis=1)
 
     if len(layers) > 0:
         if len(layers) == 1:
@@ -1454,6 +1467,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
     total_travel_time = []
     access = []
     egress = []
+    d2i = []
+    i2d = []
     nservices = []
     n_modes_i = []
     journey_type_i = []
@@ -1481,6 +1496,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
         dict_legs_info['travel_time_' + str(ln)] = []
         if ln > 0:
             dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)] = []
+            dict_legs_info['ground_mobility_time_' + str(ln - 1) + "_" + str(ln)] = []
             dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)] = []
             dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)] = []
 
@@ -1502,6 +1518,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             total_travel_time.append(i.total_travel_time.total_seconds() / 60)
             access.append(i.access_time.total_seconds() / 60)
             egress.append(i.egress_time.total_seconds() / 60)
+            d2i.append(i.d2i_time.total_seconds() / 60)
+            i2d.append(i.i2d_time.total_seconds() / 60)
             nservices.append(len(i.itinerary))
             ln = 0
             prev_arrival_time = None
@@ -1571,6 +1589,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 if ln > 0:
                     dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)].append(
                         i.mcts[ln - 1].total_seconds() / 60)
+                    dict_legs_info['ground_mobility_time_' + str(ln - 1) + "_" + str(ln)].append(
+                        i.ground_mobility[ln - 1].total_seconds() / 60)
 
                     if not consider_times_constraints:
                         dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)].append(None)
@@ -1628,6 +1648,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 dict_legs_info['travel_time_' + str(lni)].append(None)
                 if lni > 0:
                     dict_legs_info['mct_time_' + str(lni - 1) + "_" + str(lni)].append(None)
+                    dict_legs_info['ground_mobility_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['connecting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['waiting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                 dict_legs_info['cost_' + str(lni)].append(None)
@@ -1659,7 +1680,10 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                'nmodes': n_modes_i,
                'journey_type': journey_type_i,
                'access_time': access,
-               'egress_time': egress}
+               'egress_time': egress,
+               'd2i_time': d2i,
+               'i2d_time': i2d,
+               }
 
     dict_elements = {**dict_it, **dict_legs_info}
 
@@ -2226,7 +2250,7 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
 
     final_columns = ['cluster_id', 'option_cluster_number', 'alternative_id', 'option', 'origin', 'destination', 'path'] + nid_columns + [
         'total_waiting_time', 'total_time', 'type', 'volume',
-        'fare', 'access_time', 'egress_time']
+        'fare', 'access_time', 'egress_time', 'd2i_time', 'i2d_time']
 
     options = merged_df[final_columns].copy()
 
@@ -2259,7 +2283,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     nid_f_pattern = r'^nid_f\d+$'  # Matches columns like nid_f1, nid_f2, ...
 
     # Specify fixed columns to include
-    fixed_columns = ['cluster_id', 'option', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time']
+    fixed_columns = ['cluster_id', 'option', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time', 'd2i_time', 'i2d_time']
 
     # Filter dynamically using regex for `leg` and `nid_f` columns
     dynamic_columns = df_pax.filter(regex=f'({leg_pattern}|{nid_f_pattern})').columns.tolist()
@@ -2380,7 +2404,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
         columns={'option': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
     leg_columns = [col for col in df_valid_supported.columns if col.startswith('leg')]
     df_valid_supported = df_valid_supported[
-        ['nid_x', 'pax', 'avg_fare', 'ticket_type', 'origin', 'destination', 'access_time', 'egress_time'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
+        ['nid_x', 'pax', 'avg_fare', 'ticket_type', 'origin', 'destination', 'access_time', 'egress_time', 'd2i_time', 'i2d_time'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
                                                                      'gtfs_post',
                                                                      'origin1', 'destination1', 'origin2',
                                                                      'destination2',
