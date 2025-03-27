@@ -568,8 +568,7 @@ def trips_format_to_pipeline(trips):
 
 def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_paths=False):
     """Function to format the trips used for logit calibration. The trips have to be
-    imported as a csv from the notebook new_trips_to_paths. It will permanently modify the
-    dataframe if run.
+    imported as a csv from the notebook new_trips_to_paths. It is able to filter paths with only one option
     
     Args:
         trips_logit: dataframe with the information about origin, destination, path cost and probabilities
@@ -597,11 +596,11 @@ def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_p
         # Merge the filtered combinations back with the original DataFrame to keep only matching rows
         trips_logit_formatted = pd.merge(trips_logit_formatted, df_filtered, on=['origin', 'destination'], how='inner')
 
-    trips_logit_formatted["trips_per_od_pair"]=trips_logit_formatted.groupby(["origin","destination"])["trips"].transform("sum")
-
     # stay with only the selected options
     trips_logit_formatted=trips_logit_formatted[trips_logit_formatted["noption"]<=max_num_options]
 
+    trips_logit_formatted["trips_per_od_pair"]=trips_logit_formatted.groupby(["origin","destination"])["trips"].transform("sum")
+    
     for i in range(6):
         archetype=f"archetype_{i}"
         name=f"trips_per_od_pair_arch_{i}"
