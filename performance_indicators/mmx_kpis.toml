@@ -1,0 +1,42 @@
+[input]
+    path_to_strategic_output = "../../data/CS10/v=0.10/"
+	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/3.1_9_1_0_ground_mobility__delay_mean_0/"
+	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
+	nuts_data_path = "/home/michal/Documents/westminster/multimodx/data/demand/data/NUTS_RG_01M_2021_4326_shp.shp"
+
+[output]
+	path_to_output = "../../data/CS10/v=0.10/"
+
+[indicators]
+	[indicators.strategic]
+		[[indicators.strategic.strategic_total_journey_time]] #= ["sum","avg","avg_by_nuts","avg_by_nuts_plot"]
+			variant = "sum"
+			#name = "my_sum"
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "avg"
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "avg_by_nuts"
+			plot = true
+		[[indicators.strategic.diversity_of_destinations]]
+			variant = "nuts"
+			plot = true
+		[[indicators.strategic.modal_share]]
+			variant = "total"
+		[[indicators.strategic.pax_time_efficiency]]
+			variant = "total"
+		[[indicators.strategic.demand_served]]
+			variant = "total"
+		[[indicators.strategic.load_factor]]
+			variant = "total"
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_nuts"
+		[[indicators.strategic.buffer_in_itineraries]]
+			variant = "avg"
+		[[indicators.strategic.catchment_area]]
+			variant = "hubs"
+			plot = true
+		[[indicators.strategic.cost_per_user]]
+			variant = "avg"
+		[[indicators.strategic.co2_emissions]]
+			variant = "avg"
+

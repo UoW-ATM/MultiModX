@@ -26,7 +26,6 @@ from libs.emissions_costs_computation import (compute_emissions_pax_short_mid_fl
 from libs.time_converstions import  convert_to_utc_vectorized
 from libs.passenger_assigner.passenger_assigner import assign_passengers_options_solver, fill_flights_too_empy
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -52,7 +51,7 @@ def create_region_access_dict(df_ra_air):
             dict_info_station[r.access_type] = dict_info_access
 
         #dict_info_access[r.pax_type] = r.avg_time
-        dict_info_access[r.pax_type] = r.total_time
+        dict_info_access[r.pax_type] = {'total_time':r.total_time,'avg_time':r.avg_time}
 
     return regions_access_air
 
@@ -398,7 +397,7 @@ def compute_od_pairs_banned(network_definition_config, flight_ban_def, pre_proce
 
     def get_od_flights_from_rail(df_fs, df_t):
         # Get all the o-d pairs in the df_fs which have a train in the df_t file
-        
+
         # Keep only one representative for origin - destination
         df_t = df_t[['origin', 'destination',
                      'lat_orig', 'lon_orig',
@@ -1381,13 +1380,26 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         if 'pax_type' not in df_transitions:
             df_transitions['mct'] = df_transitions['mct'].apply(lambda x: {'all': x})
+            df_transitions['avg_travel_time'] = df_transitions['avg_travel_time'].apply(lambda x: {'all': x})
+            df_transitions['extra_avg_travel_time'] = df_transitions['extra_avg_travel_time'].apply(lambda x: {'all': x})
         else:
             # Group by origin, destination, layer_id_origin, and layer_id_destination, and aggregate mct into a dictionary by pax_type
-            df_transitions = df_transitions.groupby(
+            df_transitions1 = df_transitions.groupby(
                 ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
             ).apply(
                 lambda group: group.set_index('pax_type')['mct'].to_dict()
             ).reset_index(name='mct')
+            df_transitions2 = df_transitions.groupby(
+                ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
+            ).apply(
+                lambda group: group.set_index('pax_type')['avg_travel_time'].to_dict()
+            ).reset_index(name='avg_travel_time')
+            df_transitions3 = df_transitions.groupby(
+                ['origin', 'destination', 'layer_id_origin', 'layer_id_destination']
+            ).apply(
+                lambda group: group.set_index('pax_type')['extra_avg_travel_time'].to_dict()
+            ).reset_index(name='extra_avg_travel_time')
+            df_transitions = pd.concat([df_transitions1,df_transitions2[['avg_travel_time']],df_transitions3[['extra_avg_travel_time']]],axis=1)
 
     if len(layers) > 0:
         if len(layers) == 1:
@@ -1455,6 +1467,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
     total_travel_time = []
     access = []
     egress = []
+    d2i = []
+    i2d = []
     nservices = []
     n_modes_i = []
     journey_type_i = []
@@ -1482,6 +1496,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
         dict_legs_info['travel_time_' + str(ln)] = []
         if ln > 0:
             dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)] = []
+            dict_legs_info['ground_mobility_time_' + str(ln - 1) + "_" + str(ln)] = []
             dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)] = []
             dict_legs_info['waiting_time_' + str(ln - 1) + "_" + str(ln)] = []
 
@@ -1503,6 +1518,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
             total_travel_time.append(i.total_travel_time.total_seconds() / 60)
             access.append(i.access_time.total_seconds() / 60)
             egress.append(i.egress_time.total_seconds() / 60)
+            d2i.append(i.d2i_time.total_seconds() / 60)
+            i2d.append(i.i2d_time.total_seconds() / 60)
             nservices.append(len(i.itinerary))
             ln = 0
             prev_arrival_time = None
@@ -1572,6 +1589,8 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 if ln > 0:
                     dict_legs_info['mct_time_' + str(ln - 1) + "_" + str(ln)].append(
                         i.mcts[ln - 1].total_seconds() / 60)
+                    dict_legs_info['ground_mobility_time_' + str(ln - 1) + "_" + str(ln)].append(
+                        i.ground_mobility[ln - 1].total_seconds() / 60)
 
                     if not consider_times_constraints:
                         dict_legs_info['connecting_time_' + str(ln - 1) + "_" + str(ln)].append(None)
@@ -1629,6 +1648,7 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                 dict_legs_info['travel_time_' + str(lni)].append(None)
                 if lni > 0:
                     dict_legs_info['mct_time_' + str(lni - 1) + "_" + str(lni)].append(None)
+                    dict_legs_info['ground_mobility_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['connecting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                     dict_legs_info['waiting_time_' + str(lni - 1) + "_" + str(lni)].append(None)
                 dict_legs_info['cost_' + str(lni)].append(None)
@@ -1660,7 +1680,10 @@ def process_dict_itineraries(dict_itineraries, consider_times_constraints=True, 
                'nmodes': n_modes_i,
                'journey_type': journey_type_i,
                'access_time': access,
-               'egress_time': egress}
+               'egress_time': egress,
+               'd2i_time': d2i,
+               'i2d_time': i2d,
+               }
 
     dict_elements = {**dict_it, **dict_legs_info}
 
@@ -1856,79 +1879,84 @@ def compute_avg_paths_from_itineraries(df_itineraries):
     return df_paths_avg
 
 
+def filter_similar_options(group, kpis, thresholds=None):
+    filtered_options = []
+    clusters = {}
+    # Remove the dropna as we want to keep options even if some KPIs are missing. They'll be replaced
+    # by 0, which maybe it's not great, but at least not loosing options.
+    # group = group.dropna(subset=kpis)
+    for category in group['journey_type'].unique():
+        category_group = group[group['journey_type'] == category]
+
+        if thresholds is None:
+            # Calculate data-driven thresholds as std of group
+            # Else provide dictionary with values per KPI
+            thresholds_in_func = {kpi: category_group[kpi].std() for kpi in kpis}
+        else:
+            # process thresholds given to generate thresholds to use
+            thresholds_in_func = {}
+            # iterate through kpis to use
+            for kpi in kpis:
+                # Check if kpi defined in thresholds given category
+                # if not, check if defined for all
+                # if not use std
+                thresholds_in_func[kpi] = thresholds.get(category, {}).get(kpi,
+                                                                           thresholds.get('all', {}).get(kpi))
+                if thresholds_in_func[kpi] is None:
+                    thresholds_in_func[kpi] = category_group[kpi].std()
+
+        for _, option in category_group.iterrows():
+            similar = False
+            for idx, existing_option in enumerate(filtered_options):
+                # Loop through all KPIs provided by the user
+                is_similar = True  # Flag to check if option is similar based on all KPIs
+                for kpi in kpis:
+                    value_kpi_option = option[kpi]
+                    existing_kpi_option = existing_option[kpi]
+                    if pd.isnull(option[kpi]):
+                        value_kpi_option = 0
+                    if pd.isnull(existing_kpi_option):
+                        existing_kpi_option = 0
+                    if abs(value_kpi_option - existing_kpi_option) > thresholds_in_func[kpi]:
+                        is_similar = False   # If any KPI difference is greater than the threshold, it's not similar
+                        break
+
+                # Check if total_waiting_time is also part of the KPIs or not
+                if is_similar:
+                    clusters[filtered_options[idx]['option']].append(option['option'])
+                    similar = True
+                    break
+
+            if not similar:
+                filtered_options.append(option)
+                clusters[option['option']] = [option['option']]
+
+    return [opt['option'] for opt in filtered_options], clusters
+
+
+def process_group_clustering(name, group, kpis, thresholds):
+    options_cluster = filter_similar_options(group, kpis, thresholds)
+    return (name[0], name[1], options_cluster)
+
+
 def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):
+    start_time_clustering = time.time()
+
     # Default KPIs if none are provided
     if kpis is None:
         kpis = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time', 'nservices']
-
-    def filter_similar_options(group, kpis, thresholds=None):
-        filtered_options = []
-        clusters = {}
-        # Remove the dropna as we want to keep options even if some KPIs are missing. They'll be replaced
-        # by 0, which maybe it's not great, but at least not loosing options.
-        # group = group.dropna(subset=kpis)
-        for category in group['journey_type'].unique():
-            category_group = group[group['journey_type'] == category]
-
-            if thresholds is None:
-                # Calculate data-driven thresholds as std of group
-                # Else provide dictionary with values per KPI
-                thresholds_in_func = {kpi: category_group[kpi].std() for kpi in kpis}
-            else:
-                # process thresholds given to generate thresholds to use
-                thresholds_in_func = {}
-                # iterate through kpis to use
-                for kpi in kpis:
-                    # Check if kpi defined in thresholds given category
-                    # if not, check if defined for all
-                    # if not use std
-                    thresholds_in_func[kpi] = thresholds.get(category, {}).get(kpi,
-                                                                               thresholds.get('all', {}).get(kpi))
-                    if thresholds_in_func[kpi] is None:
-                        thresholds_in_func[kpi] = category_group[kpi].std()
-
-            for _, option in category_group.iterrows():
-                similar = False
-                for idx, existing_option in enumerate(filtered_options):
-                    # Loop through all KPIs provided by the user
-                    is_similar = True  # Flag to check if option is similar based on all KPIs
-                    for kpi in kpis:
-                        value_kpi_option = option[kpi]
-                        existing_kpi_option = existing_option[kpi]
-                        if pd.isnull(option[kpi]):
-                            value_kpi_option = 0
-                        if pd.isnull(existing_kpi_option):
-                            existing_kpi_option = 0
-                        if abs(value_kpi_option - existing_kpi_option) > thresholds_in_func[kpi]:
-                            is_similar = False   # If any KPI difference is greater than the threshold, it's not similar
-                            break
-
-                    # Check if total_waiting_time is also part of the KPIs or not
-                    if is_similar:
-                        clusters[filtered_options[idx]['option']].append(option['option'])
-                        similar = True
-                        break
-
-                if not similar:
-                    filtered_options.append(option)
-                    clusters[option['option']] = [option['option']]
-
-        return [opt['option'] for opt in filtered_options], clusters
 
     # Group by origin-destination and apply filtering
     df_itineraries.loc[df_itineraries.total_waiting_time.isnull(), 'total_waiting_time'] = 0
 
     grouped_data = df_itineraries.groupby(['origin', 'destination'])
 
-    def process_group(name, group):
-        options_cluster = filter_similar_options(group, kpis, thresholds)
-        return (name[0], name[1], options_cluster)
-
     # If pc > 1, use parallel computing, otherwise proceed sequentially
     if pc > 1:
-        results = Parallel(n_jobs=pc)(delayed(process_group)(name, group) for name, group in grouped_data)
+        results = Parallel(n_jobs=pc, backend='multiprocessing')(
+            delayed(process_group_clustering)(name, group, kpis, thresholds) for name, group in grouped_data)
     else:
-        results = [process_group(name, group) for name, group in grouped_data]
+        results = [process_group_clustering(name, group, kpis, thresholds) for name, group in grouped_data]
 
     # Convert results to DataFrame
     result = pd.DataFrame(results, columns=['origin', 'destination', 'options_cluster'])
@@ -1942,27 +1970,74 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     result.drop(columns='options_cluster', inplace=True)
 
     # Prepare the final DataFrame with clusters and averaged KPIs
-    final_clusters = []
+    '''
+        Previous version of the code more readable but much slower --> from 351 sec to 12 sec
+        final_clusters = []
+        
+        for _, row in result.iterrows():
+            origin = row['origin']
+            destination = row['destination']
+            for cluster_id, options in row['clusters'].items():
+                cluster_data = df_itineraries[(df_itineraries['option'].isin(options)) &
+                                              (df_itineraries['origin'] == origin) &
+                                              (df_itineraries['destination'] == destination)]
+                journey_type = cluster_data.iloc[0]['journey_type']
+                avg_kpis = cluster_data[kpis+['nservices']].mean().to_dict()
+                final_clusters.append({
+                    'origin': origin,
+                    'destination': destination,
+                    'journey_type': journey_type,
+                    'cluster_id': cluster_id,
+                    'options_in_cluster': options,
+                    **avg_kpis
+                })
 
-    for _, row in result.iterrows():
-        origin = row['origin']
-        destination = row['destination']
-        for cluster_id, options in row['clusters'].items():
-            cluster_data = df_itineraries[(df_itineraries['option'].isin(options)) &
-                                          (df_itineraries['origin'] == origin) &
-                                          (df_itineraries['destination'] == destination)]
-            journey_type = cluster_data.iloc[0]['journey_type']
-            avg_kpis = cluster_data[kpis+['nservices']].mean().to_dict()
-            final_clusters.append({
-                'origin': origin,
-                'destination': destination,
-                'journey_type': journey_type,
-                'cluster_id': cluster_id,
-                'options_in_cluster': options,
-                **avg_kpis
-            })
+        final_df = pd.DataFrame(final_clusters)
+    '''
 
-    final_df = pd.DataFrame(final_clusters)
+    # Explode clusters dictionary into separate rows
+    result['cluster_pairs'] = result['clusters'].apply(lambda x: list(x.items()))
+    exploded = result.explode('cluster_pairs')
+
+    # Split the tuple into separate columns
+    exploded[['cluster_id', 'options_in_cluster']] = pd.DataFrame(exploded['cluster_pairs'].tolist(), index=exploded.index)
+
+    # Explode 'options_in_cluster' if it contains lists
+    exploded = exploded.explode('options_in_cluster')
+
+    # Drop intermediate column
+    exploded.drop(columns=['cluster_pairs'], inplace=True)
+
+    # Transform clusters into a DataFrame
+    clusters_df = exploded[['origin', 'destination', 'clusters']].copy()
+
+    clusters_df['cluster_id'] = clusters_df['clusters'].apply(lambda x: list(x.keys()))
+    clusters_df['options_in_cluster'] = clusters_df['clusters'].apply(lambda x: list(x.values()))
+
+    # Expand cluster_id and options_in_cluster into separate rows
+    clusters_df = clusters_df.explode(['cluster_id', 'options_in_cluster'])
+
+    # Flatten options list
+    clusters_df = clusters_df.explode('options_in_cluster')
+
+    # Merge with df_itineraries once instead of filtering in a loop
+    merged_df = clusters_df.merge(df_itineraries, left_on=['options_in_cluster', 'origin', 'destination'],
+                                  right_on=['option', 'origin', 'destination'], how='left')
+
+    # Group by cluster, origin, destination
+    grouped = merged_df.groupby(['origin', 'destination', 'cluster_id'])
+
+    # Aggregate KPIs
+    final_df = grouped.agg({
+        **{kpi: 'mean' for kpi in kpis},  # Compute mean for KPIs
+        'nservices': 'mean',  # Compute mean for nservices
+        'journey_type': 'first',  # Take the first journey_type
+        'options_in_cluster': lambda x: list(set(x))  # Keep unique options in cluster
+    }).reset_index()
+
+    # Rename column
+    final_df.rename(columns={'options_in_cluster': 'options_in_cluster'}, inplace=True)
+
 
     for k in kpis:
         final_df[k] = final_df[k].apply(lambda x: round(x, 2))
@@ -1973,7 +2048,14 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     # Get the current list of columns
     all_columns = list(final_df.columns)
 
-    # Find the position after 'cluser_id'
+    columns_first = ['origin', 'destination', 'journey_type', 'cluster_id', 'options_in_cluster']
+
+    all_columns = columns_first + [item for item in all_columns if item not in columns_first]
+
+    # Order options in cluster
+    final_df['options_in_cluster'] = final_df['options_in_cluster'].apply(lambda x: sorted(x))
+
+    # Find the position after 'cluster_id'
     position_after = all_columns.index('cluster_id') + 1
 
     # Create a new list of columns with 'a' and 'b' moved
@@ -1987,6 +2069,9 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     # Reorder the DataFrame
     final_df = final_df[new_column_order]
 
+    end_time_clustering = time.time()
+    logger.important_info("Filtering and clustering done in, "
+                          + str(end_time_clustering - start_time_clustering) + " seconds.")
     return final_df
 
 
@@ -2129,7 +2214,6 @@ def obtain_demand_per_cluster_itineraries(df_clusters, df_pax_demand, df_paths):
 def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, paras):
 
     if paras['train_seats_per_segment'].lower() == 'combined'.lower():
-        # TODO: rail option of capacities considering stops
         # If combined need to remove the stops from the train ids so from xxx_stop1_stop2 to xxx on the id
         # of the trains and on the df_possible_itineraries
         # Also for seats keep the mean number of seats and for distance the max
@@ -2146,10 +2230,10 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         service_max_seats_avg_dict = service_max_seats_group.to_dict()
         service_max_gcdistance_dict = service_max_gcdistance.to_dict()
 
-        import pickle
-        with open("./pax_assigment_tests/df_schedules_pre_cap.pkl", "wb") as file:
-            pickle.dump({'df_schedules': df_schedules, 'df_demand': df_demand,
-                         'df_possible_itineraries': df_possible_itineraries}, file)
+        #import pickle
+        #with open("./pax_assigment_tests/df_schedules_pre_cap.pkl", "wb") as file:
+        #    pickle.dump({'df_schedules': df_schedules, 'df_demand': df_demand,
+        #                 'df_possible_itineraries': df_possible_itineraries}, file)
 
         df_schedules['seats'] = df_schedules['nid'].apply(lambda x: service_max_seats_avg_dict[x])
         df_schedules['gcdistance'] = df_schedules['nid'].apply(lambda x: service_max_gcdistance_dict[x])
@@ -2160,14 +2244,17 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
         service_cols = [col for col in df_possible_itineraries.columns if col.startswith('service_id_')]
         mode_cols = [col for col in df_possible_itineraries.columns if col.startswith('mode_')]
 
-        for service_col, mode_col in zip(service_cols, mode_cols):
+        for service_col, mode_col in zip(sorted(service_cols), sorted(mode_cols)):
             # Apply the transformation only to rows where mode_col is 'rail'
-            df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col] = \
-                df_possible_itineraries.loc[df_possible_itineraries[mode_col] == 'rail', service_col].str.replace(
+            mask = (df_possible_itineraries[mode_col] == 'rail') & df_possible_itineraries[service_col].notna()
+            df_possible_itineraries.loc[mask, service_col] = \
+                df_possible_itineraries.loc[mask, service_col].astype(str).str.replace(
                     r'_.*', '', regex=True)
 
     # Initialize unique IDs for df_demand
-    df_demand['id'] = np.arange(1, len(df_demand) + 1)
+    #print(df_demand)
+    #sys.exit(0)
+    #df_demand['id'] = np.arange(1, len(df_demand) + 1)
 
     # Step 0: If journey_type is none then mode should be none too
     df_possible_itineraries.loc[(df_possible_itineraries['journey_type']=='none'), 'mode_0'] = None
@@ -2213,28 +2300,35 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
     # if type=='' put None
     merged_df.loc[(merged_df['type']==''), 'type'] = None
 
+    merged_df = merged_df.rename(columns={'cluster_id_opt': 'cluster_id', 'total_cost_opt': 'fare',
+                                          'total_waiting_time_opt': 'total_waiting_time',
+                                          'total_travel_time_opt': 'total_time', 'num_pax': 'volume',
+                                          'origin_opt': 'origin', 'destination_opt': 'destination',
+                                          'option_number': 'option_cluster_number'})
+
     # Step 5: Rename and select the required columns for the final output
     nid_columns = [f'nid_f{i + 1}' for i in range(max_services)]
     # We keep also alternative_id as this is a key to identify demand groups
-    final_columns = ['id', 'origin', 'destination', 'option_number', 'alternative_id', 'path'] + nid_columns + ['total_waiting_time', 'total_time', 'type', 'volume',
-                                                             'fare', 'access_time', 'egress_time']
 
-    merged_df = merged_df.rename(columns={'total_cost_opt': 'fare', 'total_waiting_time_opt': 'total_waiting_time',
-                                          'total_travel_time_opt': 'total_time', 'num_pax': 'volume', 'origin_opt':'origin', 'destination_opt':'destination'})
+    final_columns = ['cluster_id', 'option_cluster_number', 'alternative_id', 'option', 'origin', 'destination', 'path'] + nid_columns + [
+        'total_waiting_time', 'total_time', 'type', 'volume',
+        'fare', 'access_time', 'egress_time', 'd2i_time', 'i2d_time']
 
     options = merged_df[final_columns].copy()
 
+    options['cluster_id'] = options['alternative_id']
+
     # Create unique id for option_number
-    options['option_number'] = range(1, len(options) + 1)
+    #    options['option_number'] = range(1, len(options) + 1)
 
     it_gen, d_seats_max, options = assign_passengers_options_solver(df_schedules, options, paras, verbose=False)
 
     # it_gen = fill_flights_too_empy(it_gen, df_schedules, d_seats_max, options, paras, verbose=False)
 
     # For ach option add pax assigned
-    df_options_w_pax = options.merge(it_gen[['it', 'option', 'pax', 'avg_fare', 'generated_info']],
-                                     left_on=['id', 'option_number'],
-                                        right_on=['it', 'option'], how='left').drop(columns=['option'])
+    df_options_w_pax = options.merge(it_gen[['cluster_id', 'option', 'pax', 'avg_fare', 'generated_info']],
+                                     left_on=['cluster_id', 'option'],
+                                        right_on=['cluster_id', 'option'], how='left')#.drop(columns=['option'])
     df_options_w_pax['pax'] = df_options_w_pax['pax'].fillna(0)
 
     return it_gen, d_seats_max, df_options_w_pax
@@ -2251,7 +2345,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     nid_f_pattern = r'^nid_f\d+$'  # Matches columns like nid_f1, nid_f2, ...
 
     # Specify fixed columns to include
-    fixed_columns = ['option_number', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time']
+    fixed_columns = ['cluster_id', 'option', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time', 'd2i_time', 'i2d_time']
 
     # Filter dynamically using regex for `leg` and `nid_f` columns
     dynamic_columns = df_pax.filter(regex=f'({leg_pattern}|{nid_f_pattern})').columns.tolist()
@@ -2367,12 +2461,12 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     df_valid_supported['gtfs_pre'] = np.nan
     df_valid_supported['gtfs_post'] = np.nan
 
-    # Filter rows tacitcal pax assignment
+    # Filter rows tactical pax assignment
     df_valid_supported = df_valid_supported.rename(
-        columns={'option_number': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
+        columns={'option': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
     leg_columns = [col for col in df_valid_supported.columns if col.startswith('leg')]
     df_valid_supported = df_valid_supported[
-        ['nid_x', 'pax', 'avg_fare', 'ticket_type', 'origin', 'destination', 'access_time', 'egress_time'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
+        ['nid_x', 'pax', 'avg_fare', 'ticket_type', 'origin', 'destination', 'access_time', 'egress_time', 'd2i_time', 'i2d_time'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
                                                                      'gtfs_post',
                                                                      'origin1', 'destination1', 'origin2',
                                                                      'destination2',
