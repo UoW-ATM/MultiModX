@@ -8,7 +8,8 @@ import time
 import sys
 sys.path.insert(1, '../..')
 
-from strategic_evaluator.identify_pax_need_reassigning import identify_pax_need_reassigning
+from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_status_in_replanned_network,
+                                                                   compute_capacities_available_services)
 
 from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
@@ -118,6 +119,12 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                        toml_config['planned_network_info']['planned_network'] /
                        'transition_layer_connecting_times.csv')
 
+    # Others
+    path_seats_service = (Path(toml_config['general']['experiment_path']) /
+                                 toml_config['planned_network_info']['planned_network'] /
+                                 toml_config['planned_network_info']['path_results'] /
+                                 ('pax_assigned_seats_max_target_' +
+                                  str(toml_config['planned_network_info']['precomputed']) + '.csv'))
 
     ### Read planned operations ###
     # Passenger assigned from planned network
@@ -214,23 +221,36 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                  'rail_air': dict_mct_rail_air,
                  'air_air': dict_mct_air_air}
 
+    # Read Seats in Services
+    seats_in_service = pd.read_csv(path_seats_service)
+    dict_seats_service = seats_in_service[['nid','max_seats']].set_index(['nid'])['max_seats'].to_dict()
+
 
     ########################################
     # First identify pax need reassigning #
     #######################################
     logger.important_info("Identifying status of passengers planned in replanned network")
 
-    pax_assigned_planned = identify_pax_need_reassigning(pax_assigned_planned,
-                                                         fs_planned,
-                                                         rs_planned,
-                                                         flights_cancelled, trains_cancelled,
-                                                         flights_replanned, trains_replanned, trains_replanned_ids,
-                                                         dict_mcts)
+    pax_assigned_planned, pax_kept, pax_need_replannning = compute_pax_status_in_replanned_network(pax_assigned_planned,
+                                                                                                   fs_planned,
+                                                                                                   rs_planned,
+                                                                                                   flights_cancelled, trains_cancelled,
+                                                                                                   flights_replanned, trains_replanned, trains_replanned_ids,
+                                                                                                   dict_mcts)
 
     # Save pax_assigned_planned with their status due to replanning
     pax_assigned_planned.to_csv((output_folder_path /
                                  ('pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
                                  index=False)
+
+
+    # Compute capacities available in services
+    services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
+
+
+    # Get o-d with total demand that needs reacommodating
+    od_demand_need_reaccomodating = pax_need_replannning.groupby(['origin', 'destination'])['pax'].sum().reset_index()
+
 
     end_pipeline_time = time.time()
     elapsed_time = end_pipeline_time - start_pipeline_time

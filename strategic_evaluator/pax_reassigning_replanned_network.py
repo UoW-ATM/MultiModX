@@ -389,11 +389,83 @@ def compute_pax_status_in_replanned_network(pax_demand_planned,
                                                                                                                                                        fs,
                                                                                                                                                        dict_mcts)
 
-       # Assing status to pax itineraries
+       # Assign status to pax itineraries
         pax_demand_planned.loc[pax_demand_planned.pax_group_id.isin(
             pot_affected_pax_replanned_w_conn_doable.pax_group_id), 'pax_status_replanned'] = 'replanned_doable'
         pax_demand_planned.loc[pax_demand_planned.pax_group_id.isin(
             pot_affected_pax_replanned_w_conn_no_doable.pax_group_id), 'pax_status_replanned'] = 'replanned_no_doable'
 
-    return pax_demand_planned
+
+    # Divide pax between pax that would need replanning and pax who are kept in the planned network
+    # Split the pax between those who can and those who cannot do their trips anymore
+    pax_need_replannning = pax_demand_planned[
+        pax_demand_planned.pax_status_replanned.isin(['cancelled', 'replanned_no_doable'])]
+    pax_kept = pax_demand_planned[
+        ~pax_demand_planned.pax_status_replanned.isin(['cancelled', 'replanned_no_doable'])]
+
+    return pax_demand_planned, pax_kept, pax_need_replannning
+
+
+def compute_load_factor(df_pax_per_service, dict_seats_service):
+    def add_total_pax_in_service(df_pax_per_service):
+        df_pax_per_service['total_pax_in_service'] = df_pax_per_service['pax']
+        df_pax_per_service.loc[(df_pax_per_service['type'] == 'rail'), 'rail_service_id'] = df_pax_per_service.loc[
+            (df_pax_per_service['type'] == 'rail'), 'service_id'].apply(lambda x: x.split('_')[0])
+        df_pax_per_service.loc[(df_pax_per_service['type'] == 'rail'), 'stop_orig'] = df_pax_per_service.loc[
+            (df_pax_per_service['type'] == 'rail'), 'service_id'].apply(lambda x: int(x.split('_')[1]))
+        df_pax_per_service.loc[(df_pax_per_service['type'] == 'rail'), 'stop_destination'] = df_pax_per_service.loc[
+            (df_pax_per_service['type'] == 'rail'), 'service_id'].apply(lambda x: int(x.split('_')[2]))
+
+        df_pax_per_service.loc[(df_pax_per_service['type'] == 'rail'), 'total_pax_in_service'] = \
+        df_pax_per_service.loc[(df_pax_per_service['type'] == 'rail')].apply(
+            lambda x: df_pax_per_service[((df_pax_per_service.rail_service_id == x.rail_service_id) &
+                                          ~((df_pax_per_service.stop_orig >= x.stop_destination) &
+                                            (df_pax_per_service.stop_destination >= x.stop_orig)
+                                            ))].pax.sum(), axis=1)
+        return df_pax_per_service
+
+    df_pax_per_service = add_total_pax_in_service(df_pax_per_service)
+    df_pax_per_service['max_seats_service'] = df_pax_per_service['service_id'].apply(
+        lambda x: dict_seats_service[x])
+
+    return df_pax_per_service['total_pax_in_service'] / df_pax_per_service['max_seats_service']
+
+
+def compute_capacities_available_services(df_pax, dict_seats_service):
+    # Get list of pax per service regardless if used in nid_f1, nid_f2...
+    # Identify nid_f columns dynamically (as there could be from nid_f1 to nid_fn
+    nid_cols = [col for col in df_pax.columns if col.startswith('nid_f')]
+
+    # Split the 'type' column into multiple type_n columns
+    df_type_split = df_pax['type'].str.split('_', expand=True)
+    df_type_split.columns = [f'type_{i + 1}' for i in range(df_type_split.shape[1])]
+    pax_kept = df_pax.join(df_type_split)
+
+    # Concatenate nid_f columns with their respective type_n
+    df_melted = pax_kept.melt(id_vars=['pax', 'type'], value_vars=nid_cols,
+                              var_name='nid_col', value_name='service_id')
+
+    # Keep only rows where service_id is not NaN
+    df_melted = df_melted.dropna(subset=['service_id']).reset_index(drop=True)
+
+    # Extract the index of the nid_f column (e.g., nid_f1 -> 1)
+    df_melted['nid_index'] = df_melted['nid_col'].str.extract(r'(\d+)').astype(int)
+
+    # Assign the corresponding type_n based on nid_index
+    df_melted['type'] = df_melted.apply(lambda x: x['type'].split('_')[x['nid_index'] - 1], axis=1)
+
+    # Select final columns
+    df_pax_per_service = df_melted[['service_id', 'type', 'pax']]
+
+    # Add all pax in each service
+    df_pax_per_service = df_pax_per_service.groupby(['service_id', 'type'])['pax'].sum().reset_index()
+
+    # Compute load factor per service
+    df_pax_per_service['load_factor'] = compute_load_factor(df_pax_per_service, dict_seats_service)
+
+    services_w_capacity = df_pax_per_service[df_pax_per_service.load_factor < 1].copy()
+    services_wo_capacity = df_pax_per_service[df_pax_per_service.load_factor >= 1].copy()
+
+    return services_w_capacity, services_wo_capacity
+
 
