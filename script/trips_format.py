@@ -669,7 +669,7 @@ def generate_paths_w_costs(trips_logit: pd.DataFrame,max_num_option=3):
         
     Returns:
         paths_w_cost: dataframe"""
-    cols = [f"{item}_{i}" for i in range(1, 4) for item in ["travel_time", "cost", "emissions", "train", "plane", "multimodal", "av"]]
+    cols = [f"{item}_{i}" for i in range(1, max_num_option+1) for item in ["travel_time", "cost", "emissions", "train", "plane", "multimodal", "av"]]
     paths_w_costs=pd.DataFrame(columns=cols)
     # select the origin-destination pairs
     unique_combinations = trips_logit[['origin', 'destination']].drop_duplicates()
