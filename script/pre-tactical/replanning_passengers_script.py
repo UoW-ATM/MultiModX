@@ -6,10 +6,12 @@ from datetime import datetime, timedelta
 import logging
 import time
 import sys
+
 sys.path.insert(1, '../..')
 
 from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_status_in_replanned_network,
                                                                    compute_capacities_available_services)
+from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules)
 
 from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
@@ -143,6 +145,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     rs_planned = pd.read_csv(path_planned_trains,
                              dtype={'trip_id': 'string', 'stop_id': 'string'})
 
+    rs_planned = rs_planned[(~rs_planned['arrival_time'].isna()) & (~rs_planned['departure_time'].isna())].copy()
+
     # Baseline for rail
     date_to_set_rail = toml_config['network_definition']['rail_network'][0]['date_to_set_rail']  # "20190906"
     base_date = datetime.strptime(date_to_set_rail, "%Y%m%d").date()
@@ -225,17 +229,40 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     seats_in_service = pd.read_csv(path_seats_service)
     dict_seats_service = seats_in_service[['nid','max_seats']].set_index(['nid'])['max_seats'].to_dict()
 
+    #####################################################################
+    # First adjust rail and flight network with modifications replanned #
+    ####################################################################
+
+    rs_replanned = replan_rail_timetable(rs_planned,
+                                         rail_replanned=trains_replanned,
+                                         rail_cancelled=trains_cancelled,
+                                         rail_added=trains_added)
+
+    fs_replanned = replan_flight_schedules(fs_planned,
+                                           fs_replanned=flights_replanned,
+                                           fs_cancelled=flights_cancelled,
+                                           fs_added=flights_added)
+
+    # Save updated replanned network
+    fs_replanned.to_csv((output_folder_path /
+                         ('flight_schedules_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
+    rs_replanned.to_csv((output_folder_path /
+                         ('rail_timetable_all_gtfs_' + str(
+                             pre_processed_version) + '.csv')),
+                        index=False)
 
     ########################################
-    # First identify pax need reassigning #
+    # Then identify pax need reassigning #
     #######################################
     logger.important_info("Identifying status of passengers planned in replanned network")
 
     pax_assigned_planned, pax_kept, pax_need_replannning = compute_pax_status_in_replanned_network(pax_assigned_planned,
-                                                                                                   fs_planned,
-                                                                                                   rs_planned,
+                                                                                                   fs_replanned,
+                                                                                                   rs_replanned,
                                                                                                    flights_cancelled, trains_cancelled,
-                                                                                                   flights_replanned, trains_replanned, trains_replanned_ids,
+                                                                                                   flights_replanned, trains_replanned_ids,
                                                                                                    dict_mcts)
 
     # Save pax_assigned_planned with their status due to replanning
@@ -246,6 +273,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     # Compute capacities available in services
     services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
+
+
 
 
     # Get o-d with total demand that needs reacommodating

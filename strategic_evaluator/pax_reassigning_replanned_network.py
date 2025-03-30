@@ -302,10 +302,10 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
 
 
 def compute_pax_status_in_replanned_network(pax_demand_planned,
-                                            flight_schedules_planned,
-                                            rail_timetable_planned,
+                                            fs_replanned,
+                                            rs_replanned,
                                             flights_cancelled, trains_cancelled,
-                                            flights_replanned, trains_replanned, trains_replanned_ids,
+                                            flights_replanned, trains_replanned_ids,
                                             dict_mcts):
 
     # Originally all pax itineraries are unnafected
@@ -357,36 +357,11 @@ def compute_pax_status_in_replanned_network(pax_demand_planned,
         # For the pax_replanned_w_conn we need to check if their itineraries are still possible
         pot_affected_pax_replanned_w_conn = pot_affctd_pax_replanned[~pot_affctd_pax_replanned.nid_f2.isna()].copy()
 
-        # Remove from the original fs the ones cancelled and replanned
-        fsids_remove = pd.concat([flights_cancelled, flights_replanned[['service_id']]])
-        fs = flight_schedules_planned[~flight_schedules_planned.service_id.isin(fsids_remove.service_id)]
-
-        # Add the replanned ones
-        fs = pd.concat([fs, flights_replanned])
-
-        # Remove the original rail timtables the ones cancelled and replanned
-        # Remove trains cancelled
-        rs = rail_timetable_planned.merge(trains_cancelled, left_on='trip_id', right_on='service_id', how='left')
-
-        # keep rs that are not cancelled
-        rs = rs[~(((~rs['from'].isna()) & (rs['to'].isna()) & (rs['stop_sequence'] >= rs['from'])) |
-                  ((~rs['from'].isna()) & (~rs['to'].isna()) & (rs['stop_sequence'] >= rs['from']) & (
-                              rs['stop_sequence'] <= rs['to'])) |
-                  ((rs['from'].isna()) & (~rs['to'].isna()) & (rs['stop_sequence'] <= rs['to']))
-                  )]
-        rs = rs.drop(['service_id', 'from', 'to'], axis=1)
-
-        # Remove trains replanned
-        rs = rs[~rs.trip_id.isin(trains_replanned.trip_id)]
-
-        # Add new trains replanned
-        rs = pd.concat([rs, trains_replanned])
-
         # Get from the potentially affected which ones are still doable and for which ones their
         # connections are not feasible anymore
         pot_affected_pax_replanned_w_conn_doable, pot_affected_pax_replanned_w_conn_no_doable = check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_replanned_w_conn,
-                                                                                                                                                       rs,
-                                                                                                                                                       fs,
+                                                                                                                                                       rs_replanned,
+                                                                                                                                                       fs_replanned,
                                                                                                                                                        dict_mcts)
 
        # Assign status to pax itineraries
