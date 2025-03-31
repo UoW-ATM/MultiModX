@@ -132,7 +132,6 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     # Passenger assigned from planned network
     pax_assigned_planned = pd.read_csv(path_planned_pax_assigned)
     pax_assigned_planned = pax_assigned_planned[pax_assigned_planned.pax > 0].copy()
-    pax_assigned_planned['pax_group_id'] = pax_assigned_planned.index
 
     # Read planned flights
     fs_planned = pd.read_csv(path_planned_flights)
@@ -254,7 +253,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                         index=False)
 
     ########################################
-    # Then identify pax need reassigning #
+    #  Then identify pax need reassigning  #
     #######################################
     logger.important_info("Identifying status of passengers planned in replanned network")
 
@@ -270,6 +269,9 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                  ('pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
                                  index=False)
 
+    ########################################
+    #  Then identify pax need reassigning  #
+    #######################################
 
     # Compute capacities available in services
     services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
