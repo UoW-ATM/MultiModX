@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from itertools import combinations
 import multiprocessing as mp
+import gc
 import ast
 import time
 import logging
@@ -1935,8 +1936,12 @@ def filter_similar_options(group, kpis, thresholds=None):
 
 
 def process_group_clustering(name, group, kpis, thresholds):
-    options_cluster = filter_similar_options(group, kpis, thresholds)
-    return (name[0], name[1], options_cluster)
+    try:
+        options_cluster = filter_similar_options(group, kpis, thresholds)
+        return (name[0], name[1], options_cluster)
+    finally:
+        del group
+        gc.collect()
 
 
 def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):

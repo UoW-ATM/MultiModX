@@ -76,6 +76,9 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                                           consider_times_constraints=False,
                                                               policy_package=toml_config.get('policy_package'))
 
+    # Remove paths without mode of transport
+    df_potential_paths = df_potential_paths[df_potential_paths.nmodes>=1].copy().reset_index(drop=True)
+
     ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
     df_potential_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
@@ -112,6 +115,9 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                                           allow_mixed_operators=allow_mixed_operators_itineraries,
                                                           consider_times_constraints=True,
                                                           policy_package=toml_config.get('policy_package'))
+
+    # Remove paths without mode of transport
+    df_itineraries = df_itineraries[df_itineraries.nservices >= 1].copy().reset_index(drop=True)
 
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     df_itineraries.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
