@@ -263,7 +263,7 @@ def catchment_area(data,config,pi_config,variant='hubs'):
 	if pi_config['plot'] == True:
 		fig = px.bar(con_out, x='hub', y='travel_time')
 		fig.update_layout(xaxis={'categoryorder':'total ascending'})
-		fig.show()
+		#fig.show()
 		fig.write_image(Path(config['output']['path_to_output']) / 'catchment_area_hubs.png', scale=4)
 	if variant == 'hubs':
 		return con_out
@@ -294,4 +294,51 @@ def co2_emissions(data,config,pi_config,variant='avg'):
 	kpi = its['weigthed_co2'].sum()/its['pax'].sum()
 	print(kpi)
 	if variant == 'avg':
+		return kpi
+
+def seamless_of_travel(data,config,pi_config,variant='avg'):
+
+	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
+	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
+
+	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered],axis=1)
+	df = df[df['pax']>0]
+
+	#sum connecting times (connecting time is difference between times of successive services)
+	connecting_times = df.filter(regex="connecting_time_")
+	df['total_connecting_time'] = connecting_times.sum(axis=1,min_count=1)
+	df = df.dropna(subset=['total_connecting_time'])
+	#print('connecting_times',df)
+	df['weigthed_tct'] = df['total_connecting_time']*df['pax']
+
+	if variant == 'avg':
+		kpi = df['weigthed_tct'].sum()/df['pax'].sum()
+		return kpi
+
+def pax_processes_time(data,config,pi_config,variant='avg'):
+
+	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
+	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
+
+	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered],axis=1)
+	df = df.loc[:,~df.columns.duplicated()].copy()
+	df = df[df['pax']>0]
+
+	#pax_processes_time =
+	ground_mobility_times = df.filter(regex="ground_mobility_time_")
+	travel_times = df.filter(regex="travel_time_")
+
+	df['total_ground_mobility_time'] = ground_mobility_times.sum(axis=1,min_count=0)
+	df['sum_travel'] = travel_times.sum(axis=1,min_count=0)
+	#df = df.dropna(subset=['total_ground_mobility_time'])
+
+	#print(df)
+
+	df['pax_processes_time'] = df['total_travel_time'] - df['d2i_time'] - df['i2d_time'] - df['total_waiting_time'] - df['total_ground_mobility_time'] - df['sum_travel']
+	#print('connecting_times',df)
+	df.to_csv('xxx.csv')
+	df['weigthed_ppt'] = df['pax_processes_time']*df['pax']
+
+	if variant == 'avg':
+		kpi = df['weigthed_ppt'].sum()/df['pax'].sum()
 		return kpi

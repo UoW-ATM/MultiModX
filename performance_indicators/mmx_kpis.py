@@ -6,7 +6,7 @@ import pandas as pd
 import tomli
 import numpy as np
 import matplotlib.pyplot as plt
-from kpi_lib_strategic import strategic_total_journey_time, diversity_of_destinations, modal_share, pax_time_efficiency, demand_served, load_factor, resilience_alternatives, catchment_area, cost_per_user,co2_emissions, buffer_in_itineraries
+from kpi_lib_strategic import strategic_total_journey_time, diversity_of_destinations, modal_share, pax_time_efficiency, demand_served, load_factor, resilience_alternatives, catchment_area, cost_per_user,co2_emissions, buffer_in_itineraries, seamless_of_travel, pax_processes_time
 from kpi_lib_tactical import flight_arrival_delay, kerb2gate_time, total_journey_time, variability
 
 def read_strategic_output(path_to_strategic_output):
@@ -57,11 +57,11 @@ def save_results(results):
 	#print(results)
 	for indicator, variants in results.items():
 		for variant in variants:
-			print(variant)
+			#print(variant)
 			if isinstance(variant['val'], pd.DataFrame):
 				variant['val'].to_csv(Path(config['output']['path_to_output']) / (indicator+'__'+variant['name']+'.csv'))
 			if np.isscalar(variant['val']):
-				print('x',variant['val'])
+				#print('x',variant['val'])
 				res_list.append({'indicator':indicator,'variant':variant['name'],'value':variant['val']})
 	if len(res_list)>0:
 		pd.DataFrame(res_list).to_csv(Path(config['output']['path_to_output']) / ('indicators.csv'))
@@ -77,6 +77,7 @@ def read_results(paths,config):
 		results = pd.concat([results,df])
 
 	print(results)
+	results.to_csv(Path(config['output']['path_to_output']) / 'comparison.csv')
 	ax = results.plot.bar(x='experiment', y=plot_column, rot=0)
 	plt.show()
 	#print(results.loc[(results['indicator']=='strategic_total_journey_time')&(results['variant']=='avg'),].columns[2:])
@@ -144,6 +145,10 @@ if __name__ == '__main__':
 					val = cost_per_user(data_strategic,config,variant,variant=variant['variant'])
 				if indicator == 'co2_emissions':
 					val = co2_emissions(data_strategic,config,variant,variant=variant['variant'])
+				if indicator == 'seamless_of_travel':
+					val = seamless_of_travel(data_strategic,config,variant,variant=variant['variant'])
+				if indicator == 'pax_processes_time':
+					val = pax_processes_time(data_strategic,config,variant,variant=variant['variant'])
 				results[indicator].append({'name':variant['name'],'val':val})
 
 			save_results(results)

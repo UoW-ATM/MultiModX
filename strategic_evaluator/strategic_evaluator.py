@@ -2330,6 +2330,7 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
                                      left_on=['cluster_id', 'option'],
                                         right_on=['cluster_id', 'option'], how='left')#.drop(columns=['option'])
     df_options_w_pax['pax'] = df_options_w_pax['pax'].fillna(0)
+    df_options_w_pax['pax_group_id'] = np.arange(df_options_w_pax.shape[0])
 
     return it_gen, d_seats_max, df_options_w_pax
 
@@ -2345,7 +2346,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
     nid_f_pattern = r'^nid_f\d+$'  # Matches columns like nid_f1, nid_f2, ...
 
     # Specify fixed columns to include
-    fixed_columns = ['cluster_id', 'option', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time', 'd2i_time', 'i2d_time']
+    fixed_columns = ['cluster_id', 'option', 'pax_group_id', 'pax', 'avg_fare', 'generated_info', 'alternative_id', 'type', 'path', 'origin', 'destination', 'access_time', 'egress_time', 'd2i_time', 'i2d_time']
 
     # Filter dynamically using regex for `leg` and `nid_f` columns
     dynamic_columns = df_pax.filter(regex=f'({leg_pattern}|{nid_f_pattern})').columns.tolist()
@@ -2463,7 +2464,7 @@ def transform_pax_assigment_to_tactical_input(df_options_w_pax):#df_pax_assigmen
 
     # Filter rows tactical pax assignment
     df_valid_supported = df_valid_supported.rename(
-        columns={'option': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
+        columns={'pax_group_id': 'nid_x', 'generated_info': 'source'})  # , inplace=True)
     leg_columns = [col for col in df_valid_supported.columns if col.startswith('leg')]
     df_valid_supported = df_valid_supported[
         ['nid_x', 'pax', 'avg_fare', 'ticket_type', 'origin', 'destination', 'access_time', 'egress_time', 'd2i_time', 'i2d_time'] + leg_columns + ['rail_pre', 'rail_post', 'source', 'gtfs_pre',
