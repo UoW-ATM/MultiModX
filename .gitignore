@@ -26,3 +26,7 @@ __pycache__/
 *.pickle
 
 script/strategic/test_loggin.log
+
+notebooks/CS10/new.ipynb
+strategic_evaluator/CS10.PP10.SO00.toml
+strategic_evaluator/CS10.PP20.SO00.toml
