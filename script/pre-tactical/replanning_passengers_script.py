@@ -269,12 +269,22 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                  ('pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
                                  index=False)
 
+
     ########################################
     #  Then identify pax need reassigning  #
     #######################################
 
-    # Compute capacities available in services
-    services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
+    # Pax assigned final
+    pax_assigned_final = pax_assigned_planned.copy()
+    # Empty dataframe of pax_stranded
+    pax_stranded = pax_assigned_final.iloc[0:0].copy()
+
+    if len(pax_need_replannning) > 0:
+        # Have some pax that need replanning
+        # Else we're done
+
+        # Compute capacities available in services
+        services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
 
 
 
@@ -282,6 +292,14 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     # Get o-d with total demand that needs reacommodating
     od_demand_need_reaccomodating = pax_need_replannning.groupby(['origin', 'destination'])['pax'].sum().reset_index()
 
+    pax_assigned_final.to_csv((output_folder_path /
+                               ('pax_assigned_to_itineraries_options_replanned_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
+    pax_stranded.to_csv((output_folder_path /
+                               ('pax_assigned_to_itineraries_options_replanned_stranded_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
 
     end_pipeline_time = time.time()
     elapsed_time = end_pipeline_time - start_pipeline_time
