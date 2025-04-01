@@ -324,24 +324,27 @@ def compute_pax_status_in_replanned_network(pax_demand_planned,
             pax_demand_planned.pax_group_id.isin(affected_pax_cancellations.pax_group_id), 'pax_status_replanned'] = 'cancelled'
 
 
-    ##############################################################################
-    # Then check which passengers are affected due to services being modified    #
-    #############################################################################
+    ###########################################################################
+    # Then check which passengers are affected due to services being modified #
+    ##########################################################################
     pot_affctd_pax_replanned, unnafected_pax = get_affected_pax_due_to_replaning(not_cancelled_pax,
                                                                                  flights_replanned,
                                                                                  trains_replanned_ids)
 
-    # Pax that are delayed are ones affected as being replanned
     # One legs are not affected so only delayed
     pot_affected_pax_replanned_w_conn = None
-    if 'nid_f2' in pot_affctd_pax_replanned.columns:
-        pax_affected_delayed = pot_affctd_pax_replanned[pot_affctd_pax_replanned.nid_f2.isna()].copy()
-        pot_affected_pax_replanned_w_conn = pot_affctd_pax_replanned[~pot_affctd_pax_replanned.nid_f2.isna()].copy()
-    else:
-        pax_affected_delayed = pot_affctd_pax_replanned
 
-    pax_demand_planned.loc[
-        pax_demand_planned.pax_group_id.isin(pax_affected_delayed.pax_group_id), 'pax_status_replanned'] = 'delayed'
+    if pot_affctd_pax_replanned is not None:
+        # Some passengers might be affected
+        # Pax that are delayed are ones affected as being replanned
+        if 'nid_f2' in pot_affctd_pax_replanned.columns:
+            pax_affected_delayed = pot_affctd_pax_replanned[pot_affctd_pax_replanned.nid_f2.isna()].copy()
+            pot_affected_pax_replanned_w_conn = pot_affctd_pax_replanned[~pot_affctd_pax_replanned.nid_f2.isna()].copy()
+        else:
+            pax_affected_delayed = pot_affctd_pax_replanned
+
+        pax_demand_planned.loc[
+            pax_demand_planned.pax_group_id.isin(pax_affected_delayed.pax_group_id), 'pax_status_replanned'] = 'delayed'
 
 
     # Now check if there are replanned with connections which
