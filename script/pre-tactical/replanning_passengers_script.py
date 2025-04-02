@@ -11,7 +11,8 @@ sys.path.insert(1, '../..')
 
 from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_status_in_replanned_network,
                                                                    compute_capacities_available_services)
-from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules)
+from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules,
+                                                       compute_itineraries_in_replanned_network)
 
 from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
@@ -61,6 +62,9 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     if recreate_output_fld:
         # Check if output folder exists, if not create it
         recreate_output_folder(output_folder_path,
+                               delete_previous=True,
+                               logger=logger)
+        recreate_output_folder(toml_config['output']['output_folder'],
                                delete_previous=True,
                                logger=logger)
 
@@ -244,7 +248,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     # Save updated replanned network
     fs_replanned.to_csv((output_folder_path /
-                         ('flight_schedules_' + str(
+                         ('flight_schedules_proc_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
     rs_replanned.to_csv((output_folder_path /
@@ -289,8 +293,47 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
 
 
-    # Get o-d with total demand that needs reacommodating
-    od_demand_need_reaccomodating = pax_need_replannning.groupby(['origin', 'destination'])['pax'].sum().reset_index()
+        # Compute capacity available overall per service
+        capacity_available = pd.concat([services_w_capacity, services_wo_capacity])
+        capacity_available['capacity'] = capacity_available['max_seats_service'] - capacity_available['max_pax_in_service']
+        capacity_available = capacity_available[['service_id', 'type', 'capacity']]
+        capacity_available.to_csv((output_folder_path / 'services_capacity_available.csv'), index=False)
+
+        # Compute o-d demand that needs to be reassigned so that suitable itineraries can be computed
+        # Get o-d with total demand that needs reacommodating
+        od_demand_need_reaccomodating = pax_need_replannning.groupby(['origin', 'destination'])[
+            'pax'].sum().reset_index()
+        # Put only one archetype, we only need one example per o-d pair
+        od_demand_need_reaccomodating['archetype'] = 'archetype_0'
+        # Set date as date_to_set_rail, if rail exist, as that's the date of the flight (not that it matters, I think)
+        od_demand_need_reaccomodating['date'] = toml_config.get('network_definition').get('rail_network',[{}])[0].get('date_to_set_rail', '20190906')
+        od_demand_need_reaccomodating = od_demand_need_reaccomodating.rename({'pax': 'trips'}, axis=1)
+        od_demand_need_reaccomodating.to_csv((output_folder_path /
+                                              ('demand_missing_reaccomodate_'+ str(pre_processed_version) +'.csv')),
+                                             index=False)
+
+        # Modify the toml config so that demand is the newly created file
+        toml_config['demand']['demand'] = Path((output_folder_path /
+                                           ('demand_missing_reaccomodate_' + str(pre_processed_version) + '.csv')))
+
+        # Add path to  pre-processed input (flight and rail timetable processed)
+        toml_config['general']['pre_processed_input_folder'] = toml_config['general']['output_folder']
+        toml_config['network_definition']['pre_processed_input_folder'] = toml_config['general']['pre_processed_input_folder']
+        toml_config['network_definition']['processed_folder'] = (toml_config['general']['output_folder'] + '/processed')
+
+        recreate_output_folder((Path(toml_config['network_definition']['network_path']) /
+                                toml_config['network_definition']['processed_folder']))
+
+
+        df_itineraries, df_itineraries_filtered = compute_itineraries_in_replanned_network(toml_config,
+                                                                                           pc = pc,
+                                                                                           n_paths = n_paths,
+                                                                                           n_itineraries = n_itineraries,
+                                                                                           max_connections = max_connections,
+                                                                                           allow_mixed_operators_itineraries = allow_mixed_operators_itineraries,
+                                                                                           use_heuristics_precomputed = use_heuristics_precomputed,
+                                                                                           pre_processed_version = pre_processed_version,
+                                                                                           capacity_available = capacity_available)
 
     pax_assigned_final.to_csv((output_folder_path /
                                ('pax_assigned_to_itineraries_options_replanned_' + str(

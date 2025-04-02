@@ -302,7 +302,8 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
                                              network_definition_config['processed_folder'] /
                                              ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
 
-            shutil.copy2(flight_schedule_pre_proc_path, flight_schedule_pre_proc_dest)
+            if flight_schedule_pre_proc_path != flight_schedule_pre_proc_dest:
+                shutil.copy2(flight_schedule_pre_proc_path, flight_schedule_pre_proc_dest)
 
         if 'rail_network' in network_definition_config:
             # We have rail network, copy the processed file, it might need some preprocessing
@@ -318,7 +319,8 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
                                                  network_definition_config['processed_folder'] /
                                                  ('rail_timetable_proc_' + str(pre_processed_version) + '.csv'))
 
-                shutil.copy2(rail_services_pre_proc_path, rail_services_pre_proc_dest)
+                if rail_services_pre_proc_path != rail_services_pre_proc_dest:
+                    shutil.copy2(rail_services_pre_proc_path, rail_services_pre_proc_dest)
 
             else:
                 # We have them in gtfs format... might need some processing
@@ -735,7 +737,8 @@ def create_dict_distance_origin_destination(origin_destination_df):
 def create_network(path_network_dict, compute_simplified=False, allow_mixed_operators=True,
                    heuristics_precomputed=None,
                    pre_processed_version=0,
-                   policy_package=None):
+                   policy_package=None,
+                   remove_services=None):
 
     if policy_package is None:
         policy_package = {}
@@ -1032,13 +1035,21 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         df_fs['country_origin'] = df_fs['origin'].str[:2]
         df_fs['country_destination'] = df_fs['destination'].str[:2]
 
-        air_layer = create_air_layer(df_fs.copy(), df_as, df_mct,
-                                     mct_default=mct_default,
-                                     df_ra_air=df_ra_air,
-                                     keep_only_fastest_service=only_fastest,
-                                     dict_dist_origin_destination=dict_dist_origin_destination,
-                                     heuristic_precomputed_distance=df_heuristic_air)
-        layers += [air_layer]
+        # Remove from df_fs flights which are removed (if any)
+        if (remove_services is not None) and (len(remove_services[remove_services.type=='flight'])>0):
+            # We  have flights to remove
+            id_flights_remove = list(remove_services[remove_services.type=='flight'].service_id)
+            df_fs = df_fs[~df_fs.service_id.isin(id_flights_remove)]
+
+        if len(df_fs)>0:
+            # We have flights, just in case all flights have been removed...
+            air_layer = create_air_layer(df_fs.copy(), df_as, df_mct,
+                                         mct_default=mct_default,
+                                         df_ra_air=df_ra_air,
+                                         keep_only_fastest_service=only_fastest,
+                                         dict_dist_origin_destination=dict_dist_origin_destination,
+                                         heuristic_precomputed_distance=df_heuristic_air)
+            layers += [air_layer]
 
     if 'rail_network' in path_network_dict.keys():
         df_rail_data_l = []
@@ -1186,15 +1197,23 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
         if compute_simplified and allow_mixed_operators:
             only_fastest = 2
 
-        rail_layer = create_rail_layer(df_rail_data, from_gtfs=False, date_considered=date_rail_str,
-                                       df_ra_rail=df_ra_rail,
-                                       keep_only_fastest_service=only_fastest,
-                                       df_stops=df_stops,
-                                       df_mct=df_mct,
-                                       mct_default=mct_default,
-                                       heuristic_precomputed_distance=df_heuristic_rail)
+        # Remove from df_fs flights which are removed (if any)
+        if (remove_services is not None) and (len(remove_services[remove_services.type == 'rail']) > 0):
+            # We  have flights to remove
+            id_rail_remove = list(remove_services[remove_services.type == 'rail'].service_id)
+            df_rail_data = df_rail_data[~df_rail_data.service_id.isin(id_rail_remove)]
 
-        layers += [rail_layer]
+        if len(df_rail_data) > 0:
+            # We have trains, just in case all flights have been removed...
+            rail_layer = create_rail_layer(df_rail_data, from_gtfs=False, date_considered=date_rail_str,
+                                           df_ra_rail=df_ra_rail,
+                                           keep_only_fastest_service=only_fastest,
+                                           df_stops=df_stops,
+                                           df_mct=df_mct,
+                                           mct_default=mct_default,
+                                           heuristic_precomputed_distance=df_heuristic_rail)
+
+            layers += [rail_layer]
 
     if 'multimodal' in path_network_dict.keys():
         df_transitionsl = []
