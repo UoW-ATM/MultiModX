@@ -268,7 +268,8 @@ def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timeta
 	df_final = []
 
 	#For flights straight forward computation of load factor
-	flight_schedules_proc = flight_schedules_proc.merge(df_pax_per_service_flight[['service_id','pax']],how='left',on='service_id')
+	paxkm = df_pax_per_service_flight.groupby('service_id')['pax'].sum().reset_index()
+	flight_schedules_proc = flight_schedules_proc.merge(paxkm[['service_id','pax']],how='left',on='service_id')
 	flight_schedules_proc['load_factor'] = flight_schedules_proc['pax'] / flight_schedules_proc['seats']
 	flight_schedules_proc['mode']='flight'
 	df_final.append(flight_schedules_proc)
@@ -368,7 +369,7 @@ def load_factor(data,config,pi_config,variant='total'):
 
 	# Compute load factor per service
 	loads = compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timetable_proc,flight_schedules_proc)
-
+	loads.to_csv('loads.csv')
 
 	#flatten itineraries
 	#services = pd.concat([df[['service_id_0','pax','mode_0']],df[['service_id_1','pax','mode_1']].rename({'service_id_1': 'service_id_0','mode_1':'mode_0'}, axis=1)],axis=0)
