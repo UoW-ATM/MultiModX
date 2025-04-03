@@ -171,17 +171,17 @@ def get_mct_between_layers(dict_mcts, coming_from, going_to, from_layer, to_laye
 
 def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_replanned_w_conn, rs, fs, dict_mcts):
 
-    if 'sobt_local' not in pot_affected_pax_replanned_w_conn.columns:
-        pot_affected_pax_replanned_w_conn['sobt_local'] = None
-    if 'sibt_local' not in pot_affected_pax_replanned_w_conn.columns:
-        pot_affected_pax_replanned_w_conn['sibt_local'] = None
+    if 'sobt' not in pot_affected_pax_replanned_w_conn.columns:
+        pot_affected_pax_replanned_w_conn['sobt'] = None
+    if 'sibt' not in pot_affected_pax_replanned_w_conn.columns:
+        pot_affected_pax_replanned_w_conn['sibt'] = None
     if 'service_id' not in pot_affected_pax_replanned_w_conn.columns:
         pot_affected_pax_replanned_w_conn['service_id'] = None
 
-    if 'departure_datetime' not in pot_affected_pax_replanned_w_conn.columns:
-        pot_affected_pax_replanned_w_conn['departure_datetime'] = None
-    if 'arrival_datetime' not in pot_affected_pax_replanned_w_conn.columns:
-        pot_affected_pax_replanned_w_conn['arrival_datetime'] = None
+    if 'departure_time_utc' not in pot_affected_pax_replanned_w_conn.columns:
+        pot_affected_pax_replanned_w_conn['departure_time_utc'] = None
+    if 'arrival_time_utc' not in pot_affected_pax_replanned_w_conn.columns:
+        pot_affected_pax_replanned_w_conn['arrival_time_utc'] = None
     if 'stop_id' not in pot_affected_pax_replanned_w_conn.columns:
         pot_affected_pax_replanned_w_conn['stop_id'] = None
     if 'stop_sequence' not in pot_affected_pax_replanned_w_conn.columns:
@@ -191,7 +191,7 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
     for col in [c for c in pot_affected_pax_replanned_w_conn.columns if c.startswith("nid_f")]:
         # Merge flights
         pot_affected_pax_replanned_w_conn = pot_affected_pax_replanned_w_conn.merge(
-            fs[['service_id', 'sobt_local', 'sibt_local', 'origin', 'destination']], left_on=col, right_on="service_id",
+            fs[['service_id', 'sobt', 'sibt', 'origin', 'destination']], left_on=col, right_on="service_id",
             how="left", suffixes=("", f"_{col}")
         )
 
@@ -204,13 +204,13 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
 
         # Merge rail start stop
         pot_affected_pax_replanned_w_conn = pot_affected_pax_replanned_w_conn.merge(
-            rs[['trip_id', 'departure_datetime', 'stop_id', 'stop_sequence']], left_on=["trip_id", "from_stop_seq"],
+            rs[['trip_id', 'departure_time_utc', 'stop_id', 'stop_sequence']], left_on=["trip_id", "from_stop_seq"],
             right_on=["trip_id", "stop_sequence"], how="left", suffixes=("", f"_{col}_start")
         )
 
         # Merge rail end stop
         pot_affected_pax_replanned_w_conn = pot_affected_pax_replanned_w_conn.merge(
-            rs[['trip_id', 'arrival_datetime', 'stop_id', 'stop_sequence']], left_on=["trip_id", "to_stop_seq"],
+            rs[['trip_id', 'arrival_time_utc', 'stop_id', 'stop_sequence']], left_on=["trip_id", "to_stop_seq"],
             right_on=["trip_id", "stop_sequence"], how="left", suffixes=("", f"_{col}_end")
         )
 
@@ -221,10 +221,10 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
         # Replace empty flight values with rail values
         pot_affected_pax_replanned_w_conn[f"service_id_{col}"] = pot_affected_pax_replanned_w_conn[
             f"service_id_{col}"].fillna(pot_affected_pax_replanned_w_conn[col])
-        pot_affected_pax_replanned_w_conn[f"sobt_local_{col}"] = pot_affected_pax_replanned_w_conn[
-            f"sobt_local_{col}"].fillna(pot_affected_pax_replanned_w_conn[f"departure_datetime_{col}_start"])
-        pot_affected_pax_replanned_w_conn[f"sibt_local_{col}"] = pot_affected_pax_replanned_w_conn[
-            f"sibt_local_{col}"].fillna(pot_affected_pax_replanned_w_conn[f"arrival_datetime_{col}_end"])
+        pot_affected_pax_replanned_w_conn[f"sobt_{col}"] = pot_affected_pax_replanned_w_conn[
+            f"sobt_{col}"].fillna(pot_affected_pax_replanned_w_conn[f"departure_time_utc_{col}_start"])
+        pot_affected_pax_replanned_w_conn[f"sibt_{col}"] = pot_affected_pax_replanned_w_conn[
+            f"sibt_{col}"].fillna(pot_affected_pax_replanned_w_conn[f"arrival_time_utc_{col}_end"])
         pot_affected_pax_replanned_w_conn[f"origin_{col}"] = pot_affected_pax_replanned_w_conn[f"origin_{col}"].fillna(
             pot_affected_pax_replanned_w_conn[f"stop_id_{col}_start"])
         pot_affected_pax_replanned_w_conn[f"destination_{col}"] = pot_affected_pax_replanned_w_conn[
@@ -247,8 +247,8 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
 
     # Clean up unnecessary columns
     pot_affected_pax_replanned_w_conn.drop(
-        columns=["sobt_local", "sibt_local", "service_id", "trip_id", "from_stop_seq", "to_stop_seq",
-                 "departure_datetime", "arrival_datetime", "stop_id", "stop_sequence"], inplace=True)
+        columns=["sobt", "sibt", "service_id", "trip_id", "from_stop_seq", "to_stop_seq",
+                 "departure_time_utc", "arrival_time_utc", "stop_id", "stop_sequence"], inplace=True)
 
 
     # Now here we have for each itinerary the succession of nodes (o-d), modes and sobt and sibt
@@ -281,8 +281,8 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
         pot_affected_pax_replanned_w_conn['mct_' + str(i) + '_' + str(i + 1)] = pot_affected_pax_replanned_w_conn.apply(
             lambda x: compute_mct_in_row_for_leg_i(x, i), axis=1)
         pot_affected_pax_replanned_w_conn['buffer_' + str(i) + '_' + str(i + 1)] = (
-                    pot_affected_pax_replanned_w_conn['sobt_local_nid_f' + str(i + 1)] -
-                    pot_affected_pax_replanned_w_conn['sibt_local_nid_f' + str(i)] -
+                    pot_affected_pax_replanned_w_conn['sobt_nid_f' + str(i + 1)] -
+                    pot_affected_pax_replanned_w_conn['sibt_nid_f' + str(i)] -
                     pot_affected_pax_replanned_w_conn['mct_' + str(i) + '_' + str(i + 1)])
         pot_affected_pax_replanned_w_conn['buffer_' + str(i) + '_' + str(i + 1)] = pot_affected_pax_replanned_w_conn[
             'buffer_' + str(i) + '_' + str(i + 1)].apply(lambda x: x.total_seconds() / 60)
@@ -381,7 +381,7 @@ def compute_pax_status_in_replanned_network(pax_demand_planned,
     pax_kept = pax_demand_planned[
         ~pax_demand_planned.pax_status_replanned.isin(['cancelled', 'replanned_no_doable'])]
 
-    return pax_demand_planned, pax_kept, pax_need_replannning
+    return pax_demand_planned.copy(), pax_kept.copy(), pax_need_replannning.copy()
 
 
 def compute_load_factor(df_pax_per_service, dict_seats_service):
