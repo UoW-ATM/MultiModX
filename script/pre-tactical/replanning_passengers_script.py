@@ -242,17 +242,34 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     # Read additional services
     flights_added = None
+    additonal_seats = None
     if path_flights_additional.exists():
         flights_added = pd.read_csv(path_flights_additional)
         flights_added['sobt'] = pd.to_datetime(flights_added['sobt'] + flights_added['sobt_tz'])
         flights_added['sibt'] = pd.to_datetime(flights_added['sibt'] + flights_added['sibt_tz'])
         flights_added['sobt_local'] = pd.to_datetime(flights_added['sobt_local'] + flights_added['sobt_local_tz'])
         flights_added['sibt_local'] = pd.to_datetime(flights_added['sibt_local'] + flights_added['sibt_local_tz'])
+        additonal_seats = flights_added[['service_id', 'seats']].copy().rename(columns={'seats': 'capacity'})
+        additonal_seats['type'] = 'flight'
 
     trains_added = None
     if path_trains_additional.exists():
         trains_added = pd.read_csv(path_trains_additional, dtype={'trip_id': 'string', 'stop_id': 'string'})
         trains_added, trains_added_ids = pre_process_rail_input(trains_added, base_date, df_stops)
+
+        rail_capacity = 295 # TODO hard coded number of seats now (average Spain)
+
+        # Generate all possible (origin, destination) pairs per trip_id
+        services_list = []
+        for trip_id, group in trains_added.groupby('trip_id'):
+            stops = sorted(group['stop_sequence'].tolist())  # Ensure stops are sorted
+            for i in range(len(stops) - 1):
+                for j in range(i + 1, len(stops)):
+                    service_id = f"{trip_id}_{stops[i]}_{stops[j]}"
+                    services_list.append((service_id, rail_capacity, "rail"))
+
+        # Convert to DataFrame
+        additonal_seats = pd.concat([additonal_seats, pd.DataFrame(services_list, columns=["service_id", "capacity", "type"])])
 
     # Read MCTs
     mct_default_rail = mct_default_rail
@@ -381,6 +398,11 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         capacity_available = pd.concat([services_w_capacity, services_wo_capacity])
         capacity_available['capacity'] = capacity_available['max_seats_service'] - capacity_available['max_pax_in_service']
         capacity_available = capacity_available[['service_id', 'type', 'capacity']]
+
+        if additonal_seats is not None:
+            # Add additional seast to capacity available
+            capacity_available = pd.concat([capacity_available, additonal_seats])
+
         capacity_available.to_csv((toml_config['output']['output_folder'] / 'services_capacity_available.csv'), index=False)
 
         # Compute o-d demand that needs to be reassigned so that suitable itineraries can be computed
@@ -437,16 +459,25 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                                             toml_config['replanning_considerations']['constraints'])
 
         pax_need_replanning_w_it_options_kept.to_csv((toml_config['output']['output_folder'] /
-                                                      ('pax_need_replanning_w_it_options_filtered' +
+                                                      ('pax_need_replanning_w_it_options_filtered_' +
                                                       str(pre_processed_version) + '.csv')), index=False)
 
         # id_pax_groups_stranded --> there are no option for them at all
         ids_pax_groups_stranded = pax_need_replannning[~pax_need_replannning.pax_group_id.isin(pax_need_replanning_w_it_options_kept.pax_group_id)]
 
         ids_pax_groups_stranded.to_csv((toml_config['output']['output_folder'] /
-                                                      ('pax_stranded' +
+                                                      ('pax_stranded_' +
                                                       str(pre_processed_version) + '.csv')), index=False)
 
+        if len(pax_need_replanning_w_it_options_kept) > 0:
+            # We have pax with options, need to optimise the assigment
+            capacity_services_w_capacity = capacity_available[capacity_available.capacity>0].copy()
+
+            pax_reassigning = pax_need_replanning_w_it_options_kept[(['pax','pax_group_id', 'option'] +
+            [col for col in pax_need_replanning_w_it_options_kept.columns if col.startswith("service_id_")] +
+            [col for col in pax_need_replanning_w_it_options_kept.columns if col.startswith("mode_")] +
+            ['alliances_match', 'same_path', 'delay_departure_home', 'delay_arrival_home', 'delay_total_travel_time',
+             'extra_services', 'same_initial_node', 'same_final_node', 'same_modes'])].copy()
 
 
 
