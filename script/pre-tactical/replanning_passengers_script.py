@@ -14,7 +14,8 @@ from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_s
                                                                    compute_capacities_available_services)
 from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules,
                                                        compute_itineraries_in_replanned_network,
-                                                       compute_alternatives_possibles_pax_itineraries)
+                                                       compute_alternatives_possibles_pax_itineraries,
+                                                       filter_options_pax_it_w_constraints)
 
 from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
@@ -352,7 +353,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                                                    dict_mcts)
 
     # Save pax_assigned_planned with their status due to replanning
-    pax_assigned_planned.to_csv((output_folder_path /
+    pax_assigned_planned.to_csv((toml_config['output']['output_folder'] /
                                  ('pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
                                  index=False)
 
@@ -373,14 +374,14 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         # Compute capacities available in services
         services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
 
-        services_w_capacity.to_csv((output_folder_path / 'services_w_capacity.csv'), index=False)
-        services_wo_capacity.to_csv((output_folder_path / 'services_wo_capacity.csv'), index=False)
+        services_w_capacity.to_csv((toml_config['output']['output_folder'] / 'services_w_capacity.csv'), index=False)
+        services_wo_capacity.to_csv((toml_config['output']['output_folder'] / 'services_wo_capacity.csv'), index=False)
 
         # Compute capacity available overall per service
         capacity_available = pd.concat([services_w_capacity, services_wo_capacity])
         capacity_available['capacity'] = capacity_available['max_seats_service'] - capacity_available['max_pax_in_service']
         capacity_available = capacity_available[['service_id', 'type', 'capacity']]
-        capacity_available.to_csv((output_folder_path / 'services_capacity_available.csv'), index=False)
+        capacity_available.to_csv((toml_config['output']['output_folder'] / 'services_capacity_available.csv'), index=False)
 
         # Compute o-d demand that needs to be reassigned so that suitable itineraries can be computed
         # Get o-d with total demand that needs reacommodating
@@ -391,12 +392,12 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         # Set date as date_to_set_rail, if rail exist, as that's the date of the flight (not that it matters, I think)
         od_demand_need_reaccomodating['date'] = toml_config.get('network_definition').get('rail_network',[{}])[0].get('date_to_set_rail', '20190906')
         od_demand_need_reaccomodating = od_demand_need_reaccomodating.rename({'pax': 'trips'}, axis=1)
-        od_demand_need_reaccomodating.to_csv((output_folder_path /
+        od_demand_need_reaccomodating.to_csv((toml_config['output']['output_folder'] /
                                               ('demand_missing_reaccomodate_'+ str(pre_processed_version) +'.csv')),
                                              index=False)
 
         # Modify the toml config so that demand is the newly created file
-        toml_config['demand']['demand'] = Path((output_folder_path /
+        toml_config['demand']['demand'] = Path((toml_config['output']['output_folder'] /
                                            ('demand_missing_reaccomodate_' + str(pre_processed_version) + '.csv')))
 
         # Add path to  pre-processed input (flight and rail timetable processed)
@@ -426,7 +427,28 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                                           rs_planned)
 
         pax_need_replanning_w_it_options.to_csv((toml_config['output']['output_folder'] /
-                                                 'pax_need_replanning_w_it_options.csv'))
+                                                 ('pax_need_replanning_w_it_options' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options
+        ids_pax_groups_stranded = []
+        if toml_config['replanning_considerations'].get('constraints') is not None:
+            pax_need_replanning_w_it_options_kept = filter_options_pax_it_w_constraints(pax_need_replanning_w_it_options,
+                                                                                            toml_config['replanning_considerations']['constraints'])
+
+        pax_need_replanning_w_it_options_kept.to_csv((toml_config['output']['output_folder'] /
+                                                      ('pax_need_replanning_w_it_options_filtered' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+
+        # id_pax_groups_stranded --> there are no option for them at all
+        ids_pax_groups_stranded = pax_need_replannning[~pax_need_replannning.pax_group_id.isin(pax_need_replanning_w_it_options_kept.pax_group_id)]
+
+        ids_pax_groups_stranded.to_csv((toml_config['output']['output_folder'] /
+                                                      ('pax_stranded' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+
+
+
 
 
     pax_assigned_final.to_csv((output_folder_path /

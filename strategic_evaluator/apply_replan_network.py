@@ -7,8 +7,6 @@ import ast
 import sys
 sys.path.insert(1, '../..')
 
-from libs.time_converstions import  convert_to_utc_vectorized
-
 logger = logging.getLogger(__name__)
 
 # Loading functions here so that logging setting is inherited
@@ -436,6 +434,52 @@ def compute_alternatives_possibles_pax_itineraries(pax_need_replanning, df_itine
 
     return pax_need_replanning_w_it_options
 
+
+def filter_options_pax_it_w_constraints(pax_need_replanning_w_it_options, dict_constraints):
+    # Filter rows that don't comply with restrictions
+
+    # respect (or not) new itineraries same alliances as planned pax it
+    respect_alliances_pax_it_new_it = dict_constraints.get('respect_alliances_pax_it_new_it', False)
+
+    # keep only the same paths from planned to actual
+    respect_path = dict_constraints.get('respect_path', False)
+
+    # Respect modes between pax planned and itinerary
+    respect_modes = dict_constraints.get('respect_modes', False)
+
+    # keep initial node the same
+    initial_node_same = dict_constraints.get('initial_node_same', False)
+
+    # keep the final node the same
+    final_node_same = dict_constraints.get('final_node_same', False)
+
+    # allow departure (from home) before initial pax planned
+    departure_before_pax_it = dict_constraints.get('departure_before_pax_it', True)
+
+
+    pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options.copy()
+
+    if respect_alliances_pax_it_new_it:
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options_kept[
+            pax_need_replanning_w_it_options_kept.alliances_match]
+    if respect_path:
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options_kept[
+            pax_need_replanning_w_it_options_kept.same_path]
+    if respect_modes:
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options_kept[
+            pax_need_replanning_w_it_options_kept.same_modes]
+    if initial_node_same:
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options_kept[
+            pax_need_replanning_w_it_options_kept.same_initial_node]
+    if final_node_same:
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options_kept[
+            pax_need_replanning_w_it_options_kept.same_final_node]
+    if not departure_before_pax_it:
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options_kept[
+            (pax_need_replanning_w_it_options_kept.dept_home_utc_it >=
+             pax_need_replanning_w_it_options_kept.dept_home_utc_pax)]
+
+    return pax_need_replanning_w_it_options_kept
 
 
 
