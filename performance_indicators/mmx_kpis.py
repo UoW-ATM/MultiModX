@@ -16,8 +16,10 @@ def read_strategic_output(path_to_strategic_output):
 	pax_assigned_seats_max_target = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_seats_max_target_0.csv')
 	pax_assigned_tactical = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_tactical_0.csv')
 	pax_assigned_tactical_not_supported = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_tactical_not_supported_0.csv')
+	rail_timetable_proc = pd.read_csv(Path(path_to_strategic_output) / '..' / 'rail_timetable_proc_0.csv')
+	flight_schedules_proc = pd.read_csv(Path(path_to_strategic_output) / '..' / 'flight_schedules_proc_0.csv')
 
-	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported}
+	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc':rail_timetable_proc,'flight_schedules_proc':flight_schedules_proc}
 	return data
 
 def read_tactical_data(path_to_tactical_output,path_to_tactical_input):
