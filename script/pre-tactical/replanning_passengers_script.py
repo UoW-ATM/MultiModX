@@ -5,6 +5,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import logging
 import time
+import pytz
 import sys
 
 sys.path.insert(1, '../..')
@@ -12,11 +13,14 @@ sys.path.insert(1, '../..')
 from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_status_in_replanned_network,
                                                                    compute_capacities_available_services)
 from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules,
-                                                       compute_itineraries_in_replanned_network)
+                                                       compute_itineraries_in_replanned_network,
+                                                       compute_alternatives_possibles_pax_itineraries,
+                                                       filter_options_pax_it_w_constraints)
 
 from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
                                                process_strategic_config_file)
+from libs.time_converstions import  convert_to_utc_vectorized
 
 
 def parse_time_with_date(time_str, base_date):
@@ -27,7 +31,7 @@ def parse_time_with_date(time_str, base_date):
     return full_datetime
 
 
-def pre_process_rail_input(rail_time_table, base_date):
+def pre_process_rail_input(rail_time_table, base_date, df_stops=None):
     # Remove rows without times
     rail_time_table = rail_time_table[(~rail_time_table['arrival_time'].isna()) & (~rail_time_table['departure_time'].isna())].copy()
 
@@ -36,6 +40,20 @@ def pre_process_rail_input(rail_time_table, base_date):
         lambda t: parse_time_with_date(t, base_date))
     rail_time_table['departure_datetime'] = rail_time_table['departure_time'].apply(
         lambda t: parse_time_with_date(t, base_date))
+
+    if df_stops is not None:
+        rail_time_table = rail_time_table.merge(df_stops[['stop_id', 'stop_lat', 'stop_lon']], on='stop_id')
+        # Arrival time in UTC and Local
+        rail_time_table[['departure_time_utc', 'departure_time_utc_tz',
+                    'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
+            rail_time_table.apply(lambda x: convert_to_utc_vectorized(x.stop_lon, x.stop_lat, x.departure_datetime),
+                             axis=1).tolist(),
+            index=rail_time_table.index)
+        rail_time_table[['arrival_time_utc', 'arrival_time_utc_tz',
+                    'arrival_time_local', 'arrival_time_local_tz']] = pd.DataFrame(
+            rail_time_table.apply(lambda x: convert_to_utc_vectorized(x.stop_lon, x.stop_lat, x.arrival_datetime),
+                             axis=1).tolist(),
+            index=rail_time_table.index)
 
     rail_time_table_ids = rail_time_table[['trip_id']].drop_duplicates().rename({'trip_id': 'service_id'}, axis=1)
     rail_time_table_ids['service_id'] = rail_time_table_ids['service_id'].astype(str)
@@ -47,7 +65,6 @@ def pre_process_rail_input(rail_time_table, base_date):
 
 def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                 max_connections=1, pre_processed_version=0,
-                                allow_mixed_operators_itineraries=False,
                                 use_heuristics_precomputed=False,
                                 recreate_output_fld=True):
 
@@ -92,6 +109,9 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                ('rail_timetable_all_gtfs_' +
                                 str(toml_config['planned_network_info']['precomputed']) +
                                 '.csv'))
+
+    path_stops_trains = (Path(toml_config['general']['experiment_path']) /
+                     toml_config['network_definition']['rail_network'][0]['gtfs'] / 'stops.txt')
 
     # Replanned operations
     path_cancelled_flights = (Path(toml_config['general']['experiment_path']) /
@@ -139,10 +159,44 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     # Read planned flights
     fs_planned = pd.read_csv(path_planned_flights)
-    fs_planned['sobt'] = pd.to_datetime(fs_planned['sobt'])
-    fs_planned['sibt'] = pd.to_datetime(fs_planned['sibt'])
-    fs_planned['sobt_local'] = pd.to_datetime(fs_planned['sobt_local'])
-    fs_planned['sibt_local'] = pd.to_datetime(fs_planned['sibt_local'])
+
+    # Convert to datetime (without timezone first)
+    def parse_offset_to_tzinfo(tz_str):
+        """Convert '+HH:MM' or '-HH:MM' to a fixed timezone offset."""
+        sign = 1 if tz_str[0] == '+' else -1
+        hours, minutes = map(int, tz_str[1:].split(':'))
+        total_minutes = sign * (hours * 60 + minutes)
+        return pytz.FixedOffset(total_minutes)
+
+    fs_planned['sibt'] = pd.to_datetime(fs_planned['sibt'], errors='coerce')
+    fs_planned['sobt'] = pd.to_datetime(fs_planned['sobt'], errors='coerce')
+    fs_planned['sibt_local'] = pd.to_datetime(fs_planned['sibt_local'], errors='coerce')
+    fs_planned['sobt_local'] = pd.to_datetime(fs_planned['sobt_local'], errors='coerce')
+
+    # Apply timezone using offsets
+    fs_planned['sibt'] = fs_planned.apply(
+        lambda row: row['sibt'].tz_localize(parse_offset_to_tzinfo(row["sibt_tz"]))
+        if pd.notna(row['sibt']) else pd.NaT,
+        axis=1
+    )
+
+    fs_planned['sobt'] = fs_planned.apply(
+        lambda row: row['sobt'].tz_localize(parse_offset_to_tzinfo(row["sobt_tz"]))
+        if pd.notna(row['sobt']) else pd.NaT,
+        axis=1
+    )
+
+    fs_planned['sibt_local'] = fs_planned.apply(
+        lambda row: row['sibt_local'].tz_localize(parse_offset_to_tzinfo(row['sibt_local_tz']))
+        if pd.notna(row['sibt_local']) else pd.NaT,
+        axis=1
+    )
+
+    fs_planned['sobt_local'] = fs_planned.apply(
+        lambda row: row['sobt_local'].tz_localize(parse_offset_to_tzinfo(row['sobt_local_tz']))
+        if pd.notna(row['sobt_local']) else pd.NaT,
+        axis=1
+    )
 
     # Read planned trains
     rs_planned = pd.read_csv(path_planned_trains,
@@ -150,10 +204,14 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     rs_planned = rs_planned[(~rs_planned['arrival_time'].isna()) & (~rs_planned['departure_time'].isna())].copy()
 
-    # Baseline for rail
+    # Baseline for rail and local/UTC times
+    # Read stops info in GTFS rail
+    # Needed for coordinates to compute time in UTC from GTFS rail data
+    df_stops = pd.read_csv(path_stops_trains, dtype={'stop_id': 'string'})
+
     date_to_set_rail = toml_config['network_definition']['rail_network'][0]['date_to_set_rail']  # "20190906"
     base_date = datetime.strptime(date_to_set_rail, "%Y%m%d").date()
-    rs_planned, rs_planned_ids = pre_process_rail_input(rs_planned, base_date)
+    rs_planned, rs_planned_ids = pre_process_rail_input(rs_planned, base_date, df_stops)
 
 
     ### Read replanned operations ###
@@ -170,27 +228,48 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     flights_replanned = None
     if path_flights_replanned.exists():
         flights_replanned = pd.read_csv(path_flights_replanned)
-        flights_replanned['sobt'] = pd.to_datetime(flights_replanned['sobt'])
-        flights_replanned['sibt'] = pd.to_datetime(flights_replanned['sibt'])
-        flights_replanned['sobt_local'] = pd.to_datetime(flights_replanned['sobt_local'])
-        flights_replanned['sibt_local'] = pd.to_datetime(flights_replanned['sibt_local'])
+        flights_replanned['sobt'] = pd.to_datetime(flights_replanned['sobt'] + flights_replanned['sobt_tz'])
+        flights_replanned['sibt'] = pd.to_datetime(flights_replanned['sibt'] + flights_replanned['sibt_tz'])
+        flights_replanned['sobt_local'] = pd.to_datetime(flights_replanned['sobt_local'] + flights_replanned['sobt_local_tz'])
+        flights_replanned['sibt_local'] = pd.to_datetime(flights_replanned['sibt_local'] + flights_replanned['sibt_local_tz'])
 
     trains_replanned = None
     trains_replanned_ids = None
     if path_trains_replanned.exists():
         trains_replanned = pd.read_csv(path_trains_replanned,
                                      dtype={'trip_id': 'string', 'stop_id': 'string'})
-        trains_replanned, trains_replanned_ids = pre_process_rail_input(trains_replanned, base_date)
+        trains_replanned, trains_replanned_ids = pre_process_rail_input(trains_replanned, base_date, df_stops)
 
     # Read additional services
     flights_added = None
+    additonal_seats = None
     if path_flights_additional.exists():
         flights_added = pd.read_csv(path_flights_additional)
+        flights_added['sobt'] = pd.to_datetime(flights_added['sobt'] + flights_added['sobt_tz'])
+        flights_added['sibt'] = pd.to_datetime(flights_added['sibt'] + flights_added['sibt_tz'])
+        flights_added['sobt_local'] = pd.to_datetime(flights_added['sobt_local'] + flights_added['sobt_local_tz'])
+        flights_added['sibt_local'] = pd.to_datetime(flights_added['sibt_local'] + flights_added['sibt_local_tz'])
+        additonal_seats = flights_added[['service_id', 'seats']].copy().rename(columns={'seats': 'capacity'})
+        additonal_seats['type'] = 'flight'
 
     trains_added = None
     if path_trains_additional.exists():
         trains_added = pd.read_csv(path_trains_additional, dtype={'trip_id': 'string', 'stop_id': 'string'})
-        trains_added, trains_added_ids = pre_process_rail_input(trains_added, base_date)
+        trains_added, trains_added_ids = pre_process_rail_input(trains_added, base_date, df_stops)
+
+        rail_capacity = 295 # TODO hard coded number of seats now (average Spain)
+
+        # Generate all possible (origin, destination) pairs per trip_id
+        services_list = []
+        for trip_id, group in trains_added.groupby('trip_id'):
+            stops = sorted(group['stop_sequence'].tolist())  # Ensure stops are sorted
+            for i in range(len(stops) - 1):
+                for j in range(i + 1, len(stops)):
+                    service_id = f"{trip_id}_{stops[i]}_{stops[j]}"
+                    services_list.append((service_id, rail_capacity, "rail"))
+
+        # Convert to DataFrame
+        additonal_seats = pd.concat([additonal_seats, pd.DataFrame(services_list, columns=["service_id", "capacity", "type"])])
 
     # Read MCTs
     mct_default_rail = mct_default_rail
@@ -232,6 +311,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     seats_in_service = pd.read_csv(path_seats_service)
     dict_seats_service = seats_in_service[['nid','max_seats']].set_index(['nid'])['max_seats'].to_dict()
 
+
     #####################################################################
     # First adjust rail and flight network with modifications replanned #
     ####################################################################
@@ -247,10 +327,31 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                            fs_added=flights_added)
 
     # Save updated replanned network
-    fs_replanned.to_csv((output_folder_path /
+    # In this case remove the TimeZone from the SOBT/SIBT
+    fs_replanned_to_save = fs_replanned.copy()
+    fs_replanned_to_save['sobt'] = fs_replanned_to_save['sobt'].apply(
+        lambda x: str(x).split("+")[0] if '+' in str(x)
+        else "-".join(str(x).split("-")[0:-1]) if '-' in str(x)
+        else str(x))
+    fs_replanned_to_save['sibt'] = fs_replanned_to_save['sibt'].apply(
+        lambda x: str(x).split("+")[0] if '+' in str(x)
+        else "-".join(str(x).split("-")[0:-1]) if '-' in str(x)
+        else str(x))
+
+    fs_replanned_to_save['sobt_local'] = fs_replanned_to_save['sobt_local'].apply(
+        lambda x: str(x).split("+")[0] if '+' in str(x)
+        else "-".join(str(x).split("-")[0:-1]) if '-' in str(x)
+        else str(x))
+    fs_replanned_to_save['sibt_local'] = fs_replanned_to_save['sibt_local'].apply(
+        lambda x: str(x).split("+")[0] if '+' in str(x)
+        else "-".join(str(x).split("-")[0:-1]) if '-' in str(x)
+        else str(x))
+
+    fs_replanned_to_save.to_csv((output_folder_path /
                          ('flight_schedules_proc_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
+
     rs_replanned.to_csv((output_folder_path /
                          ('rail_timetable_all_gtfs_' + str(
                              pre_processed_version) + '.csv')),
@@ -269,7 +370,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                                                    dict_mcts)
 
     # Save pax_assigned_planned with their status due to replanning
-    pax_assigned_planned.to_csv((output_folder_path /
+    pax_assigned_planned.to_csv((toml_config['output']['output_folder'] /
                                  ('pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
                                  index=False)
 
@@ -290,14 +391,19 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         # Compute capacities available in services
         services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
 
-
-
+        services_w_capacity.to_csv((toml_config['output']['output_folder'] / 'services_w_capacity.csv'), index=False)
+        services_wo_capacity.to_csv((toml_config['output']['output_folder'] / 'services_wo_capacity.csv'), index=False)
 
         # Compute capacity available overall per service
         capacity_available = pd.concat([services_w_capacity, services_wo_capacity])
         capacity_available['capacity'] = capacity_available['max_seats_service'] - capacity_available['max_pax_in_service']
         capacity_available = capacity_available[['service_id', 'type', 'capacity']]
-        capacity_available.to_csv((output_folder_path / 'services_capacity_available.csv'), index=False)
+
+        if additonal_seats is not None:
+            # Add additional seast to capacity available
+            capacity_available = pd.concat([capacity_available, additonal_seats])
+
+        capacity_available.to_csv((toml_config['output']['output_folder'] / 'services_capacity_available.csv'), index=False)
 
         # Compute o-d demand that needs to be reassigned so that suitable itineraries can be computed
         # Get o-d with total demand that needs reacommodating
@@ -308,12 +414,12 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         # Set date as date_to_set_rail, if rail exist, as that's the date of the flight (not that it matters, I think)
         od_demand_need_reaccomodating['date'] = toml_config.get('network_definition').get('rail_network',[{}])[0].get('date_to_set_rail', '20190906')
         od_demand_need_reaccomodating = od_demand_need_reaccomodating.rename({'pax': 'trips'}, axis=1)
-        od_demand_need_reaccomodating.to_csv((output_folder_path /
+        od_demand_need_reaccomodating.to_csv((toml_config['output']['output_folder'] /
                                               ('demand_missing_reaccomodate_'+ str(pre_processed_version) +'.csv')),
                                              index=False)
 
         # Modify the toml config so that demand is the newly created file
-        toml_config['demand']['demand'] = Path((output_folder_path /
+        toml_config['demand']['demand'] = Path((toml_config['output']['output_folder'] /
                                            ('demand_missing_reaccomodate_' + str(pre_processed_version) + '.csv')))
 
         # Add path to  pre-processed input (flight and rail timetable processed)
@@ -324,16 +430,57 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         recreate_output_folder((Path(toml_config['network_definition']['network_path']) /
                                 toml_config['network_definition']['processed_folder']))
 
+        allow_mixed_operators_itineraries = not toml_config['replanning_considerations']['constraints']['new_itineraries_respect_alliances']
 
-        df_itineraries, df_itineraries_filtered = compute_itineraries_in_replanned_network(toml_config,
-                                                                                           pc = pc,
-                                                                                           n_paths = n_paths,
-                                                                                           n_itineraries = n_itineraries,
-                                                                                           max_connections = max_connections,
-                                                                                           allow_mixed_operators_itineraries = allow_mixed_operators_itineraries,
-                                                                                           use_heuristics_precomputed = use_heuristics_precomputed,
-                                                                                           pre_processed_version = pre_processed_version,
-                                                                                           capacity_available = capacity_available)
+        df_itineraries = compute_itineraries_in_replanned_network(toml_config,
+                                                                  pc = pc,
+                                                                  n_paths = n_paths,
+                                                                  n_itineraries = n_itineraries,
+                                                                  max_connections = max_connections,
+                                                                  allow_mixed_operators_itineraries = allow_mixed_operators_itineraries,
+                                                                  use_heuristics_precomputed = use_heuristics_precomputed,
+                                                                  pre_processed_version = pre_processed_version,
+                                                                  capacity_available = capacity_available)
+
+
+        pax_need_replanning_w_it_options = compute_alternatives_possibles_pax_itineraries(pax_need_replannning,
+                                                                                          df_itineraries,
+                                                                                          fs_planned,
+                                                                                          rs_planned)
+
+        pax_need_replanning_w_it_options.to_csv((toml_config['output']['output_folder'] /
+                                                 ('pax_need_replanning_w_it_options' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+
+        pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options
+        ids_pax_groups_stranded = []
+        if toml_config['replanning_considerations'].get('constraints') is not None:
+            pax_need_replanning_w_it_options_kept = filter_options_pax_it_w_constraints(pax_need_replanning_w_it_options,
+                                                                                            toml_config['replanning_considerations']['constraints'])
+
+        pax_need_replanning_w_it_options_kept.to_csv((toml_config['output']['output_folder'] /
+                                                      ('pax_need_replanning_w_it_options_filtered_' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+
+        # id_pax_groups_stranded --> there are no option for them at all
+        ids_pax_groups_stranded = pax_need_replannning[~pax_need_replannning.pax_group_id.isin(pax_need_replanning_w_it_options_kept.pax_group_id)]
+
+        ids_pax_groups_stranded.to_csv((toml_config['output']['output_folder'] /
+                                                      ('pax_stranded_' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+
+        if len(pax_need_replanning_w_it_options_kept) > 0:
+            # We have pax with options, need to optimise the assigment
+            capacity_services_w_capacity = capacity_available[capacity_available.capacity>0].copy()
+
+            pax_reassigning = pax_need_replanning_w_it_options_kept[(['pax','pax_group_id', 'option'] +
+            [col for col in pax_need_replanning_w_it_options_kept.columns if col.startswith("service_id_")] +
+            [col for col in pax_need_replanning_w_it_options_kept.columns if col.startswith("mode_")] +
+            ['alliances_match', 'same_path', 'delay_departure_home', 'delay_arrival_home', 'delay_total_travel_time',
+             'extra_services', 'same_initial_node', 'same_final_node', 'same_modes'])].copy()
+
+
+
 
     pax_assigned_final.to_csv((output_folder_path /
                                ('pax_assigned_to_itineraries_options_replanned_' + str(
@@ -374,9 +521,6 @@ if __name__ == '__main__':
     parser.add_argument('-lf', '--log_file', help='Path to log file', required=False)
 
     parser.add_argument('-pc', '--n_proc', help='Number of processors', required=False)
-
-    parser.add_argument('-amo', '--allow_mixed_operators', help='Allow mix operators',
-                        required=False, action='store_true')
 
     parser.add_argument('-eo', '--end_output_folder', help='Ending to be added to output folder',
                         required=False)
@@ -427,6 +571,5 @@ if __name__ == '__main__':
                                             n_itineraries=int(args.num_itineraries),
                                             max_connections=int(args.max_connections),
                                             pre_processed_version=int(args.preprocessed_version),
-                                            allow_mixed_operators_itineraries=args.allow_mixed_operators,
                                             use_heuristics_precomputed=args.use_heuristics_precomputed)
 
