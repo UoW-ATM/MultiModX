@@ -17,11 +17,15 @@
 		[[indicators.strategic.strategic_total_journey_time]]
 			variant = "avg_by_nuts"
 			plot = true
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "avg_per_region_archetype"
 		[[indicators.strategic.diversity_of_destinations]]
 			variant = "nuts"
 			plot = true
 		[[indicators.strategic.modal_share]]
 			variant = "total"
+		[[indicators.strategic.modal_share]]
+			variant = "by_regional_archetype"
 		[[indicators.strategic.pax_time_efficiency]]
 			variant = "total"
 		[[indicators.strategic.demand_served]]

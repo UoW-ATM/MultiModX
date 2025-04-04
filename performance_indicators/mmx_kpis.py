@@ -18,8 +18,9 @@ def read_strategic_output(path_to_strategic_output):
 	pax_assigned_tactical_not_supported = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_tactical_not_supported_0.csv')
 	rail_timetable_proc = pd.read_csv(Path(path_to_strategic_output) / '..' / 'rail_timetable_proc_0.csv')
 	flight_schedules_proc = pd.read_csv(Path(path_to_strategic_output) / '..' / 'flight_schedules_proc_0.csv')
+	nuts_regional_archetype_info = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / 'nuts_regional_archetype_info.csv')
 
-	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc':rail_timetable_proc,'flight_schedules_proc':flight_schedules_proc}
+	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc':rail_timetable_proc,'flight_schedules_proc':flight_schedules_proc, 'nuts_regional_archetype_info':nuts_regional_archetype_info}
 	return data
 
 def read_tactical_data(path_to_tactical_output,path_to_tactical_input):
@@ -61,12 +62,12 @@ def save_results(results):
 		for variant in variants:
 			#print(variant)
 			if isinstance(variant['val'], pd.DataFrame):
-				variant['val'].to_csv(Path(config['output']['path_to_output']) / (indicator+'__'+variant['name']+'.csv'))
+				variant['val'].to_csv(Path(config['output']['path_to_output']) / (indicator+'__'+variant['name']+'.csv'),index=False)
 			if np.isscalar(variant['val']):
 				#print('x',variant['val'])
 				res_list.append({'indicator':indicator,'variant':variant['name'],'value':variant['val']})
 	if len(res_list)>0:
-		pd.DataFrame(res_list).to_csv(Path(config['output']['path_to_output']) / ('indicators.csv'))
+		pd.DataFrame(res_list).to_csv(Path(config['output']['path_to_output']) / ('indicators.csv'),index=False)
 
 def read_results(paths,config):
 	plot_column = 'strategic_total_journey_time__sum'

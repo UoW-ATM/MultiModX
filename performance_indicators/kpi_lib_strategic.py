@@ -17,7 +17,7 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 	print('strategic_total_journey_time')
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
-
+	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
 
 	#only options that have pax assigned
 	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax']>0].copy()
@@ -55,6 +55,24 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 
 		return grouped[['origin','destination','total_journey_time_per_pax']]
 
+	if variant == 'sum_per_region_archetype':
+
+		df['origin'] = df.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
+		df['destination'] = df.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
+		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
+		grouped = df.groupby(['regional_archetype']).sum().reset_index()
+
+		return grouped[['regional_archetype','weigthed_total_time']]
+
+	if variant == 'avg_per_region_archetype':
+
+		df['origin'] = df.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
+		df['destination'] = df.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
+		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
+		grouped = df.groupby(['regional_archetype']).sum().reset_index()
+		grouped['total_journey_time_per_pax'] = grouped['weigthed_total_time']/grouped['pax']
+		return grouped[['regional_archetype','total_journey_time_per_pax']]
+
 def plot_nuts(its,config,title=''):
 	import geopandas as gpd
 	nuts_data_path = config['input']['nuts_data_path']
@@ -78,7 +96,7 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 	results = {}
 	if variant == 'nuts':
-		df = possible_itineraries_clustered_pareto_filtered.groupby(['origin']).nunique().reset_index()
+		df = possible_itineraries_clustered_pareto_filtered.groupby(['origin']).nunique().reset_index()[['origin','destination']]
 		print(df)
 
 		if pi_config['plot'] == True:
@@ -118,8 +136,9 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 def modal_share(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
+	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
 
-	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered],axis=1)
+	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered[['journey_type']]],axis=1)
 	df = df[df['pax']>0]
 	grouped = df.groupby(['journey_type']).sum().reset_index()
 	grouped['percentage'] = grouped['pax']/grouped['pax'].sum()
@@ -134,6 +153,16 @@ def modal_share(data,config,pi_config,variant='total'):
 		grouped['percentage'] = grouped.apply(lambda row: row['pax']/total[total['origin']==row['origin']]['pax'].iloc[0], axis=1)
 		print(grouped[['origin','journey_type','pax','percentage']])
 		return  grouped[['origin','journey_type','pax','percentage']]
+
+	if variant == 'by_regional_archetype':
+		#grouping by nuts
+		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
+		total = df.groupby(['regional_archetype'])['pax'].sum().reset_index()
+		print(total)
+		grouped = df.groupby(['regional_archetype','journey_type']).sum().reset_index()
+		grouped['percentage'] = grouped.apply(lambda row: row['pax']/total[total['regional_archetype']==row['regional_archetype']]['pax'].iloc[0], axis=1)
+		print(grouped[['regional_archetype','journey_type','pax','percentage']])
+		return  grouped[['regional_archetype','journey_type','pax','percentage']]
 
 def pax_time_efficiency(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
@@ -154,6 +183,7 @@ def pax_time_efficiency(data,config,pi_config,variant='total'):
 def demand_served(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	demand = data['demand']
+	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
 
 	pax_assigned_to_itineraries_options['origin'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
 	pax_assigned_to_itineraries_options['destination'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
@@ -176,6 +206,11 @@ def demand_served(data,config,pi_config,variant='total'):
 
 	if variant == 'by_nuts':
 		return grouped[['origin','destination','pax','demand','perc']]
+	if variant == 'by_regional_archetype':
+		grouped = grouped.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
+		grouped2 = grouped.groupby(['regional_archetype'])['pax'].sum().reset_index()
+		grouped2['perc'] = grouped2['pax']/grouped2['demand']
+		return grouped2[['regional_archetype','pax','demand','perc']]
 
 def compute_load_factor(df_pax_per_service, dict_seats_service):
 	# Divide dataframe between flights and rail services
@@ -269,6 +304,7 @@ def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timeta
 
 	#For flights straight forward computation of load factor
 	paxkm = df_pax_per_service_flight.groupby('service_id')['pax'].sum().reset_index()
+
 	flight_schedules_proc = flight_schedules_proc.merge(paxkm[['service_id','pax']],how='left',on='service_id')
 	flight_schedules_proc['load_factor'] = flight_schedules_proc['pax'] / flight_schedules_proc['seats']
 	flight_schedules_proc['mode']='flight'
@@ -369,7 +405,7 @@ def load_factor(data,config,pi_config,variant='total'):
 
 	# Compute load factor per service
 	loads = compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timetable_proc,flight_schedules_proc)
-	loads.to_csv('loads.csv')
+	#loads.to_csv('loads.csv')
 
 	#flatten itineraries
 	#services = pd.concat([df[['service_id_0','pax','mode_0']],df[['service_id_1','pax','mode_1']].rename({'service_id_1': 'service_id_0','mode_1':'mode_0'}, axis=1)],axis=0)
@@ -392,11 +428,17 @@ def load_factor(data,config,pi_config,variant='total'):
 def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
+	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
 
 	df = possible_itineraries_clustered_pareto_filtered.groupby(['origin','destination'])['option'].count().reset_index()
 	print(df)
 	if variant == 'by_nuts':
 		return df
+	if variant == 'by_regional_archetype':
+
+		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
+		grouped = df.groupby(['regional_archetype'])['option'].sum().reset_index()
+		return grouped
 
 def buffer_in_itineraries(data,config,pi_config,variant='sum'):
 
@@ -522,7 +564,7 @@ def pax_processes_time(data,config,pi_config,variant='avg'):
 
 	df['pax_processes_time'] = df['total_travel_time'] - df['d2i_time'] - df['i2d_time'] - df['total_waiting_time'] - df['total_ground_mobility_time'] - df['sum_travel']
 	#print('connecting_times',df)
-	df.to_csv('xxx.csv')
+	#df.to_csv('xxx.csv')
 	df['weigthed_ppt'] = df['pax_processes_time']*df['pax']
 
 	if variant == 'avg':
