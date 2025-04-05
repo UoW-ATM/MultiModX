@@ -21,6 +21,7 @@ from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
                                                process_strategic_config_file)
 from libs.time_converstions import  convert_to_utc_vectorized
+from libs.passenger_assigner.passenger_assigner import create_model_passenger_reassigner_pyomo
 
 
 def parse_time_with_date(time_str, base_date):
@@ -504,6 +505,15 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
 
             dict_mode_transport = services_available_w_capacity.set_index('service_id')['type'].to_dict()
+            dict_service_capacity = services_available_w_capacity.set_index('service_id')['capacity'].to_dict()
+            dict_volume = pax_reassigning[['pax_group_id', 'pax']].drop_duplicates().set_index('pax_group_id')['pax'].to_dict()
+
+            model = create_model_passenger_reassigner_pyomo(it_data = pax_reassigning,
+                                                            dict_volume = dict_volume,
+                                                            dict_sc = dict_service_capacity,
+                                                            dict_mode_transport = dict_mode_transport,
+                                                            objectives= None,
+                                                            pc = pc)
 
 
 
