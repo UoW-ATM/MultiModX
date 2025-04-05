@@ -398,7 +398,12 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         df_flights = df_flights.merge(df_pax_per_service_flight[['service_id', 'pax']], on='service_id', how='left')
         df_flights.rename(columns={'pax': 'max_pax_in_service'}, inplace=True)
         df_flights['max_pax_in_service'] = df_flights['max_pax_in_service'].fillna(0)
-        df_flights['load_factor'] = df_flights['max_pax_in_service'] / df_flights['max_seats_service']
+
+        index_flights_no_service = ((df_flights.max_seats_service == 0) & (df_flights.max_pax_in_service == 0))
+        df_flights.loc[index_flights_no_service, 'load_factor'] = 1.0  # There's no room if the're are no seats
+
+        df_flights.loc[~index_flights_no_service, 'load_factor'] = df_flights['max_pax_in_service'] / \
+                                                                   df_flights['max_seats_service']
 
         df_final = [df_flights]
 
@@ -427,7 +432,7 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         df_rail['max_seats_service'] = df_rail['rail_service_id'].apply(lambda x: dict_capacities_rail[x])
 
         # For each service compute the number of pax per stop
-        def compute_pax_per_consecutive_segment(stops_pax, compute_all_stops=False):
+        def compute_pax_per_consecutive_segment(stops_pax):
             # compute_all_stops if true do all stops not only the ones used
             stops = set(stops_pax['stop_orig'])
             stops.update(stops_pax['stop_dest'])
@@ -471,8 +476,11 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         df_rail['max_pax_in_service'] = df_rail['service_id'].apply(lambda x: get_max_pax_in_segment(x,
                                                                                                      capacity_services_consecutive_segments))
 
-        df_rail['load_factor'] = df_rail['max_pax_in_service'] / \
-                                                 df_rail['max_seats_service']
+        index_trains_no_service = ((df_rail.max_seats_service==0) & (df_rail.max_pax_in_service==0))
+        df_rail.loc[index_trains_no_service, 'load_factor'] = 1.0 # There's no room if the're are no seats
+        df_rail.loc[~index_trains_no_service, 'load_factor'] = df_rail['max_pax_in_service'] / \
+                                                               df_rail['max_seats_service']
+
         df_rail.drop(columns={'rail_service_id', 'stop_orig', 'stop_dest'}, inplace=True)
 
         df_rail.rename(columns={'pax': 'pax_between_stops'}, inplace=True)

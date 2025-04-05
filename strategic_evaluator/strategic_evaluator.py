@@ -339,7 +339,7 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
 
                 copy_if_exist(rail_gtfs_all_pre_proc_path, rail_gtfs_all_pre_proc_dest)
 
-                # Check if rail_timetable_proc_gtfs_#.csv exist and if sc copy it
+                # Check if rail_timetable_proc_gtfs_#.csv exist and if so copy it
                 rail_gtfs_proc_pre_path = (Path(network_definition_config['network_path']) /
                                                network_definition_config['pre_processed_input_folder'] /
                                                ('rail_timetable_proc_gtfs_' + str(pre_processed_version) + '.csv'))

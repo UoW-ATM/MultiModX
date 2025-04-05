@@ -86,9 +86,13 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
         # Filter services to remove
         services_remove = services_df.loc[services_df['remove'], 'raw'].tolist()
 
-        # Remove them from the dictionary
+        # Remove them from the dictionary by setting capacity to zero
+        # Set to zero instead of removing them so that they are considered
+        # when creating the network, as the flights removed are based on their
+        # capacity available
         for s in services_remove:
-            dict_seats_service['rail'].pop(s, None)
+            dict_seats_service['rail'][s] = 0
+            #dict_seats_service['rail'].pop(s, None)
 
     # Remove trains replanned (as they'll be added as replanned)
     if rail_replanned is not None:
@@ -135,8 +139,13 @@ def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs
     if fs_cancelled is not None:
         fs_planned = fs_planned[~fs_planned.service_id.isin(fs_cancelled.service_id)]
         # Remove entries from dict_seats_servie
+        # Set to zero instead of removing them so that they are considered
+        # when creating the network, as the flights removed are based on their
+        # capacity available. I could pass the list of cancelled to the creation
+        # of the network instead... future work TODO.
         for s in list(fs_cancelled.service_id):
-            dict_seats_service['flight'].pop(s, None)
+            dict_seats_service['flight'][s] = 0
+            #dict_seats_service['flight'].pop(s, None)
 
     if fs_replanned is not None:
         fs_planned = fs_planned[~fs_planned.service_id.isin(fs_replanned.service_id)]

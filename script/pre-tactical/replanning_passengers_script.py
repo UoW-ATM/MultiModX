@@ -388,26 +388,30 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         # Else we're done
 
         # Compute capacities available in services
-        services_w_capacity, services_wo_capacity = compute_capacities_available_services(pax_kept, dict_seats_service)
+        #df_stops_considered = pd.read_csv(path_stops_trains_used, dtype=str)
+        #rs_replanned_filtered = rs_replanned[rs_replanned.stop_id.isin(df_stops_considered.stop_id)].copy()
 
-        services_w_capacity.to_csv((toml_config['output']['output_folder'] / 'services_w_capacity.csv'), index=False)
-        services_wo_capacity.to_csv((toml_config['output']['output_folder'] / 'services_wo_capacity.csv'), index=False)
+        services_w_capacity, services_wo_capacity = compute_capacities_available_services(demand=pax_kept,
+                                                                                          dict_services_w_capacity=dict_seats_service)
+
+        services_w_capacity.to_csv((toml_config['output']['output_folder'] /
+                                    ('services_w_capacity_'+ str(pre_processed_version)+'.csv')), index=False)
+        services_wo_capacity.to_csv((toml_config['output']['output_folder'] /
+                                     ('services_wo_capacity_'+ str(pre_processed_version)+'.csv')), index=False)
 
         # Compute capacity available overall per service
         capacity_available = pd.concat([services_w_capacity, services_wo_capacity])
         capacity_available['capacity'] = capacity_available['max_seats_service'] - capacity_available['max_pax_in_service']
         capacity_available = capacity_available[['service_id', 'type', 'capacity']]
 
-        if additonal_seats is not None:
-            # Add additional seast to capacity available
-            capacity_available = pd.concat([capacity_available, additonal_seats])
+        capacity_available.to_csv((toml_config['output']['output_folder'] /
+                                   ('services_capacities_'+ str(pre_processed_version)+'.csv')), index=False)
 
         capacity_available.to_csv((toml_config['output']['output_folder'] / 'services_capacity_available.csv'), index=False)
 
         # Compute o-d demand that needs to be reassigned so that suitable itineraries can be computed
         # Get o-d with total demand that needs reacommodating
-        od_demand_need_reaccomodating = pax_need_replannning.groupby(['origin', 'destination'])[
-            'pax'].sum().reset_index()
+        od_demand_need_reaccomodating = pax_need_replannning.groupby(['origin', 'destination'])['pax'].sum().reset_index()
         # Put only one archetype, we only need one example per o-d pair
         od_demand_need_reaccomodating['archetype'] = 'archetype_0'
         # Set date as date_to_set_rail, if rail exist, as that's the date of the flight (not that it matters, I think)
@@ -452,23 +456,23 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                       str(pre_processed_version) + '.csv')), index=False)
 
         pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options
-        ids_pax_groups_stranded = []
         if toml_config['replanning_considerations'].get('constraints') is not None:
             pax_need_replanning_w_it_options_kept = filter_options_pax_it_w_constraints(pax_need_replanning_w_it_options,
                                                                                             toml_config['replanning_considerations']['constraints'])
 
         pax_need_replanning_w_it_options_kept.to_csv((toml_config['output']['output_folder'] /
-                                                      ('pax_need_replanning_w_it_options_filtered_' +
+                                                      ('pax_need_replanning_w_it_options_filtered_w_constraints_' +
                                                       str(pre_processed_version) + '.csv')), index=False)
 
         # id_pax_groups_stranded --> there are no option for them at all
-        ids_pax_groups_stranded = pax_need_replannning[~pax_need_replannning.pax_group_id.isin(pax_need_replanning_w_it_options_kept.pax_group_id)]
+        pax_groups_stranded = pax_need_replannning[~pax_need_replannning.pax_group_id.isin(pax_need_replanning_w_it_options_kept.pax_group_id)]
 
-        ids_pax_groups_stranded.to_csv((toml_config['output']['output_folder'] /
-                                                      ('pax_stranded_' +
-                                                      str(pre_processed_version) + '.csv')), index=False)
+        pax_groups_stranded.to_csv((toml_config['output']['output_folder'] /
+                                    ('pax_stranded_' + str(pre_processed_version) + '.csv')), index=False)
 
         if len(pax_need_replanning_w_it_options_kept) > 0:
+            logger.important_info("Assigning passengers to services")
+
             # We have pax with options, need to optimise the assigment
             capacity_services_w_capacity = capacity_available[capacity_available.capacity>0].copy()
 
@@ -477,6 +481,29 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
             [col for col in pax_need_replanning_w_it_options_kept.columns if col.startswith("mode_")] +
             ['alliances_match', 'same_path', 'delay_departure_home', 'delay_arrival_home', 'delay_total_travel_time',
              'extra_services', 'same_initial_node', 'same_final_node', 'same_modes'])].copy()
+
+            # Filter only columns that start with 'service_id_' but NOT 'service_id_pax_'
+            service_cols = [col for col in pax_reassigning.columns if
+                            col.startswith("service_id_") and not col.startswith("service_id_pax_")]
+
+            # Stack those columns and drop NaNs
+            all_service_ids = pax_reassigning[service_cols].stack().dropna()
+
+            # Get unique values as a list
+            unique_service_ids = all_service_ids.unique().tolist()
+
+            # Get services that are available (used) and with their capacities
+            services_available_w_capacity = capacity_available[((capacity_available.capacity >= 1) &
+                                                               (capacity_available.service_id.isin(unique_service_ids)))].copy()
+
+            if len(unique_service_ids) != len(services_available_w_capacity):
+                logger.important_info("WARNING/ERROR: The number of unique services used in new itineraries ("+
+                                      str(len(unique_service_ids))+") is different to the number of services with capacity "
+                                                                   "which overlap with the services used in the itineraries ("+
+                                      str(len(services_available_w_capacity))+").")
+
+
+            dict_mode_transport = services_available_w_capacity.set_index('service_id')['type'].to_dict()
 
 
 
@@ -531,19 +558,6 @@ if __name__ == '__main__':
     setup_logging(args.verbose, log_to_console=(args.verbose > 0), log_to_file=args.log_file, file_reset=True)
 
     logger = logging.getLogger(__name__)
-
-    # Loading functions here so that logging setting is inherited
-    from strategic_evaluator.strategic_evaluator import (
-        create_network, preprocess_input, compute_possible_itineraries_network,
-        compute_avg_paths_from_itineraries, cluster_options_itineraries,
-        keep_pareto_equivalent_solutions, keep_itineraries_options,
-        obtain_demand_per_cluster_itineraries, assing_pax_to_services,
-        transform_pax_assigment_to_tactical_input,
-        transform_fight_schedules_tactical_input
-    )
-    from strategic_evaluator.logit_model import (
-        assign_demand_to_paths
-    )
 
     toml_config = process_strategic_config_file(args.toml_file, args.end_output_folder)
 
