@@ -18,7 +18,12 @@ from strategic_evaluator.strategic_evaluator import (
 
 
 
-def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, rail_added=None):
+def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, rail_added=None,
+                          dict_seats_service=None):
+
+    if dict_seats_service is None:
+        dict_seats_service = {}
+
     ## Remove duplicates rows in rail planned timetable
     rs_planned = rs_planned.drop_duplicates()
     rs_planned['status'] = 'planned'
@@ -36,8 +41,54 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
                                            rs_planned['stop_sequence'] <= rs_planned['to'])) |
                                   ((rs_planned['from'].isna()) & (~rs_planned['to'].isna()) & (
                                           rs_planned['stop_sequence'] <= rs_planned['to']))
-                                  )]
+                                  )].copy()
+
         rs_planned = rs_planned.drop(['service_id', 'from', 'to'], axis=1)
+
+        # Remove from the dict_seats_service the services impacted
+        # Function to determine if a service should be removed
+        def should_remove(row, removal_df):
+            sid = row['service_id']
+            f = row['from_stop']
+            t = row['to_stop']
+
+            matches = removal_df[removal_df['service_id'] == sid]
+            for _, r in matches.iterrows():
+                from_stop = r['from']
+                to_stop = r['to']
+                # Case 1: remove entire service
+                if pd.isna(from_stop) and pd.isna(to_stop):
+                    return True
+                # Case 2: remove from specific stop onwards
+                elif pd.notna(from_stop) and pd.isna(to_stop):
+                    if f >= from_stop:
+                        return True
+                # Case 3: remove up to a specific stop
+                elif pd.isna(from_stop) and pd.notna(to_stop):
+                    if t <= to_stop:
+                        return True
+                # Case 4: remove range
+                elif pd.notna(from_stop) and pd.notna(to_stop):
+                    if f >= from_stop and t <= to_stop:
+                        return True
+            return False
+
+        # Parse the list into a DataFrame
+        id_rail_dict_seats = list(dict_seats_service['rail'].keys())
+        services_df = pd.DataFrame(id_rail_dict_seats, columns=['raw'])
+        services_df[['service_id', 'from_stop', 'to_stop']] = services_df['raw'].str.extract(r'(\d+)_(\d+)_(\d+)')
+        services_df[['from_stop', 'to_stop']] = services_df[['from_stop', 'to_stop']].astype(int)
+        services_df['service_id'] = services_df['service_id'].astype(str)
+
+        # Apply the function to identify services to remove
+        services_df['remove'] = services_df.apply(lambda row: should_remove(row, rail_cancelled), axis=1)
+
+        # Filter services to remove
+        services_remove = services_df.loc[services_df['remove'], 'raw'].tolist()
+
+        # Remove them from the dictionary
+        for s in services_remove:
+            dict_seats_service['rail'].pop(s, None)
 
     # Remove trains replanned (as they'll be added as replanned)
     if rail_replanned is not None:
@@ -52,17 +103,40 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
         rail_added['status'] = 'added'
         rs_planned = pd.concat([rs_planned, rail_added])
 
+        # Procude capacity of new services
+        rail_capacity = 295  # TODO hard coded number of seats now (average Spain)
+
+        # Generate all possible (origin, destination) pairs per trip_id
+        services_list = []
+        for trip_id, group in rail_added.groupby('trip_id'):
+            stops = sorted(group['stop_sequence'].tolist())  # Ensure stops are sorted
+            for i in range(len(stops) - 1):
+                for j in range(i + 1, len(stops)):
+                    service_id = f"{trip_id}_{stops[i]}_{stops[j]}"
+                    services_list.append((service_id, rail_capacity, "rail"))
+
+        # Convert to DataFrame and dictionary
+        additonal_seats = pd.DataFrame(services_list, columns=["service_id", "capacity", "type"])
+        dict_seats_added = additonal_seats.set_index(['service_id'])['capacity'].to_dict()
+        # Add to dict_seats_service
+        dict_seats_service['rail'] = dict_seats_service['rail'] | dict_seats_added
+
     # Remove duplicates (in case)
     rs_planned = rs_planned.drop_duplicates()
 
-    return rs_planned
+    return rs_planned, dict_seats_service
 
 
-def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs_added=None):
+def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs_added=None,
+                            dict_seats_service=None):
+
     fs_planned['status'] = 'planned'
 
     if fs_cancelled is not None:
         fs_planned = fs_planned[~fs_planned.service_id.isin(fs_cancelled.service_id)]
+        # Remove entries from dict_seats_servie
+        for s in list(fs_cancelled.service_id):
+            dict_seats_service['flight'].pop(s, None)
 
     if fs_replanned is not None:
         fs_planned = fs_planned[~fs_planned.service_id.isin(fs_replanned.service_id)]
@@ -73,7 +147,11 @@ def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs
         fs_added['status'] = 'added'
         fs_planned = pd.concat([fs_planned, fs_added])
 
-    return fs_planned
+        # Add to dict_seats_service
+        dict_seats_added = fs_added.set_index(['service_id'])['seats'].to_dict()
+        dict_seats_service['flight'] = dict_seats_service['flight'] | dict_seats_added
+
+    return fs_planned, dict_seats_service
 
 
 def compute_itineraries_in_replanned_network(toml_config, pc=1, n_paths=15, n_itineraries = 50,  max_connections = 1,
@@ -122,9 +200,9 @@ def compute_itineraries_in_replanned_network(toml_config, pc=1, n_paths=15, n_it
     # Instead of computing these they could be read from a readily available csv file.
     logger.info("Computing potential paths")
     df_potential_paths = compute_possible_itineraries_network(network, o_d, pc=pc, n_itineraries=n_paths,
-                                                          max_connections=max_connections,
-                                                          allow_mixed_operators=allow_mixed_operators_itineraries,
-                                                          consider_times_constraints=False,
+                                                              max_connections=max_connections,
+                                                              allow_mixed_operators=allow_mixed_operators_itineraries,
+                                                              consider_times_constraints=False,
                                                               policy_package=toml_config.get('policy_package'))
 
     # Remove paths without mode of transport

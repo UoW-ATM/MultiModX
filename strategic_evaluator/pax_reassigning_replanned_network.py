@@ -385,44 +385,60 @@ def compute_pax_status_in_replanned_network(pax_demand_planned,
 
 
 def compute_load_factor(df_pax_per_service, dict_seats_service):
+    # Compute load factor of all services in dict_seats_service
     # Divide dataframe between flights and rail services
     df_pax_per_service_flight = df_pax_per_service[df_pax_per_service.type=='flight'].copy()
     df_pax_per_service_rail = df_pax_per_service[df_pax_per_service.type=='rail'].copy()
     df_final = []
 
-    if len(df_pax_per_service_flight) > 0:
-        # For flights straight forward computation of load factor
-        df_pax_per_service_flight['max_pax_in_service'] = df_pax_per_service_flight['pax']
-        df_pax_per_service_flight['max_seats_service'] = df_pax_per_service_flight['service_id'].apply(
-            lambda x: dict_seats_service[x])
-        df_pax_per_service_flight['load_factor'] = df_pax_per_service_flight['max_pax_in_service'] / df_pax_per_service_flight['max_seats_service']
-        df_final = [df_pax_per_service_flight]
+    if 'flight' in dict_seats_service.keys():
+        # We have flights for which their capacity should be computed
+        df_flights = pd.DataFrame(list(dict_seats_service['flight'].items()), columns=['service_id', 'max_seats_service'])
+        df_flights['type'] = 'flight'
+        df_flights = df_flights.merge(df_pax_per_service_flight[['service_id', 'pax']], on='service_id', how='left')
+        df_flights.rename(columns={'pax': 'max_pax_in_service'}, inplace=True)
+        df_flights['max_pax_in_service'] = df_flights['max_pax_in_service'].fillna(0)
+        df_flights['load_factor'] = df_flights['max_pax_in_service'] / df_flights['max_seats_service']
 
-    if len(df_pax_per_service_rail) > 0:
-        # For rail a bit more complex
+        df_final = [df_flights]
+
+    if 'rail' in dict_seats_service.keys():
+        # We have rail for which their capacity should be computed
+        # Create a dataframe with the dictionary seats services
+        # as that one has all the services regardless of being used or
+        # not
+        df_rail = pd.DataFrame(list(dict_seats_service['rail'].items()), columns=['service_id', 'max_seats_service'])
+        df_rail['type'] = 'rail'
+
+        # Merge with df_pax_per_service_rail so we have the pax per service_stop_stop
+        df_rail = df_rail.merge(df_pax_per_service_rail[['service_id', 'pax']], on='service_id', how='left')
+        df_rail['pax'] = df_rail['pax'].fillna(0)
+
         # First get capacity of rail services without the stops (only service_id)
-        df_pax_per_service_rail['rail_service_id'] = df_pax_per_service_rail['service_id'].apply(lambda x: x.split('_')[0])
-        df_pax_per_service_rail['stop_orig'] = df_pax_per_service_rail['service_id'].apply(lambda x: int(x.split('_')[1]))
-        df_pax_per_service_rail['stop_dest'] = df_pax_per_service_rail['service_id'].apply(lambda x: int(x.split('_')[2]))
+        df_rail['rail_service_id'] = df_rail['service_id'].apply(lambda x: x.split('_')[0])
+        df_rail['stop_orig'] = df_rail['service_id'].apply(lambda x: int(x.split('_')[1]))
+        df_rail['stop_dest'] = df_rail['service_id'].apply(lambda x: int(x.split('_')[2]))
 
         def get_min_capacity_services(services_id):
             # Minimum capacity of all services
-            return min([dict_seats_service[x] for x in services_id])
+            return min([dict_seats_service['rail'][x] for x in services_id])
 
-        dict_capacities_rail = df_pax_per_service_rail.groupby('rail_service_id')['service_id'].apply(get_min_capacity_services).to_dict()
-
-        df_pax_per_service_rail['max_seats_service'] = df_pax_per_service_rail['rail_service_id'].apply(lambda x: dict_capacities_rail[x])
+        dict_capacities_rail = df_rail.groupby('rail_service_id')['service_id'].apply(get_min_capacity_services).to_dict()
+        df_rail['max_seats_service'] = df_rail['rail_service_id'].apply(lambda x: dict_capacities_rail[x])
 
         # For each service compute the number of pax per stop
-        def compute_pax_per_consecutive_segment(stops_pax):
+        def compute_pax_per_consecutive_segment(stops_pax, compute_all_stops=False):
+            # compute_all_stops if true do all stops not only the ones used
             stops = set(stops_pax['stop_orig'])
             stops.update(stops_pax['stop_dest'])
             stops = sorted(list(stops))
             rail_service_id = stops_pax['rail_service_id'].iloc[0]
 
             pax_between_segments = []
-            for i in range(len(stops)-1):
-                pax_in_between_stops = int(stops_pax[~((stops_pax['stop_dest']<=stops[i])|(stops_pax['stop_orig']>=stops[i+1]))]['pax'].sum())
+            for i in range(len(stops) - 1):
+                pax_in_between_stops = int(
+                    stops_pax[~((stops_pax['stop_dest'] <= stops[i]) | (stops_pax['stop_orig'] >= stops[i + 1]))][
+                        'pax'].sum())
                 pax_between_segments += [{'rail_service': rail_service_id,
                                           'total_pax_in_service': pax_in_between_stops,
                                           'stop_orig': stops[i],
@@ -431,18 +447,20 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
             return pax_between_segments
 
         # Compute how many pax are per consecutive segment for each rail service
-        capacity_services_consecutive_segments = df_pax_per_service_rail.groupby('rail_service_id')[['rail_service_id',
-                                                                                                     'stop_orig',
-                                                                                                     'stop_dest',
-                                                                                                     'pax']].apply(compute_pax_per_consecutive_segment)
+        capacity_services_consecutive_segments = df_rail.groupby('rail_service_id')[['rail_service_id',
+                                                                                     'stop_orig',
+                                                                                     'stop_dest',
+                                                                                     'pax']].apply(compute_pax_per_consecutive_segment)
+
         capacity_services_consecutive_segments = capacity_services_consecutive_segments.reset_index()
 
-        capacity_services_consecutive_segments = capacity_services_consecutive_segments.explode(0, ignore_index=True)
+        capacity_services_consecutive_segments = capacity_services_consecutive_segments.explode(0,
+                                                                                                ignore_index=True)
         capacity_services_consecutive_segments = pd.json_normalize(capacity_services_consecutive_segments[0])
 
         # Now for each rail service (railservice_stoporig_stopdest) compute load factor and seats used/available
         def get_max_pax_in_segment(service_id, cap_serv_cnsive_segments):
-            rail_service =service_id.split('_')[0]
+            rail_service = service_id.split('_')[0]
             stop_orig = int(service_id.split('_')[1])
             stop_dest = int(service_id.split('_')[2])
             x = cap_serv_cnsive_segments[((cap_serv_cnsive_segments['rail_service'] == rail_service) &
@@ -450,30 +468,34 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
                                             (cap_serv_cnsive_segments['stop_orig'] >= stop_dest)))]
             return max(x['total_pax_in_service'])
 
+        df_rail['max_pax_in_service'] = df_rail['service_id'].apply(lambda x: get_max_pax_in_segment(x,
+                                                                                                     capacity_services_consecutive_segments))
 
-        df_pax_per_service_rail['max_pax_in_service'] = df_pax_per_service_rail['service_id'].apply(lambda x: get_max_pax_in_segment(x, capacity_services_consecutive_segments))
+        df_rail['load_factor'] = df_rail['max_pax_in_service'] / \
+                                                 df_rail['max_seats_service']
+        df_rail.drop(columns={'rail_service_id', 'stop_orig', 'stop_dest'}, inplace=True)
 
-        df_pax_per_service_rail['load_factor'] = df_pax_per_service_rail['max_pax_in_service'] / \
-                                                   df_pax_per_service_rail['max_seats_service']
+        df_rail.rename(columns={'pax': 'pax_between_stops'}, inplace=True)
 
-        df_pax_per_service_rail.drop(columns={'rail_service_id', 'stop_orig', 'stop_dest'}, inplace=True)
-
-        df_final += [df_pax_per_service_rail]
+        df_final += [df_rail]
 
     df_final = pd.concat(df_final).reset_index()
 
     return df_final
 
 
-def compute_capacities_available_services(df_pax, dict_seats_service):
+def compute_capacities_available_services(demand, dict_services_w_capacity):
+    # If rail_service_min_max_stops is passed then capacity computed for all those service_stops instead of
+    # the ones in the df_pax.
+
     # Get list of pax per service regardless if used in nid_f1, nid_f2...
     # Identify nid_f columns dynamically (as there could be from nid_f1 to nid_fn
-    nid_cols = [col for col in df_pax.columns if col.startswith('nid_f')]
+    nid_cols = [col for col in demand.columns if col.startswith('nid_f')]
 
     # Split the 'type' column into multiple type_n columns
-    df_type_split = df_pax['type'].str.split('_', expand=True)
+    df_type_split = demand['type'].str.split('_', expand=True)
     df_type_split.columns = [f'type_{i + 1}' for i in range(df_type_split.shape[1])]
-    pax_kept = df_pax.join(df_type_split)
+    pax_kept = demand.join(df_type_split)
 
     # Concatenate nid_f columns with their respective type_n
     df_melted = pax_kept.melt(id_vars=['pax', 'type'], value_vars=nid_cols,
@@ -495,10 +517,10 @@ def compute_capacities_available_services(df_pax, dict_seats_service):
     df_pax_per_service = df_pax_per_service.groupby(['service_id', 'type'])['pax'].sum().reset_index()
 
     # Compute load factor per service
-    df_pax_per_service = compute_load_factor(df_pax_per_service, dict_seats_service)
+    df_services_capacity = compute_load_factor(df_pax_per_service, dict_services_w_capacity)
 
-    services_w_capacity = df_pax_per_service[df_pax_per_service.load_factor < 1].copy()
-    services_wo_capacity = df_pax_per_service[df_pax_per_service.load_factor >= 1].copy()
+    services_w_capacity = df_services_capacity[df_services_capacity.load_factor < 1].copy()
+    services_wo_capacity = df_services_capacity[df_services_capacity.load_factor >= 1].copy()
 
     return services_w_capacity, services_wo_capacity
 

@@ -257,20 +257,6 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         trains_added = pd.read_csv(path_trains_additional, dtype={'trip_id': 'string', 'stop_id': 'string'})
         trains_added, trains_added_ids = pre_process_rail_input(trains_added, base_date, df_stops)
 
-        rail_capacity = 295 # TODO hard coded number of seats now (average Spain)
-
-        # Generate all possible (origin, destination) pairs per trip_id
-        services_list = []
-        for trip_id, group in trains_added.groupby('trip_id'):
-            stops = sorted(group['stop_sequence'].tolist())  # Ensure stops are sorted
-            for i in range(len(stops) - 1):
-                for j in range(i + 1, len(stops)):
-                    service_id = f"{trip_id}_{stops[i]}_{stops[j]}"
-                    services_list.append((service_id, rail_capacity, "rail"))
-
-        # Convert to DataFrame
-        additonal_seats = pd.concat([additonal_seats, pd.DataFrame(services_list, columns=["service_id", "capacity", "type"])])
-
     # Read MCTs
     mct_default_rail = mct_default_rail
     dict_mct_rail = pd.read_csv(path_mct_rail, dtype={'stop_id': 'string'}).set_index('stop_id')['default transfer time'].to_dict()
@@ -309,22 +295,35 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     # Read Seats in Services
     seats_in_service = pd.read_csv(path_seats_service)
-    dict_seats_service = seats_in_service[['nid','max_seats']].set_index(['nid'])['max_seats'].to_dict()
+    if additonal_seats is not None:
+        # If we have additional seats add them so they are considered
+        # in the dictionary of seats per sevice
+        seats_in_service = pd.concat([seats_in_service, (additonal_seats[['service_id', 'capacity', 'type']].
+                                                         rename(columns={'service_id': 'nid',
+                                                                         'capacity': 'max_seats',
+                                                                         'type': 'mode_transport'}))])
+
+    dict_seats_service = (seats_in_service.groupby('mode_transport')[['nid', 'max_seats']]
+                          .apply(lambda g: dict(zip(g['nid'], g['max_seats'])))
+                          .to_dict())
 
 
     #####################################################################
     # First adjust rail and flight network with modifications replanned #
     ####################################################################
 
-    rs_replanned = replan_rail_timetable(rs_planned,
-                                         rail_replanned=trains_replanned,
-                                         rail_cancelled=trains_cancelled,
-                                         rail_added=trains_added)
+    rs_replanned, dict_seats_service = replan_rail_timetable(rs_planned,
+                                                             rail_replanned=trains_replanned,
+                                                             rail_cancelled=trains_cancelled,
+                                                             rail_added=trains_added,
+                                                             dict_seats_service=dict_seats_service)
 
-    fs_replanned = replan_flight_schedules(fs_planned,
-                                           fs_replanned=flights_replanned,
-                                           fs_cancelled=flights_cancelled,
-                                           fs_added=flights_added)
+    fs_replanned, dict_seats_service = replan_flight_schedules(fs_planned,
+                                                               fs_replanned=flights_replanned,
+                                                               fs_cancelled=flights_cancelled,
+                                                               fs_added=flights_added,
+                                                               dict_seats_service=dict_seats_service)
+
 
     # Save updated replanned network
     # In this case remove the TimeZone from the SOBT/SIBT
