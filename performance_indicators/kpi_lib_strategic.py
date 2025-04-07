@@ -208,7 +208,7 @@ def demand_served(data,config,pi_config,variant='total'):
 		return grouped[['origin','destination','pax','demand','perc']]
 	if variant == 'by_regional_archetype':
 		grouped = grouped.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped2 = grouped.groupby(['regional_archetype'])['pax'].sum().reset_index()
+		grouped2 = grouped.groupby(['regional_archetype'])[['pax','demand']].sum().reset_index()
 		grouped2['perc'] = grouped2['pax']/grouped2['demand']
 		return grouped2[['regional_archetype','pax','demand','perc']]
 
