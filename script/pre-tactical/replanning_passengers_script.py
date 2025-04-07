@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 import logging
 import time
 import pytz
-import sys
+from pyomo.environ import minimize, Var, Constraint, maximize
 
+import sys
 sys.path.insert(1, '../..')
 
 from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_status_in_replanned_network,
@@ -22,6 +23,7 @@ from libs.general_tools_logging_config import (save_information_config_used, imp
                                                process_strategic_config_file)
 from libs.time_converstions import  convert_to_utc_vectorized
 from libs.passenger_assigner.passenger_assigner import create_model_passenger_reassigner_pyomo
+from libs.passenger_assigner.lexicographic_lib import lexicographic_optimization
 
 
 def parse_time_with_date(time_str, base_date):
@@ -504,18 +506,77 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                       str(len(services_available_w_capacity))+").")
 
 
-            dict_mode_transport = services_available_w_capacity.set_index('service_id')['type'].to_dict()
-            dict_service_capacity = services_available_w_capacity.set_index('service_id')['capacity'].to_dict()
+            #dict_mode_transport = services_available_w_capacity.set_index('service_id')['type'].to_dict()
+            #dict_service_capacity = services_available_w_capacity.set_index('service_id')['capacity'].to_dict()
+            # Use capacity_available instead of service_available_w_capacity as the later is filtered by used and maybe
+            # some stops combinations are not used but passed through... to need to keep their capacity checked.
+            dict_mode_transport = capacity_available.set_index('service_id')['type'].to_dict()
+            dict_service_capacity = capacity_available.set_index('service_id')['capacity'].to_dict()
+
             dict_volume = pax_reassigning[['pax_group_id', 'pax']].drop_duplicates().set_index('pax_group_id')['pax'].to_dict()
 
-            model = create_model_passenger_reassigner_pyomo(it_data = pax_reassigning,
+            objectives_names = [o[0] for o in toml_config['replanning_considerations']['optimisation']['objectives']]
+
+            model = create_model_passenger_reassigner_pyomo(it_data = pax_reassigning.copy(),
                                                             dict_volume = dict_volume,
                                                             dict_sc = dict_service_capacity,
                                                             dict_mode_transport = dict_mode_transport,
-                                                            objectives= None,
+                                                            objectives = objectives_names,
                                                             pc = pc)
 
+            # Count variables and constraints
+            num_vars = len([v for v in model.component_data_objects(Var)])
+            num_constraints = len([c for c in model.component_data_objects(Constraint)])
+            print(f"Number of variables: {num_vars}")
+            print(f"Number of constraints: {num_constraints}")
 
+            objectives = [(o[0], maximize) if o[1] == 'maximize' else (o[0], minimize) for o in
+                          toml_config['replanning_considerations']['optimisation']['objectives']]
+
+            thresholds = toml_config['replanning_considerations']['optimisation']['thresholds']
+            solver = toml_config['replanning_considerations']['optimisation']['solver']
+            nprocs = min(pc, toml_config['replanning_considerations']['optimisation']['nprocs'])
+
+            results = lexicographic_optimization(model, objectives, solver=solver, thresholds=thresholds,
+                                                 num_threads=nprocs)
+
+
+            # Process results
+
+            # Create a dictionary of (it, opt) to pax values from the model
+            assigned_pax_dict = {(id, opt): model.x[id, opt].value for id, opt in model.x}
+
+            # Convert the dictionary to a DataFrame for efficient merging
+            assigned_pax_df = pd.DataFrame(
+                list(assigned_pax_dict.items()), columns=["it_opt", "pax"]
+            )
+
+            # Split the tuple column into separate 'it' and 'opt' columns
+            assigned_pax_df[["id", "option"]] = pd.DataFrame(assigned_pax_df["it_opt"].tolist(),
+                                                             index=assigned_pax_df.index)
+
+            # Drop the tuple column as it's no longer needed
+            assigned_pax_df = assigned_pax_df.drop(columns=["it_opt"])
+
+            assigned_pax_df.rename(columns={'id': 'pax_group_id', 'pax':'pax_assigned'}, inplace=True)
+
+
+            # Merge with the original it_data
+            pax_reassigning = pax_reassigning.merge(assigned_pax_df, on=["pax_group_id", "option"], how="left")
+            pax_reassigning["pax_assigned"] = pax_reassigning["pax_assigned"].apply(lambda x: 0 if x == -0.0 else x)
+
+            # Fill missing pax values with 0
+            pax_reassigning["pax_assigned"] = pax_reassigning["pax_assigned"].fillna(0)
+
+            print("Optimization Results: " + str(results))
+            print("Total num pax assigned: " + str(pax_reassigning.pax_assigned.sum()))
+
+            logging.info("Optimization Results: " + str(results))
+            logging.info("Total num pax assigned: " + str(pax_reassigning.pax.sum()))
+
+            pax_reassigning.to_csv((toml_config['output']['output_folder'] /
+                                                 ('pax_reassigned_results_solver_' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
 
 
     pax_assigned_final.to_csv((output_folder_path /
