@@ -9,8 +9,9 @@
 
 [indicators]
 	[indicators.strategic]
-		[[indicators.strategic.strategic_total_journey_time]] #= ["sum","avg","avg_by_nuts","avg_by_nuts_plot"]
+		[[indicators.strategic.strategic_total_journey_time]]
 			variant = "sum"
+			plot = true
 			#name = "my_sum"
 		[[indicators.strategic.strategic_total_journey_time]]
 			variant = "avg"

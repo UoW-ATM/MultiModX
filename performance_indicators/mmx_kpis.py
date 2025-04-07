@@ -73,7 +73,7 @@ def read_results(paths,config):
 	plot_column = 'strategic_total_journey_time__sum'
 	results = pd.DataFrame()
 	for i,path in enumerate(paths):
-		df = pd.read_csv(Path(config['output']['path_to_output']) / path / 'indicators' / 'indicators.csv',index_col=0)
+		df = pd.read_csv(Path(config['output']['path_to_output']) / path / 'indicators' / 'indicators.csv')
 		df['pi'] = df['indicator']+'__'+df['variant']
 		df = df.set_index('pi').drop(columns=['indicator','variant']).rename({'value': path}, axis=1).transpose().reset_index().rename({'index': 'experiment'}, axis=1)
 		#print(df)
