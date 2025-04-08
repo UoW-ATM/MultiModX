@@ -569,5 +569,3 @@ def filter_options_pax_it_w_constraints(pax_need_replanning_w_it_options, dict_c
     return pax_need_replanning_w_it_options_kept
 
 
-
-

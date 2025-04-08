@@ -1,5 +1,13 @@
 import pandas as pd
+import logging
 from datetime import timedelta
+
+import sys
+sys.path.insert(1, '../..')
+
+logger = logging.getLogger(__name__)
+
+from libs.passenger_assigner.passenger_assigner import reassign_pax_option_solver
 
 
 def get_affected_pax_due_flight(pax_assigned_planned, flights_impacted):
@@ -532,4 +540,61 @@ def compute_capacities_available_services(demand, dict_services_w_capacity):
 
     return services_w_capacity, services_wo_capacity
 
+
+
+def reassign_passengers_services(pax_need_replanning_w_options, capacity_available, objectives, thresholds,
+                                 pc=1,
+                                 solver='gurobi', ):
+    # We have pax with options, need to optimise the assigment
+    pax_reassigning = pax_need_replanning_w_options[(['pax', 'pax_group_id', 'option'] +
+                                                     [col for col in pax_need_replanning_w_options.columns if
+                                                      col.startswith("service_id_")] +
+                                                     [col for col in pax_need_replanning_w_options.columns if
+                                                      col.startswith("mode_")] +
+                                                     ['alliances_match', 'same_path', 'delay_departure_home',
+                                                      'delay_arrival_home', 'delay_total_travel_time',
+                                                      'extra_services', 'same_initial_node', 'same_final_node',
+                                                      'same_modes'])].copy()
+
+    # Filter only columns that start with 'service_id_' but NOT 'service_id_pax_'
+    service_cols = [col for col in pax_reassigning.columns if
+                    col.startswith("service_id_") and not col.startswith("service_id_pax_")]
+
+    # Stack those columns and drop NaNs
+    all_service_ids = pax_reassigning[service_cols].stack().dropna()
+
+    # Get unique values as a list
+    unique_service_ids = all_service_ids.unique().tolist()
+
+    # Get services that are available (used) and with their capacities
+    services_available_w_capacity = capacity_available[((capacity_available.capacity >= 1) &
+                                                        (capacity_available.service_id.isin(
+                                                            unique_service_ids)))].copy()
+
+    if len(unique_service_ids) != len(services_available_w_capacity):
+        logger.important_info("WARNING/ERROR: The number of unique services used in new itineraries (" +
+                              str(len(unique_service_ids)) + ") is different to the number of services with capacity "
+                                                             "which overlap with the services used in the itineraries (" +
+                              str(len(services_available_w_capacity)) + ").")
+
+    # dict_mode_transport = services_available_w_capacity.set_index('service_id')['type'].to_dict()
+    # dict_service_capacity = services_available_w_capacity.set_index('service_id')['capacity'].to_dict()
+    # Use capacity_available instead of service_available_w_capacity as the later is filtered by used and maybe
+    # some stops combinations are not used but passed through... to need to keep their capacity checked.
+    dict_mode_transport = capacity_available.set_index('service_id')['type'].to_dict()
+    dict_service_capacity = capacity_available.set_index('service_id')['capacity'].to_dict()
+
+    dict_volume = pax_reassigning[['pax_group_id', 'pax']].drop_duplicates().set_index('pax_group_id')['pax'].to_dict()
+
+
+    pax_reassigned = reassign_pax_option_solver(pax_reassigning,
+                                                dict_volume=dict_volume,
+                                                dict_sc=dict_service_capacity,
+                                                dict_mode_transport=dict_mode_transport,
+                                                objectives=objectives,
+                                                thresholds = thresholds,
+                                                pc=pc,
+                                                solver=solver)
+
+    return pax_reassigned, None
 
