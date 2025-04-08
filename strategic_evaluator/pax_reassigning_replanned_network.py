@@ -587,14 +587,17 @@ def reassign_passengers_services(pax_need_replanning_w_options, capacity_availab
     dict_volume = pax_reassigning[['pax_group_id', 'pax']].drop_duplicates().set_index('pax_group_id')['pax'].to_dict()
 
 
-    pax_reassigned = reassign_pax_option_solver(pax_reassigning,
-                                                dict_volume=dict_volume,
-                                                dict_sc=dict_service_capacity,
-                                                dict_mode_transport=dict_mode_transport,
-                                                objectives=objectives,
-                                                thresholds = thresholds,
-                                                pc=pc,
-                                                solver=solver)
 
-    return pax_reassigned, None
+
+
+    pax_reassigned, pax_demand_assigned = reassign_pax_option_solver(pax_reassigning,
+                                                                    dict_volume=dict_volume,
+                                                                    dict_sc=dict_service_capacity,
+                                                                    dict_mode_transport=dict_mode_transport,
+                                                                    objectives=objectives,
+                                                                    thresholds=thresholds,
+                                                                    pc=pc,
+                                                                    solver=solver)
+
+    return pax_reassigned, pax_demand_assigned
 

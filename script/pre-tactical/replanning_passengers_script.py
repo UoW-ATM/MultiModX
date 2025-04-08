@@ -479,7 +479,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
             nprocs = min(pc, toml_config['replanning_considerations']['optimisation']['nprocs'])
 
-            pax_reassigned, pax_stranded_from_reassigning = reassign_passengers_services(
+            pax_reassigned, pax_demand_assigned = reassign_passengers_services(
                 pax_need_replanning_w_it_options_kept,
                 capacity_available,
                 objectives=toml_config['replanning_considerations']['optimisation']['objectives'],
@@ -489,6 +489,9 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
             pax_reassigned.to_csv((toml_config['output']['output_folder'] /
                                                  ('pax_reassigned_results_solver_' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+            pax_demand_assigned.to_csv((toml_config['output']['output_folder'] /
+                                                 ('pax_demand_assigned_' +
                                                       str(pre_processed_version) + '.csv')), index=False)
 
 
