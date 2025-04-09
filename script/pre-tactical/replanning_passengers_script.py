@@ -12,7 +12,8 @@ import sys
 sys.path.insert(1, '../..')
 
 from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_status_in_replanned_network,
-                                                                   compute_capacities_available_services)
+                                                                   compute_capacities_available_services,
+                                                                   reassign_passengers_services)
 from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules,
                                                        compute_itineraries_in_replanned_network,
                                                        compute_alternatives_possibles_pax_itineraries,
@@ -476,106 +477,21 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         if len(pax_need_replanning_w_it_options_kept) > 0:
             logger.important_info("Assigning passengers to services")
 
-            # We have pax with options, need to optimise the assigment
-            capacity_services_w_capacity = capacity_available[capacity_available.capacity>0].copy()
-
-            pax_reassigning = pax_need_replanning_w_it_options_kept[(['pax','pax_group_id', 'option'] +
-            [col for col in pax_need_replanning_w_it_options_kept.columns if col.startswith("service_id_")] +
-            [col for col in pax_need_replanning_w_it_options_kept.columns if col.startswith("mode_")] +
-            ['alliances_match', 'same_path', 'delay_departure_home', 'delay_arrival_home', 'delay_total_travel_time',
-             'extra_services', 'same_initial_node', 'same_final_node', 'same_modes'])].copy()
-
-            # Filter only columns that start with 'service_id_' but NOT 'service_id_pax_'
-            service_cols = [col for col in pax_reassigning.columns if
-                            col.startswith("service_id_") and not col.startswith("service_id_pax_")]
-
-            # Stack those columns and drop NaNs
-            all_service_ids = pax_reassigning[service_cols].stack().dropna()
-
-            # Get unique values as a list
-            unique_service_ids = all_service_ids.unique().tolist()
-
-            # Get services that are available (used) and with their capacities
-            services_available_w_capacity = capacity_available[((capacity_available.capacity >= 1) &
-                                                               (capacity_available.service_id.isin(unique_service_ids)))].copy()
-
-            if len(unique_service_ids) != len(services_available_w_capacity):
-                logger.important_info("WARNING/ERROR: The number of unique services used in new itineraries ("+
-                                      str(len(unique_service_ids))+") is different to the number of services with capacity "
-                                                                   "which overlap with the services used in the itineraries ("+
-                                      str(len(services_available_w_capacity))+").")
-
-
-            #dict_mode_transport = services_available_w_capacity.set_index('service_id')['type'].to_dict()
-            #dict_service_capacity = services_available_w_capacity.set_index('service_id')['capacity'].to_dict()
-            # Use capacity_available instead of service_available_w_capacity as the later is filtered by used and maybe
-            # some stops combinations are not used but passed through... to need to keep their capacity checked.
-            dict_mode_transport = capacity_available.set_index('service_id')['type'].to_dict()
-            dict_service_capacity = capacity_available.set_index('service_id')['capacity'].to_dict()
-
-            dict_volume = pax_reassigning[['pax_group_id', 'pax']].drop_duplicates().set_index('pax_group_id')['pax'].to_dict()
-
-            objectives_names = [o[0] for o in toml_config['replanning_considerations']['optimisation']['objectives']]
-
-            model = create_model_passenger_reassigner_pyomo(it_data = pax_reassigning.copy(),
-                                                            dict_volume = dict_volume,
-                                                            dict_sc = dict_service_capacity,
-                                                            dict_mode_transport = dict_mode_transport,
-                                                            objectives = objectives_names,
-                                                            pc = pc)
-
-            # Count variables and constraints
-            num_vars = len([v for v in model.component_data_objects(Var)])
-            num_constraints = len([c for c in model.component_data_objects(Constraint)])
-            print(f"Number of variables: {num_vars}")
-            print(f"Number of constraints: {num_constraints}")
-
-            objectives = [(o[0], maximize) if o[1] == 'maximize' else (o[0], minimize) for o in
-                          toml_config['replanning_considerations']['optimisation']['objectives']]
-
-            thresholds = toml_config['replanning_considerations']['optimisation']['thresholds']
-            solver = toml_config['replanning_considerations']['optimisation']['solver']
             nprocs = min(pc, toml_config['replanning_considerations']['optimisation']['nprocs'])
 
-            results = lexicographic_optimization(model, objectives, solver=solver, thresholds=thresholds,
-                                                 num_threads=nprocs)
+            pax_reassigned, pax_demand_assigned = reassign_passengers_services(
+                pax_need_replanning_w_it_options_kept,
+                capacity_available,
+                objectives=toml_config['replanning_considerations']['optimisation']['objectives'],
+                thresholds=toml_config['replanning_considerations']['optimisation']['thresholds'],
+                pc=nprocs,
+                solver=toml_config['replanning_considerations']['optimisation']['solver'])
 
-
-            # Process results
-
-            # Create a dictionary of (it, opt) to pax values from the model
-            assigned_pax_dict = {(id, opt): model.x[id, opt].value for id, opt in model.x}
-
-            # Convert the dictionary to a DataFrame for efficient merging
-            assigned_pax_df = pd.DataFrame(
-                list(assigned_pax_dict.items()), columns=["it_opt", "pax"]
-            )
-
-            # Split the tuple column into separate 'it' and 'opt' columns
-            assigned_pax_df[["id", "option"]] = pd.DataFrame(assigned_pax_df["it_opt"].tolist(),
-                                                             index=assigned_pax_df.index)
-
-            # Drop the tuple column as it's no longer needed
-            assigned_pax_df = assigned_pax_df.drop(columns=["it_opt"])
-
-            assigned_pax_df.rename(columns={'id': 'pax_group_id', 'pax':'pax_assigned'}, inplace=True)
-
-
-            # Merge with the original it_data
-            pax_reassigning = pax_reassigning.merge(assigned_pax_df, on=["pax_group_id", "option"], how="left")
-            pax_reassigning["pax_assigned"] = pax_reassigning["pax_assigned"].apply(lambda x: 0 if x == -0.0 else x)
-
-            # Fill missing pax values with 0
-            pax_reassigning["pax_assigned"] = pax_reassigning["pax_assigned"].fillna(0)
-
-            print("Optimization Results: " + str(results))
-            print("Total num pax assigned: " + str(pax_reassigning.pax_assigned.sum()))
-
-            logging.info("Optimization Results: " + str(results))
-            logging.info("Total num pax assigned: " + str(pax_reassigning.pax.sum()))
-
-            pax_reassigning.to_csv((toml_config['output']['output_folder'] /
+            pax_reassigned.to_csv((toml_config['output']['output_folder'] /
                                                  ('pax_reassigned_results_solver_' +
+                                                      str(pre_processed_version) + '.csv')), index=False)
+            pax_demand_assigned.to_csv((toml_config['output']['output_folder'] /
+                                                 ('pax_demand_assigned_' +
                                                       str(pre_processed_version) + '.csv')), index=False)
 
 
