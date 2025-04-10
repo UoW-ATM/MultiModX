@@ -19,7 +19,7 @@
 			variant = "avg_by_nuts"
 			plot = true
 		[[indicators.strategic.strategic_total_journey_time]]
-			variant = "avg_per_region_archetype"
+			variant = "sum_per_region_archetype"
 		[[indicators.strategic.diversity_of_destinations]]
 			variant = "nuts"
 			plot = true

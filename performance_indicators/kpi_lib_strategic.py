@@ -60,7 +60,7 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		df['origin'] = df.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
 		df['destination'] = df.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
 		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped = df.groupby(['regional_archetype']).sum().reset_index()
+		grouped = df[['weigthed_total_time','pax','regional_archetype']].groupby(['regional_archetype']).sum().reset_index()
 
 		return grouped[['regional_archetype','weigthed_total_time']]
 
