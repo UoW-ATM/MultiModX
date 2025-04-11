@@ -60,7 +60,7 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		df['origin'] = df.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
 		df['destination'] = df.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
 		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped = df.groupby(['regional_archetype']).sum().reset_index()
+		grouped = df[['weigthed_total_time','pax','regional_archetype']].groupby(['regional_archetype']).sum().reset_index()
 
 		return grouped[['regional_archetype','weigthed_total_time']]
 
@@ -69,7 +69,7 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		df['origin'] = df.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
 		df['destination'] = df.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
 		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped = df.groupby(['regional_archetype']).sum().reset_index()
+		grouped = df[['weigthed_total_time','pax','regional_archetype']].groupby(['regional_archetype']).sum().reset_index()
 		grouped['total_journey_time_per_pax'] = grouped['weigthed_total_time']/grouped['pax']
 		return grouped[['regional_archetype','total_journey_time_per_pax']]
 
@@ -139,7 +139,7 @@ def modal_share(data,config,pi_config,variant='total'):
 	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
 
 	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered[['journey_type']]],axis=1)
-	df = df[df['pax']>0]
+	df = df[df['pax']>0][['pax','journey_type','origin']]
 	grouped = df.groupby(['journey_type']).sum().reset_index()
 	grouped['percentage'] = grouped['pax']/grouped['pax'].sum()
 	print('grouped',grouped[['journey_type','pax','percentage']])
@@ -319,7 +319,7 @@ def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timeta
 
 	# For rail a bit more complex
 	if len(df_pax_per_service_rail) > 0:
-
+		#df_pax_per_service_rail.to_csv('xxx.csv')
 		# add some columns
 		df_pax_per_service_rail['rail_service_id'] = df_pax_per_service_rail['service_id'].apply(lambda x: x.split('_')[0])
 		df_pax_per_service_rail['stop_orig'] = df_pax_per_service_rail['service_id'].apply(lambda x: int(x.split('_')[1]))
@@ -377,7 +377,7 @@ def load_factor(data,config,pi_config,variant='total'):
 
 	# Get list of pax per service regardless if used in nid_f1, nid_f2...
 	# Identify nid_f columns dynamically (as there could be from nid_f1 to nid_fn
-	nid_cols = [col for col in df_pax.columns if col.startswith('nid_f')]
+	nid_cols = [col for col in df_pax.columns if col.startswith('service_id_')]
 
 	# Split the 'type' column into multiple type_n columns
 	df_type_split = df_pax['type'].str.split('_', expand=True)
@@ -388,6 +388,7 @@ def load_factor(data,config,pi_config,variant='total'):
 	df_melted = pax_kept.melt(id_vars=['pax', 'type'], value_vars=nid_cols,
 							  var_name='nid_col', value_name='service_id')
 
+
 	# Keep only rows where service_id is not NaN
 	df_melted = df_melted.dropna(subset=['service_id']).reset_index(drop=True)
 
@@ -395,7 +396,7 @@ def load_factor(data,config,pi_config,variant='total'):
 	df_melted['nid_index'] = df_melted['nid_col'].str.extract(r'(\d+)').astype(int)
 
 	# Assign the corresponding type_n based on nid_index
-	df_melted['type'] = df_melted.apply(lambda x: x['type'].split('_')[x['nid_index'] - 1], axis=1)
+	df_melted['type'] = df_melted.apply(lambda x: x['type'].split('_')[x['nid_index']], axis=1)
 
 	# Select final columns
 	df_pax_per_service = df_melted[['service_id', 'type', 'pax']]
