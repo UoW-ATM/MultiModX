@@ -385,6 +385,10 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     # Empty dataframe of pax_stranded
     pax_stranded = pax_assigned_final.iloc[0:0].copy()
 
+    df_pax_need_replanning_demand = pax_need_replannning.groupby(['pax_group_id', 'origin', 'destination'])['pax'].sum().reset_index()
+    df_pax_need_replanning_demand.rename(columns={'pax': 'demand_to_assign'}, inplace=True)
+    df_pax_need_replanning_demand['unfulfilled'] = df_pax_need_replanning_demand['demand_to_assign']
+
     if len(pax_need_replannning) > 0:
         # Have some pax that need replanning
         # Else we're done
@@ -473,6 +477,23 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                     ('pax_stranded_' + str(pre_processed_version) + '.csv')), index=False)
 
         if len(pax_need_replanning_w_it_options_kept) > 0:
+            logger.important_info("Computing stranded pax without option")
+            # Check if there're pax without options, those would be stranded
+            pax_wo_options = pax_need_replannning.merge(pax_need_replanning_w_it_options_kept[['pax_group_id',
+                                                                                               'same_path']],
+                                                        how='left', on='pax_group_id')
+            pax_wo_options = pax_wo_options[pax_wo_options.same_path.isna()]
+            pax_wo_options.drop(columns=['same_path'], inplace=True)
+            pax_wo_options['pax_stranded'] = pax_wo_options['pax']
+            pax_stranded = pax_wo_options[['cluster_id', 'option_cluster_number', 'alternative_id', 'option',
+                                           'origin', 'destination', 'path'] +
+                                          [col for col in pax_wo_options.columns if col.startswith("nid_f")] +
+                                          ['total_waiting_time', 'total_time', 'type', 'volume', 'fare',
+                                           'access_time', 'egress_time', 'd2i_time', 'i2d_time', 'volume_ceil',
+                                           'pax', 'pax_group_id', 'pax_status_replanned', 'pax_stranded']].copy()
+
+            pax_stranded['stranded_type'] = 'no_option'
+
             logger.important_info("Assigning passengers to services")
 
             nprocs = min(pc, toml_config['replanning_considerations']['optimisation']['nprocs'])
@@ -498,8 +519,11 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
             # Generate new itineraries and stranded
             demand_not_fulfilled = pax_demand_assigned[pax_demand_assigned.unfulfilled>0]
-            pax_stranded = pax_assigned_planned.merge(demand_not_fulfilled[['pax_group_id', 'unfulfilled']], on=['pax_group_id'])
-            pax_stranded.rename(columns={'unfulfilled': 'pax_stranded'}, inplace=True)
+            pax_stranded_unfulfilled = pax_assigned_planned.merge(demand_not_fulfilled[['pax_group_id', 'unfulfilled']], on=['pax_group_id'])
+            pax_stranded_unfulfilled.rename(columns={'unfulfilled': 'pax_stranded'}, inplace=True)
+            pax_stranded_unfulfilled['stranded_type'] = 'no_capacity'
+
+            pax_stranded = pd.concat([pax_stranded, pax_stranded_unfulfilled])
 
             demand_reassigned = pax_reassigned[pax_reassigned.pax_assigned>0].copy()
             demand_reassigned.rename(columns={'pax':'demand_reassigning',
@@ -507,6 +531,38 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
             #demand_reassigned['pax_group_new_id'] = demand_reassigned['pax_group_id']+
             pax_reassigned = pax_assigned_planned.merge(demand_reassigned, on=['pax_group_id'])
+
+        else:
+            # All pax are stranded
+            logger.important_info("Computing stranded pax without option -- None have option")
+            # Check if there're pax without options, those would be stranded
+            pax_wo_options = pax_need_replannning
+            pax_wo_options['pax_stranded'] = pax_wo_options['pax']
+            pax_stranded = pax_wo_options[['cluster_id', 'option_cluster_number', 'alternative_id', 'option',
+                                           'origin', 'destination', 'path'] +
+                                          [col for col in pax_wo_options.columns if col.startswith("nid_f")] +
+                                          ['total_waiting_time', 'total_time', 'type', 'volume', 'fare',
+                                           'access_time', 'egress_time', 'd2i_time', 'i2d_time', 'volume_ceil',
+                                           'pax', 'pax_group_id', 'pax_status_replanned', 'pax_stranded']].copy()
+
+            pax_stranded['stranded_type'] = 'no_option'
+
+            # Empty pax_reassigned dataframe
+            pax_reassigned = pax_stranded.iloc[0:0].copy()
+            pax_reassigned['pax_assigned'] = 0
+            pax_reassigned['pax_group_id_new'] = None
+
+
+    # Compute summary of pax needed reassigning and actually assigned
+    pa = pax_reassigned.groupby(['pax_group_id'])['pax_assigned'].sum().reset_index()
+    df_pax_need_replanning_demand = df_pax_need_replanning_demand.merge(pa, how='left', on='pax_group_id')
+    df_pax_need_replanning_demand['pax_assigned'] = df_pax_need_replanning_demand['pax_assigned'].fillna(0)
+    df_pax_need_replanning_demand['unfulfilled'] = (df_pax_need_replanning_demand['demand_to_assign'] -
+                                                    df_pax_need_replanning_demand['pax_assigned'])
+    df_pax_need_replanning_demand[['pax_group_id', 'origin', 'destination',
+                                   'demand_to_assign', 'pax_assigned', 'unfulfilled']].to_csv((output_folder_path / 'pax_replanned' /
+                                          ('5.pax_demand_assigned_summary_' + str(pre_processed_version) + '.csv'
+                                          )), index=False)
 
 
     # Pax itineraries initial with impact of replanning

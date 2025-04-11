@@ -485,7 +485,7 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
                                                                                                      capacity_services_consecutive_segments))
 
         index_trains_no_service = ((df_rail.max_seats_service==0) & (df_rail.max_pax_in_service==0))
-        df_rail.loc[index_trains_no_service, 'load_factor'] = 1.0 # There's no room if the're are no seats
+        df_rail.loc[index_trains_no_service, 'load_factor'] = 1.0 # There's no room if there are no seats
         df_rail.loc[~index_trains_no_service, 'load_factor'] = df_rail['max_pax_in_service'] / \
                                                                df_rail['max_seats_service']
 

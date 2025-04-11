@@ -482,7 +482,7 @@ def compute_alternatives_possibles_pax_itineraries(pax_need_replanning, df_itine
     pax_need_replanning['od'] = pax_need_replanning['origin'] + '_' + pax_need_replanning['destination']
     df_itineraries['od'] = df_itineraries['origin'] + '_' + df_itineraries['destination']
     pax_need_replanning_w_it_options = pax_need_replanning.drop(columns={'origin', 'destination'}).merge(
-        df_itineraries, how='left', on='od', suffixes=('_pax', '_it'))
+        df_itineraries, on='od', suffixes=('_pax', '_it'))
 
     # Compute some further indicators on compatibility between itinerary pax and options computed
 
