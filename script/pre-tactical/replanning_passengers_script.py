@@ -88,6 +88,9 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         recreate_output_folder(toml_config['output']['output_folder'],
                                delete_previous=True,
                                logger=logger)
+        recreate_output_folder((output_folder_path / 'pax_replanned'),
+                                delete_previous=True,
+                               logger=logger)
 
 
     #######################################
@@ -372,11 +375,6 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                                                    flights_replanned, trains_replanned_ids,
                                                                                                    dict_mcts)
 
-    # Save pax_assigned_planned with their status due to replanning
-    pax_assigned_planned.to_csv((toml_config['output']['output_folder'] /
-                                 ('pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
-                                 index=False)
-
 
     ########################################
     #  Then identify pax need reassigning  #
@@ -487,6 +485,10 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                 pc=nprocs,
                 solver=toml_config['replanning_considerations']['optimisation']['solver'])
 
+            pax_reassigned['pax_group_id_new'] = (pax_reassigned['pax_group_id'].astype(str) +
+                                                  '_' +
+                                                  pax_reassigned['option'].astype(str))
+
             pax_reassigned.to_csv((toml_config['output']['output_folder'] /
                                                  ('pax_reassigned_results_solver_' +
                                                       str(pre_processed_version) + '.csv')), index=False)
@@ -494,15 +496,51 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                  ('pax_demand_assigned_' +
                                                       str(pre_processed_version) + '.csv')), index=False)
 
+            # Generate new itineraries and stranded
+            demand_not_fulfilled = pax_demand_assigned[pax_demand_assigned.unfulfilled>0]
+            pax_stranded = pax_assigned_planned.merge(demand_not_fulfilled[['pax_group_id', 'unfulfilled']], on=['pax_group_id'])
+            pax_stranded.rename(columns={'unfulfilled': 'pax_stranded'}, inplace=True)
 
-    pax_assigned_final.to_csv((output_folder_path /
-                               ('pax_assigned_to_itineraries_options_replanned_' + str(
+            demand_reassigned = pax_reassigned[pax_reassigned.pax_assigned>0].copy()
+            demand_reassigned.rename(columns={'pax':'demand_reassigning',
+                                              'option': 'option_reassigning'}, inplace=True)
+
+            #demand_reassigned['pax_group_new_id'] = demand_reassigned['pax_group_id']+
+            pax_reassigned = pax_assigned_planned.merge(demand_reassigned, on=['pax_group_id'])
+
+
+    # Pax itineraries initial with impact of replanning
+    # Save pax_assigned_planned with their status due to replanning
+    pax_assigned_planned.to_csv((output_folder_path / 'pax_replanned' /
+                                 ('0.pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
+                                 index=False)
+
+
+    # Pax kept their initial itinerary after replanning
+    # Could be unnafected, delayed or replanned doable
+    pax_kept.to_csv((output_folder_path / 'pax_replanned' /
+                               ('1.pax_assigned_to_itineraries_options_kept_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
-    pax_stranded.to_csv((output_folder_path /
-                               ('pax_assigned_to_itineraries_options_replanned_stranded_' + str(
+
+    # These are pax itineraries that needed replanning
+    pax_need_replannning.to_csv((output_folder_path / 'pax_replanned' /
+                               ('2.pax_assigned_need_replanning_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
+
+    # These are the pax itineraries which have been reassigned to other options
+    pax_reassigned.to_csv((output_folder_path / 'pax_replanned' /
+                               ('3.pax_reassigned_to_itineraries_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
+
+    # These are pax itineraries which are stranded
+    pax_stranded.to_csv((output_folder_path / 'pax_replanned' /
+                               ('4.pax_assigned_to_itineraries_replanned_stranded_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
+
 
     end_pipeline_time = time.time()
     elapsed_time = end_pipeline_time - start_pipeline_time
