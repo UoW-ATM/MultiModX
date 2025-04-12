@@ -230,6 +230,17 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     trains_cancelled = None
     if path_cancelled_rail.exists():
         trains_cancelled = pd.read_csv(path_cancelled_rail, dtype={'service_id': 'string'})
+        # Trains cancelled have the form service_id, from, to indicating which service from which stop to which stop
+        # is cancelled. Note that from and to could be None, meaning from first or until last stop
+        # Once could provide a cancellation file which only has service_id that would mean that to and from should
+        # be added as None. Do that.
+        # Ensure 'from' and 'to' columns exist, and fill missing or None values with np.nan
+        for col in ['from', 'to']:
+            if col not in trains_cancelled.columns:
+                trains_cancelled[col] = np.nan
+            else:
+                trains_cancelled[col] = trains_cancelled[col].replace({None: np.nan})
+
 
     # Read replanned services
     flights_replanned = None
