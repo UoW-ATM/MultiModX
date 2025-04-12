@@ -384,6 +384,9 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     pax_assigned_final = pax_assigned_planned.copy()
     # Empty dataframe of pax_stranded
     pax_stranded = pax_assigned_final.iloc[0:0].copy()
+    # Empty dataframe of pax_reassigned (in case there're no to reassign)
+    pax_reassigned = pax_stranded.copy()
+    pax_reassigned['pax_assigned'] = None
 
     df_pax_need_replanning_demand = pax_need_replannning.groupby(['pax_group_id', 'origin', 'destination'])['pax'].sum().reset_index()
     df_pax_need_replanning_demand.rename(columns={'pax': 'demand_to_assign'}, inplace=True)
