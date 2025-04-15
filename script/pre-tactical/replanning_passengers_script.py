@@ -337,6 +337,27 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                           .apply(lambda g: dict(zip(g['nid'], g['max_seats'])))
                           .to_dict())
 
+    # Expand dictionary for rail to include stops not only services
+    if 'rail' in dict_seats_service.keys():
+        # We have rail as mode
+        first_element_dict_rail = list(dict_seats_service['rail'].keys())[0]
+        # If it's not str or not have _ twice then it's only a rail id without stops
+        if (type(first_element_dict_rail) != str) or (not '_' in first_element_dict_rail):
+            # We don't have a str or _ in the name so it is missing the stops
+            # Final output dictionary
+            expanded_rail_capacity_trip_dict = {}
+
+            # Group by trip_id and iterate
+            for trip_id, group in rs_planned.groupby('trip_id'):
+                stops = sorted(group['stop_sequence'].tolist())
+                for i in range(len(stops) - 1):
+                    for j in range(i + 1, len(stops)):
+                        key = f"{trip_id}_{stops[i]}_{stops[j]}"
+                        expanded_rail_capacity_trip_dict[key] = dict_seats_service['rail'][trip_id]
+
+            dict_seats_service['rail'] = expanded_rail_capacity_trip_dict
+
+
 
     #####################################################################
     # First adjust rail and flight network with modifications replanned #
