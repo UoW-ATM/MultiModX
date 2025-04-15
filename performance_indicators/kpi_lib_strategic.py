@@ -571,3 +571,91 @@ def pax_processes_time(data,config,pi_config,variant='avg'):
 	if variant == 'avg':
 		kpi = df['weigthed_ppt'].sum()/df['pax'].sum()
 		return kpi
+
+def resilience_replanned(data,config,pi_config,variant='total'):
+
+	rows = []
+	flight_schedules_proc0 = data[0]['flight_schedules_proc']
+	flight_schedules_proc1 = data[1]['flight_schedules_proc']
+	rail_timetable_proc0 = data[0]['rail_timetable_proc']#.drop_duplicates(subset=['trip_id'],keep='first')
+	rail_timetable_proc1 = data[1]['rail_timetable_proc']#.drop_duplicates(subset=['trip_id'],keep='first')
+	rail_timetable_proc0['rail_service_id'] = rail_timetable_proc0['service_id'].apply(lambda x: x.split('_')[0])
+	rail_timetable_proc1['rail_service_id'] = rail_timetable_proc1['service_id'].apply(lambda x: x.split('_')[0])
+	#rail_timetable_proc0 = rail_timetable_proc0.drop_duplicates(subset=['rail_service_id'],keep='first')
+	#rail_timetable_proc1 = rail_timetable_proc1.drop_duplicates(subset=['rail_service_id'],keep='first')
+
+	print(rail_timetable_proc0.dtypes)
+
+	flights = flight_schedules_proc0.merge(flight_schedules_proc1,how='outer',on=['service_id'],indicator='dataframe')
+	new_flights = flights[flights['dataframe']=='right_only']
+	cancelled_flights = flights[flights['dataframe']=='left_only']
+	same_flights = flights[flights['dataframe']=='both'].copy()
+	same_flights['difference'] = abs((same_flights['sobt_x'] - same_flights['sobt_y']).dt.total_seconds()/60)
+	rescheduled_flights = same_flights[same_flights['difference']>0]
+
+	rail = rail_timetable_proc0.merge(rail_timetable_proc1,how='outer',on=['service_id'],indicator='dataframe')
+	new_rail = rail[rail['dataframe']=='right_only']
+	cancelled_rail = rail[rail['dataframe']=='left_only']
+	same_rail = rail[rail['dataframe']=='both'].copy()
+	same_rail['difference'] = abs((same_rail['departure_time_x'] - same_rail['departure_time_y']).dt.total_seconds()/60)
+	rescheduled_rail = same_rail[same_rail['difference']>0].drop_duplicates(subset=['rail_service_id_x','origin_x'],keep='first')
+
+	#print(flights,new_flights,cancelled_flights)
+	#print(same_flights.dtypes)
+	print(new_rail)
+	rescheduled_rail.to_csv('rescheduled_rail.csv')
+	rows.append({'field':'new_flights','value':len(new_flights)})
+	rows.append({'field':'cancelled_flights','value':len(cancelled_flights)})
+	rows.append({'field':'rescheduled_flights','value':len(rescheduled_flights)})
+	rows.append({'field':'flights_timetable_diff_sum','value':rescheduled_flights['difference'].sum()})
+	rows.append({'field':'flights_timetable_diff_mean','value':rescheduled_flights['difference'].mean()})
+
+	rows.append({'field':'new_rail','value':new_rail['rail_service_id_y'].nunique()})
+	rows.append({'field':'cancelled_rail','value':cancelled_rail['rail_service_id_x'].nunique()})
+	rows.append({'field':'rescheduled_rail','value':rescheduled_rail['rail_service_id_x'].nunique()})
+	rows.append({'field':'rescheduled_rail_stops','value':len(rescheduled_rail)})
+	rows.append({'field':'rail_timetable_diff_sum','value':rescheduled_rail['difference'].sum()})
+	rows.append({'field':'rail_timetable_diff_mean','value':rescheduled_rail['difference'].mean()})
+
+	if variant == 'total':
+		df = pd.DataFrame(rows)
+		print(df)
+		return df
+
+def pax_resilience_replanned(data,config,pi_config,variant='total'):
+
+	rows = []
+	if 'pax_assigned_to_itineraries_options_status_replanned' in data[0]:
+		i = 0
+	elif 'pax_assigned_to_itineraries_options_status_replanned' in data[1]:
+		i = 1
+	else:
+		raise Exception('pax_assigned_to_itineraries_options_status_replanned does not exist')
+
+	pax_assigned_to_itineraries_options_status_replanned = data[i]['pax_assigned_to_itineraries_options_status_replanned']
+	pax_reassigned_to_itineraries = data[i]['pax_reassigned_to_itineraries']
+	pax_assigned_to_itineraries_replanned_stranded = data[i]['pax_assigned_to_itineraries_replanned_stranded']
+	pax_demand_assigned_summary = data[i]['pax_demand_assigned_summary']
+
+	pax_reassigned_to_itineraries['weigthed_delay'] = pax_reassigned_to_itineraries['delay_total_travel_time']*pax_reassigned_to_itineraries['pax_assigned']
+
+	if variant == 'total':
+		rows.append({'field':'total_pax','value':pax_assigned_to_itineraries_options_status_replanned['pax'].sum()})
+		rows.append({'field':'pax_unnafected','value':pax_assigned_to_itineraries_options_status_replanned[pax_assigned_to_itineraries_options_status_replanned['pax_status_replanned']=='unnafected']['pax'].sum()})
+		rows.append({'field':'pax_cancelled','value':pax_assigned_to_itineraries_options_status_replanned[pax_assigned_to_itineraries_options_status_replanned['pax_status_replanned']=='cancelled']['pax'].sum()})
+
+		rows.append({'field':'sum_demand_to_replan','value':pax_demand_assigned_summary['demand_to_assign'].sum()})
+		rows.append({'field':'sum_pax_assigned','value':pax_demand_assigned_summary['pax_assigned'].sum()})
+		rows.append({'field':'sum_demand_unfulfilled','value':pax_demand_assigned_summary['unfulfilled'].sum()})
+		rows.append({'field':'perc_demand_unfulfilled','value':pax_demand_assigned_summary['unfulfilled'].sum()/pax_assigned_to_itineraries_options_status_replanned['pax'].sum()})
+
+		rows.append({'field':'sum_delay_travel_time','value':pax_reassigned_to_itineraries['weigthed_delay'].sum()})
+		rows.append({'field':'avg_delay_travel_time','value':pax_reassigned_to_itineraries['weigthed_delay'].sum()/pax_reassigned_to_itineraries['pax_assigned'].sum()})
+		rows.append({'field':'same_modes_percent','value':(pax_reassigned_to_itineraries['same_modes']*pax_reassigned_to_itineraries['pax_assigned']).sum()/pax_reassigned_to_itineraries['pax_assigned'].sum()})
+
+		rows.append({'field':'pax_no_option','value':pax_assigned_to_itineraries_replanned_stranded[pax_assigned_to_itineraries_replanned_stranded['stranded_type']=='no_option']['pax_stranded'].sum()})
+		rows.append({'field':'pax_no_capacity','value':pax_assigned_to_itineraries_replanned_stranded[pax_assigned_to_itineraries_replanned_stranded['stranded_type']=='no_capacity']['pax_stranded'].sum()})
+
+		df = pd.DataFrame(rows)
+		print(df)
+		return df

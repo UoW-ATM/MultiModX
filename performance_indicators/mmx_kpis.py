@@ -6,7 +6,7 @@ import pandas as pd
 import tomli
 import numpy as np
 import matplotlib.pyplot as plt
-from kpi_lib_strategic import strategic_total_journey_time, diversity_of_destinations, modal_share, pax_time_efficiency, demand_served, load_factor, resilience_alternatives, catchment_area, cost_per_user,co2_emissions, buffer_in_itineraries, seamless_of_travel, pax_processes_time
+from kpi_lib_strategic import strategic_total_journey_time, diversity_of_destinations, modal_share, pax_time_efficiency, demand_served, load_factor, resilience_alternatives, catchment_area, cost_per_user,co2_emissions, buffer_in_itineraries, seamless_of_travel, pax_processes_time, resilience_replanned, pax_resilience_replanned
 from kpi_lib_tactical import flight_arrival_delay, kerb2gate_time, total_journey_time, variability
 
 def read_strategic_output(path_to_strategic_output,preprocessed_version):
@@ -73,18 +73,57 @@ def read_results(paths,config):
 	plot_column = 'strategic_total_journey_time__sum'
 	results = pd.DataFrame()
 	for i,path in enumerate(paths):
-		df = pd.read_csv(Path(config['output']['path_to_output']) / path / 'indicators' / 'indicators.csv')
+		indicator_path = Path(config['output']['path_to_output']) / path / 'indicators' / 'indicators.csv'
+		if not indicator_path.exists():
+			print('No indicators.csv for ',path)
+			continue
+		df = pd.read_csv(indicator_path)
 		df['pi'] = df['indicator']+'__'+df['variant']
 		df = df.set_index('pi').drop(columns=['indicator','variant']).rename({'value': path}, axis=1).transpose().reset_index().rename({'index': 'experiment'}, axis=1)
 		#print(df)
 		results = pd.concat([results,df])
 
 	print(results)
-	results.to_csv(Path(config['output']['path_to_output']) / 'comparison.csv')
-	ax = results.plot.bar(x='experiment', y=plot_column, rot=0)
-	plt.show()
-	#print(results.loc[(results['indicator']=='strategic_total_journey_time')&(results['variant']=='avg'),].columns[2:])
+	if len(results)>0:
+		results.to_csv(Path(config['output']['path_to_output']) / 'comparison.csv')
+		ax = results.plot.bar(x='experiment', y=plot_column, rot=0)
+		#plt.show()
+		#print(results.loc[(results['indicator']=='strategic_total_journey_time')&(results['variant']=='avg'),].columns[2:])
 
+def read_results_replanned(paths,config):
+
+	data_list = []
+	for i,path in enumerate(paths):
+		data = {}
+		preprocessed_version = config['input']['preprocessed_version'][i]
+		flights_path = Path(config['output']['path_to_output']) / path / ('flight_schedules_proc_'+preprocessed_version+'.csv')
+		rail_path = Path(config['output']['path_to_output']) / path / ('rail_timetable_proc_'+preprocessed_version+'.csv')
+		flight_schedules_proc = pd.read_csv(flights_path, parse_dates=['sobt','sibt'])
+		rail_timetable_proc = pd.read_csv(rail_path, parse_dates=['arrival_time','departure_time'])
+		rail_timetable_proc['departure_time'] = pd.to_datetime(rail_timetable_proc['departure_time'], utc=True)
+		rail_timetable_proc['arrival_time'] = pd.to_datetime(rail_timetable_proc['arrival_time'], utc=True)
+
+		pax_path0 = Path(config['output']['path_to_output']) / path / 'pax_replanned' / ('0.pax_assigned_to_itineraries_options_status_replanned_'+preprocessed_version+'.csv')
+		pax_path3 = Path(config['output']['path_to_output']) / path / 'pax_replanned' / ('3.pax_reassigned_to_itineraries_'+preprocessed_version+'.csv')
+		pax_path4 = Path(config['output']['path_to_output']) / path / 'pax_replanned' / ('4.pax_assigned_to_itineraries_replanned_stranded_'+preprocessed_version+'.csv')
+		pax_path5 = Path(config['output']['path_to_output']) / path / 'pax_replanned' / ('5.pax_demand_assigned_summary_'+preprocessed_version+'.csv')
+		if pax_path0.exists():
+			pax_assigned_to_itineraries_options_status_replanned = pd.read_csv(pax_path0)
+			data['pax_assigned_to_itineraries_options_status_replanned']=pax_assigned_to_itineraries_options_status_replanned
+		if pax_path3.exists():
+			pax_reassigned_to_itineraries = pd.read_csv(pax_path3)
+			data['pax_reassigned_to_itineraries']=pax_reassigned_to_itineraries
+		if pax_path4.exists():
+			pax_assigned_to_itineraries_replanned_stranded = pd.read_csv(pax_path4)
+			data['pax_assigned_to_itineraries_replanned_stranded']=pax_assigned_to_itineraries_replanned_stranded
+		if pax_path5.exists():
+			pax_demand_assigned_summary = pd.read_csv(pax_path5)
+			data['pax_demand_assigned_summary']=pax_demand_assigned_summary
+
+		data.update({'flight_schedules_proc':flight_schedules_proc,'rail_timetable_proc':rail_timetable_proc})
+		data_list.append(data)
+
+	return data_list
 
 if __name__ == '__main__':
 
@@ -97,6 +136,8 @@ if __name__ == '__main__':
 	# Examples of usage
 	#python3 mmx_kpis.py -ex processed_cs10.pp00.so00_c1
 	#python3 mmx_kpis.py -c processed_cs10.pp00.so00_c1 processed_cs10.pp10.so00_c1
+	#python3 mmx_kpis.py -c processed_cs10.pp00.so00_c2 processed_c1_replan -ppv 0 1
+
 
 	# Parse parameters
 	args = parser.parse_args()
@@ -160,18 +201,30 @@ if __name__ == '__main__':
 
 	if args.compare is not None:
 		print(args.compare)
+		config['input']['preprocessed_version'] = args.preprocessed_version
+		if len(args.preprocessed_version) < len(args.compare):
+			config['input']['preprocessed_version'] = ['0']*len(args.compare)
 		read_results(args.compare,config)
-	#strategic_total_journey_time(data_strategic['pax_assigned_to_itineraries_options'],data_strategic['possible_itineraries_clustered_pareto_filtered'])
-	#diversity_of_destinations(data['possible_itineraries_clustered_pareto_filtered'])
-	#modal_share(data['pax_assigned_to_itineraries_options'],data['possible_itineraries_clustered_pareto_filtered'])
-	#pax_time_efficiency(data['pax_assigned_to_itineraries_options'])
-	#demand_served(data['pax_assigned_to_itineraries_options'],data['demand'])
-	#load_factor(data['pax_assigned_to_itineraries_options'],data['possible_itineraries_clustered_pareto_filtered'],data['pax_assigned_seats_max_target'])
-	#resilience_alternatives(data['possible_itineraries_clustered_pareto_filtered'])
-	#catchment_area(data['pax_assigned_to_itineraries_options'],data['possible_itineraries_clustered_pareto_filtered'])
-	#cost_per_user(data['pax_assigned_to_itineraries_options'])
-	#co2_emissions(data['pax_assigned_to_itineraries_options'],data['possible_itineraries_clustered_pareto_filtered'])
 
+		#replanned indicators
+		data_replanned = read_results_replanned(args.compare,config)
+		results = {}
+
+		for indicator, vals in config['indicators']['replanned'].items():
+			results[indicator] = []
+			for variant in vals:
+				if variant['variant'] is False:
+					continue
+
+				if 'name' not in variant:
+					variant['name'] = variant['variant']
+				if indicator == 'resilience_replanned':
+					val = resilience_replanned(data_replanned,config,variant,variant=variant['variant'])
+				if indicator == 'pax_resilience_replanned':
+					val = pax_resilience_replanned(data_replanned,config,variant,variant=variant['variant'])
+				results[indicator].append({'name':variant['name'],'val':val})
+
+			save_results(results)
 
 	#flight_arrival_delay(data2['flights'])
 	#kerb2gate_time(data['pax'],data['airport_processes'])

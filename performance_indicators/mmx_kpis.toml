@@ -49,3 +49,8 @@
 		[[indicators.strategic.pax_processes_time]]
 			variant = "avg"
 
+	[indicators.replanned]
+		[[indicators.replanned.resilience_replanned]]
+			variant = "total"
+		[[indicators.replanned.pax_resilience_replanned]]
+			variant = "total"

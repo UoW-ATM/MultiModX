@@ -323,12 +323,16 @@ if __name__ == "__main__":
 	data, ddr_version = process_all_ft('/home/michal/Documents/westminster/multimodx/data/strategic/data/routes_ddr/20190906.ALL_FT+')
 	missing = pd.read_csv('/home/michal/Documents/westminster/multimodx/Mercury_old_private/output/routes_missing.csv')
 	airspace_static = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/airspace_static.parquet')
+	route_pool_has_airspace = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/route_pool_has_airspace.parquet')
+	route_pool_ = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/route_pool.parquet')
+
+	max_route_id = route_pool_['id'].max()+1
 	df = data.merge(missing,how='inner',left_on=['origin','destination'],right_on=['origin','destination'])
 	print(df)
 	g, coord_geo_dict, max_coord_id = dataframe_airspaceProfile(df, 'ftfmAirspProfile', "", {}, {'FIR':'FIR'}, {}, {}, 0, ddr_version=ddr_version,dict_date={})
 	g = g[g['airspace_type'].isin(['NAS'])]
 	g = g.merge(data[['origin','destination','ifps_id']],how='left',on='ifps_id')
-	g['nid'] = g['ifps_id'].apply(lambda x: g['ifps_id'].unique().tolist().index(x))
+	g['nid'] = g['ifps_id'].apply(lambda x: g['ifps_id'].unique().tolist().index(x)+max_route_id)
 	g.insert(0, 'order', (g.groupby(['ifps_id']).cumcount()+1))
 	g = g.merge(airspace_static[['sid','id']],how='left',left_on=['airspace'],right_on=['sid'])
 	print(g)
@@ -337,13 +341,26 @@ if __name__ == "__main__":
 	route_pool_airspace = g.drop(columns=['trajectory_id','sector_id','airspace_id','geopoint_entry_id','geopoint_exit_id','fl_entry','fl_exit','time_entry','time_exit', 'airspace_type','latlon_entry','latlon_exit','ifps_id']).copy()
 	route_pool_airspace = route_pool_airspace.rename(columns={'order':'sequence','nid':'route_pool_id','id':'airspace_id','airspace':'airspace_orig_sid',})
 	route_pool_airspace['gcd_km'] = route_pool_airspace.apply(lambda row: haversine(row['entry_point_lon'],row['entry_point_lat'],row['exit_point_lon'],row['exit_point_lat']),axis=1)
+	route_pool_airspace['distance_entry'] = pd.to_numeric(route_pool_airspace['distance_entry'])
+	route_pool_airspace['distance_exit'] = pd.to_numeric(route_pool_airspace['distance_exit'])
 	print(route_pool_airspace)
 	route_pool = route_pool_airspace.drop_duplicates(subset=['route_pool_id'],keep='last').copy()
 	#id	based_route_pool_static_id	based_route_pool_o_d_generated	tact_id	f_airac_id	icao_orig	icao_dest	fp_distance_km	fp_distance_km_orig	f_database	type
 	route_pool['type'] = 'historic'
 	route_pool['f_database'] = 'ddr_1909'
 	route_pool = route_pool.rename(columns={'route_pool_id':'id','distance_exit':'fp_distance_km','origin':'icao_orig','destination':'icao_dest'})
+	route_pool['fp_distance_km'] = pd.to_numeric(route_pool['fp_distance_km'])
 	route_pool['fp_distance_km_orig'] = route_pool['fp_distance_km']
 	route_pool['based_route_pool_static_id'] = route_pool['id']
 	route_pool = route_pool[['id','based_route_pool_static_id','icao_orig','icao_dest','fp_distance_km','fp_distance_km_orig','f_database','type']]
 	print(route_pool)
+	#print(route_pool.dtypes)
+	#route_pool.to_parquet('rp.parquet')
+
+	#concat old and new files
+	route_pool_new = pd.concat([route_pool_,route_pool])
+	route_pool_has_airspace_new = pd.concat([route_pool_has_airspace,route_pool_airspace.drop(columns=['origin','destination','sid'])])
+	route_pool_new.to_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/route_pool_new.parquet')
+	route_pool_has_airspace_new.to_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/route_pool_has_airspace_new.parquet')
+	route_pool_new.to_csv('route_pool_new.csv')
+	route_pool_has_airspace_new.to_csv('route_pool_has_airspace_new.csv')
