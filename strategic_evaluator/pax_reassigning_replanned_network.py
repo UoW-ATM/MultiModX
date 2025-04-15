@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import logging
 from datetime import timedelta
 
@@ -207,8 +208,12 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
         trip_info = pot_affected_pax_replanned_w_conn[col].apply(
             lambda x: extract_rail_info(x) if "_" in str(x) else (None, None, None))
         pot_affected_pax_replanned_w_conn["trip_id"] = trip_info.apply(lambda x: x[0])
-        pot_affected_pax_replanned_w_conn["from_stop_seq"] = trip_info.apply(lambda x: x[1])
-        pot_affected_pax_replanned_w_conn["to_stop_seq"] = trip_info.apply(lambda x: x[2])
+        #pot_affected_pax_replanned_w_conn["from_stop_seq"] = trip_info.apply(lambda x: int(x[1]) if x[1] is not None else None)
+        pot_affected_pax_replanned_w_conn["from_stop_seq"] = trip_info.apply(lambda x: int(x[1]) if x[1] is not None else np.nan).astype('Int64')
+        #pot_affected_pax_replanned_w_conn["to_stop_seq"] = trip_info.apply(lambda x: int(x[2]) if x[2] is not None else None)
+        pot_affected_pax_replanned_w_conn["to_stop_seq"] = trip_info.apply(lambda x: int(x[2]) if x[2] is not None else np.nan).astype('Int64')
+
+
 
         # Merge rail start stop
         pot_affected_pax_replanned_w_conn = pot_affected_pax_replanned_w_conn.merge(
@@ -258,48 +263,60 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
         columns=["sobt", "sibt", "service_id", "trip_id", "from_stop_seq", "to_stop_seq",
                  "departure_time_utc", "arrival_time_utc", "stop_id", "stop_sequence"], inplace=True)
 
+    pot_affected_pax_replanned_w_conn = pot_affected_pax_replanned_w_conn.astype(object).where(
+        pot_affected_pax_replanned_w_conn.notna(), None)
+
+
 
     # Now here we have for each itinerary the succession of nodes (o-d), modes and sobt and sibt
     # need to add the MCTs
 
     # Check all the connections
     def compute_mct_in_row_for_leg_i(x, i):
-        if x['destination_nid_f' + str(i)] == x['origin_nid_f' + str(i + 1)]:
-            # We are connecting in the same node
-            if x['mode_nid_f' + str(i)] == 'rail':
-                # We are connecting at a rail station
-                return timedelta(minutes=dict_mcts['rail'].get(x['origin_nid_f' + str(i + 1)], dict_mcts['default_rail']))
-            elif x['mode_nid_f' + str(i)] == 'flight':
-                mct = get_mct_hub(dict_mcts['air'], x['origin_nid_f' + str(i)], x['origin_nid_f' + str(i + 1)],
-                                   x['destination_nid_f' + str(i + 1)])
-                if mct is None:
-                    mct = dict_mcts['default_air']
-                return mct
-            else:
-                return None
+        if x['origin_nid_f' + str(i+1)] is None:
+            # We are not connecting anymore (e.g. leg1 to leg2 connection but leg2 to leg3 no exists)
+            return None
         else:
-            # We are connecting between layers
-            return get_mct_between_layers(dict_mcts,
-                                          x['destination_nid_f' + str(i)], x['origin_nid_f' + str(i + 1)],
-                                          x['mode_nid_f' + str(i)], x['mode_nid_f' + str(i + 1)])
+            if x['destination_nid_f' + str(i)] == x['origin_nid_f' + str(i + 1)]:
+                # We are connecting in the same node
+                if x['mode_nid_f' + str(i)] == 'rail':
+                    # We are connecting at a rail station
+                    return timedelta(minutes=dict_mcts['rail'].get(x['origin_nid_f' + str(i + 1)], dict_mcts['default_rail']))
+                elif x['mode_nid_f' + str(i)] == 'flight':
+                    mct = get_mct_hub(dict_mcts['air'], x['origin_nid_f' + str(i)], x['origin_nid_f' + str(i + 1)],
+                                       x['destination_nid_f' + str(i + 1)])
+                    if mct is None:
+                        mct = dict_mcts['default_air']
+                    return mct
+                else:
+                    return None
+            else:
+                # We are connecting between layers
+                return get_mct_between_layers(dict_mcts,
+                                              x['destination_nid_f' + str(i)], x['origin_nid_f' + str(i + 1)],
+                                              x['mode_nid_f' + str(i)], x['mode_nid_f' + str(i + 1)])
 
     max_number_connections = max(pot_affected_pax_replanned_w_conn['type'].apply(lambda x: len(x.split('_'))))
+
 
     for i in range(1, max_number_connections):
         pot_affected_pax_replanned_w_conn['mct_' + str(i) + '_' + str(i + 1)] = pot_affected_pax_replanned_w_conn.apply(
             lambda x: compute_mct_in_row_for_leg_i(x, i), axis=1)
-        pot_affected_pax_replanned_w_conn['buffer_' + str(i) + '_' + str(i + 1)] = (
-                    pot_affected_pax_replanned_w_conn['sobt_nid_f' + str(i + 1)] -
-                    pot_affected_pax_replanned_w_conn['sibt_nid_f' + str(i)] -
-                    pot_affected_pax_replanned_w_conn['mct_' + str(i) + '_' + str(i + 1)])
-        pot_affected_pax_replanned_w_conn['buffer_' + str(i) + '_' + str(i + 1)] = pot_affected_pax_replanned_w_conn[
+        i_not_null = (~pot_affected_pax_replanned_w_conn['mct_' + str(i) + '_' + str(i + 1)].isnull())
+
+        pot_affected_pax_replanned_w_conn.loc[i_not_null, 'buffer_' + str(i) + '_' + str(i + 1)] = (
+                    pot_affected_pax_replanned_w_conn.loc[i_not_null, 'sobt_nid_f' + str(i + 1)] -
+                    pot_affected_pax_replanned_w_conn.loc[i_not_null, 'sibt_nid_f' + str(i)] -
+                    pot_affected_pax_replanned_w_conn.loc[i_not_null, 'mct_' + str(i) + '_' + str(i + 1)])
+
+        pot_affected_pax_replanned_w_conn.loc[i_not_null, 'buffer_' + str(i) + '_' + str(i + 1)] = pot_affected_pax_replanned_w_conn.loc[i_not_null,
             'buffer_' + str(i) + '_' + str(i + 1)].apply(lambda x: x.total_seconds() / 60)
 
     # Identify all buffer_x_y columns dynamically
     buffer_cols = [col for col in pot_affected_pax_replanned_w_conn.columns if col.startswith("buffer_")]
 
     # Create masks
-    all_positive_mask = (pot_affected_pax_replanned_w_conn[buffer_cols] > 0).all(axis=1)  # True if all buffer_x_y > 0
+    all_positive_mask = (pot_affected_pax_replanned_w_conn[buffer_cols].fillna(0) >= 0).all(axis=1)  # True if all buffer_x_y >= 0
     contains_negative_mask = ~all_positive_mask  # Opposite of the above
 
     # Split the DataFrame
@@ -485,7 +502,7 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
                                                                                                      capacity_services_consecutive_segments))
 
         index_trains_no_service = ((df_rail.max_seats_service==0) & (df_rail.max_pax_in_service==0))
-        df_rail.loc[index_trains_no_service, 'load_factor'] = 1.0 # There's no room if the're are no seats
+        df_rail.loc[index_trains_no_service, 'load_factor'] = 1.0 # There's no room if there are no seats
         df_rail.loc[~index_trains_no_service, 'load_factor'] = df_rail['max_pax_in_service'] / \
                                                                df_rail['max_seats_service']
 
