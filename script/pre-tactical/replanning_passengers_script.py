@@ -35,9 +35,13 @@ def parse_time_with_date(time_str, base_date):
     return full_datetime
 
 
-def pre_process_rail_input(rail_time_table, base_date, df_stops=None):
+def pre_process_rail_input(rail_time_table, base_date, df_stops=None, df_stops_considered=None):
     # Remove rows without times
     rail_time_table = rail_time_table[(~rail_time_table['arrival_time'].isna()) & (~rail_time_table['departure_time'].isna())].copy()
+
+    if df_stops_considered is not None:
+        # Filter only stops considered
+        rail_time_table = rail_time_table[rail_time_table.stop_id.isin(df_stops_considered.stop_id)].copy()
 
     # Apply function to both time columns
     rail_time_table['arrival_datetime'] = rail_time_table['arrival_time'].apply(
@@ -119,6 +123,10 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     path_stops_trains = (Path(toml_config['general']['experiment_path']) /
                      toml_config['network_definition']['rail_network'][0]['gtfs'] / 'stops.txt')
+
+    path_stops_train_considered = (Path(toml_config['general']['experiment_path']) /
+                     toml_config['network_definition']['rail_network'][0]['rail_stations_considered'])
+
 
     # Replanned operations
     path_cancelled_flights = (Path(toml_config['general']['experiment_path']) /
@@ -216,9 +224,13 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     # Needed for coordinates to compute time in UTC from GTFS rail data
     df_stops = pd.read_csv(path_stops_trains, dtype={'stop_id': 'string'})
 
+    # Read stops considered
+    df_stops_considered = pd.read_csv(path_stops_train_considered, dtype={'stop_id': 'string'})
+
     date_to_set_rail = toml_config['network_definition']['rail_network'][0]['date_to_set_rail']  # "20190906"
     base_date = datetime.strptime(date_to_set_rail, "%Y%m%d").date()
-    rs_planned, rs_planned_ids = pre_process_rail_input(rs_planned, base_date, df_stops)
+
+    rs_planned, rs_planned_ids = pre_process_rail_input(rs_planned, base_date, df_stops, df_stops_considered)
 
 
     ### Read replanned operations ###
@@ -315,7 +327,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     seats_in_service = pd.read_csv(path_seats_service)
     if additonal_seats is not None:
         # If we have additional seats add them so they are considered
-        # in the dictionary of seats per sevice
+        # in the dictionary of seats per service
         seats_in_service = pd.concat([seats_in_service, (additonal_seats[['service_id', 'capacity', 'type']].
                                                          rename(columns={'service_id': 'nid',
                                                                          'capacity': 'max_seats',
