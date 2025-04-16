@@ -59,9 +59,9 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
         '1055_1_11', '1055_2_11', '1055_4_11', '1055_8_11', '1055_9_11', '1055_11_13', '1055_11_15', '1055_11_16'
         but '1055_9_13', '1055_9_15' or '1055_9_16' will be valid (even if they pass the cancelled
         segment).
-        This is because here we only remove stops... we might need to remove them from services later on if the
+        This is because here we only remove stops... we need to remove them from services later on if the
         cancellation is to be interpreted as a 'barrier', i.e., in this example only allowing
-        1055 to 10 and 12 onward.
+        1055 to 10 and 12 onward. Done below in should_remove function
         '''
 
         # From those a subset of rows will be cancelled
@@ -117,9 +117,16 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
             else:
                 stops_cancelled = list(rs_planned_cancelled[rs_planned_cancelled.trip_id==sid].stop_sequence)
                 if f in stops_cancelled or t in stops_cancelled:
+                    # Service starts and/or ends in one stop that has been cancelled
                     return True
                 else:
-                    return False
+                    # Here consider service which 'crosses' a cancelled stop
+                    for sc in stops_cancelled:
+                        if (f < sc) and (t > sc):
+                            # Then we cut the stop cancelled
+                            return True
+                        else:
+                            return False
 
         # Parse the list into a DataFrame
         id_rail_dict_seats = list(dict_seats_service['rail'].keys())
