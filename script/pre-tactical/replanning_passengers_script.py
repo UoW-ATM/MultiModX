@@ -708,7 +708,6 @@ if __name__ == '__main__':
                            delete_previous=False,
                            logger=logger)
 
-    save_information_config_used(toml_config, args)
 
     logger.important_info("Running reassing passengers in replanned network")
 
@@ -719,4 +718,6 @@ if __name__ == '__main__':
                                             max_connections=int(args.max_connections),
                                             pre_processed_version=int(args.preprocessed_version),
                                             use_heuristics_precomputed=args.use_heuristics_precomputed)
+
+    save_information_config_used(toml_config, args)
 
