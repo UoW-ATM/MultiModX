@@ -363,11 +363,12 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     # First adjust rail and flight network with modifications replanned #
     ####################################################################
 
-    rs_replanned, dict_seats_service = replan_rail_timetable(rs_planned,
+    rs_replanned, dict_seats_service, services_removed = replan_rail_timetable(rs_planned,
                                                              rail_replanned=trains_replanned,
                                                              rail_cancelled=trains_cancelled,
                                                              rail_added=trains_added,
                                                              dict_seats_service=dict_seats_service)
+    trains_cancelled = services_removed
 
     fs_replanned, dict_seats_service = replan_flight_schedules(fs_planned,
                                                                fs_replanned=flights_replanned,
@@ -412,12 +413,34 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     #######################################
     logger.important_info("Identifying status of passengers planned in replanned network")
 
+
     pax_assigned_planned, pax_kept, pax_need_replannning = compute_pax_status_in_replanned_network(pax_assigned_planned,
                                                                                                    fs_replanned,
                                                                                                    rs_replanned,
                                                                                                    flights_cancelled, trains_cancelled,
                                                                                                    flights_replanned, trains_replanned_ids,
                                                                                                    dict_mcts)
+
+
+    # Pax itineraries initial with impact of replanning
+    # Save pax_assigned_planned with their status due to replanning
+    pax_assigned_planned.to_csv((output_folder_path / 'pax_replanned' /
+                                 ('0.pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
+                                 index=False)
+
+    # Pax kept their initial itinerary after replanning
+    # Could be unnafected, delayed or replanned doable
+    pax_kept.to_csv((output_folder_path / 'pax_replanned' /
+                     ('1.pax_assigned_to_itineraries_options_kept_' + str(
+                         pre_processed_version) + '.csv')),
+                    index=False)
+
+    # These are pax itineraries that needed replanning
+    pax_need_replannning.to_csv((output_folder_path / 'pax_replanned' /
+                               ('2.pax_assigned_need_replanning_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
+
 
 
     ########################################
@@ -612,25 +635,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                           )), index=False)
 
 
-    # Pax itineraries initial with impact of replanning
-    # Save pax_assigned_planned with their status due to replanning
-    pax_assigned_planned.to_csv((output_folder_path / 'pax_replanned' /
-                                 ('0.pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
-                                 index=False)
 
 
-    # Pax kept their initial itinerary after replanning
-    # Could be unnafected, delayed or replanned doable
-    pax_kept.to_csv((output_folder_path / 'pax_replanned' /
-                               ('1.pax_assigned_to_itineraries_options_kept_' + str(
-                                     pre_processed_version) + '.csv')),
-                                index=False)
-
-    # These are pax itineraries that needed replanning
-    pax_need_replannning.to_csv((output_folder_path / 'pax_replanned' /
-                               ('2.pax_assigned_need_replanning_' + str(
-                                     pre_processed_version) + '.csv')),
-                                index=False)
 
     # These are the pax itineraries which have been reassigned to other options
     pax_reassigned.to_csv((output_folder_path / 'pax_replanned' /

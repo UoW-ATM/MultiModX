@@ -24,43 +24,8 @@ def get_affected_pax_due_flight(pax_assigned_planned, flights_impacted):
     return affected_pax_flight, unaffected_pax_flight
 
 
-def get_affected_pax_due_train(pax_assigned_planned, trains_impacted):
-    # Function to check if a train is cancelled
-    def is_train_impacted(nid, impacted_trains_set, trains_impacted):
-        parts = nid.split("_")
-        train_id = parts[0]
-
-        # Extract stops (if available)
-        stops = list(map(int, parts[1:])) if len(parts) > 1 else []
-
-        # Check if train is cancelled based on service_id alone
-        if train_id in impacted_trains_set:
-            cancellation = trains_impacted[trains_impacted["service_id"] == train_id].iloc[0]
-
-            from_stop = cancellation["from"]
-            to_stop = cancellation["to"]
-
-            # If no stops are given, cancel all instances of the train
-            if pd.isna(from_stop) and pd.isna(to_stop):
-                return True
-
-            # Convert from/to to int if they're not NaN
-            from_stop = int(from_stop) if not pd.isna(from_stop) else None
-            to_stop = int(to_stop) if not pd.isna(to_stop) else None
-
-            # If from and to exist, check for overlap
-            if from_stop is not None and to_stop is not None:
-                return any(from_stop <= stop <= to_stop for stop in stops)
-
-            # If only from exists, cancel services that start from that stop onward
-            if from_stop is not None:
-                return any(stop >= from_stop for stop in stops)
-
-            # If only to exists, cancel services before that stop
-            if to_stop is not None:
-                return any(stop <= to_stop for stop in stops)
-
-        return False
+def get_affected_pax_due_train(pax_assigned_planned, trains_cancelled):
+    # trains_cancelled is the list of id (service_stop_stop) of the trains cancelled
 
     # Function to determine which nid_fX columns contain trains
     def get_train_columns(row):
@@ -76,28 +41,29 @@ def get_affected_pax_due_train(pax_assigned_planned, trains_impacted):
         return train_columns
 
     # Apply cancellation check only to relevant nid_fX columns
-    def is_row_impacted(row, impacted_trains_set, trains_impacted):
+    def is_row_impacted(row, trains_cancelled):
         if pd.isna(row["type"]):
             # We don't have a type so nothing to cancel
             return False
 
         train_columns = get_train_columns(row)  # Find relevant columns
+
         for col in train_columns:
-            if pd.notna(row[col]) and is_train_impacted(row[col], impacted_trains_set, trains_impacted):
+            if row[col] in trains_cancelled:
                 return True  # Mark row as cancelled if any train is affected
         return False
 
-    impacted_trains_set = set(trains_impacted["service_id"])
 
     # Identify all nid_fX columns
     nid_columns = [col for col in pax_assigned_planned.columns if col.startswith("nid_f")]
 
     # Apply cancellation check with additional argument
-    mask = pax_assigned_planned.apply(lambda row: is_row_impacted(row, impacted_trains_set, trains_impacted), axis=1)
+    mask = pax_assigned_planned.apply(lambda row: is_row_impacted(row, trains_cancelled), axis=1)
 
     # Split the DataFrame
     affected_pax_train = pax_assigned_planned[mask]
     unaffected_pax_train = pax_assigned_planned[~mask]
+
 
     return affected_pax_train, unaffected_pax_train
 
@@ -298,25 +264,62 @@ def check_potentially_affected_pax_w_connections_replanned(pot_affected_pax_repl
 
     max_number_connections = max(pot_affected_pax_replanned_w_conn['type'].apply(lambda x: len(x.split('_'))))
 
+    # Convert all sobt/sibt columns
+    for i in range(1, max_number_connections + 1):
+        sobt_col = f'sobt_nid_f{i}'
+        if sobt_col in pot_affected_pax_replanned_w_conn.columns:
+            pot_affected_pax_replanned_w_conn[sobt_col] = pd.to_datetime(pot_affected_pax_replanned_w_conn[sobt_col],
+                                                                         errors='coerce')
 
     for i in range(1, max_number_connections):
-        pot_affected_pax_replanned_w_conn['mct_' + str(i) + '_' + str(i + 1)] = pot_affected_pax_replanned_w_conn.apply(
+        sibt_col = f'sibt_nid_f{i}'
+        if sibt_col in pot_affected_pax_replanned_w_conn.columns:
+            pot_affected_pax_replanned_w_conn[sibt_col] = pd.to_datetime(pot_affected_pax_replanned_w_conn[sibt_col],
+                                                                         errors='coerce')
+
+    for i in range(1, max_number_connections):
+        mct_col = f'mct_{i}_{i + 1}'
+        sobt_col = f'sobt_nid_f{i + 1}'
+        sibt_col = f'sibt_nid_f{i}'
+        buffer_col = f'buffer_{i}_{i + 1}'
+
+        pot_affected_pax_replanned_w_conn[mct_col] = pot_affected_pax_replanned_w_conn.apply(
             lambda x: compute_mct_in_row_for_leg_i(x, i), axis=1)
-        i_not_null = (~pot_affected_pax_replanned_w_conn['mct_' + str(i) + '_' + str(i + 1)].isnull())
 
-        pot_affected_pax_replanned_w_conn.loc[i_not_null, 'buffer_' + str(i) + '_' + str(i + 1)] = (
-                    pot_affected_pax_replanned_w_conn.loc[i_not_null, 'sobt_nid_f' + str(i + 1)] -
-                    pot_affected_pax_replanned_w_conn.loc[i_not_null, 'sibt_nid_f' + str(i)] -
-                    pot_affected_pax_replanned_w_conn.loc[i_not_null, 'mct_' + str(i) + '_' + str(i + 1)])
+        # Convert new mct col to timedelta for entire column
+        pot_affected_pax_replanned_w_conn[mct_col] = pd.to_timedelta(pot_affected_pax_replanned_w_conn[mct_col],
+                                                                     errors='coerce')
 
-        pot_affected_pax_replanned_w_conn.loc[i_not_null, 'buffer_' + str(i) + '_' + str(i + 1)] = pot_affected_pax_replanned_w_conn.loc[i_not_null,
-            'buffer_' + str(i) + '_' + str(i + 1)].apply(lambda x: x.total_seconds() / 60)
+        i_not_null = ~pot_affected_pax_replanned_w_conn[mct_col].isnull()
+
+        pot_affected_pax_replanned_w_conn.loc[i_not_null, buffer_col] = (
+                pot_affected_pax_replanned_w_conn.loc[i_not_null, sobt_col] -
+                pot_affected_pax_replanned_w_conn.loc[i_not_null, sibt_col] -
+                pot_affected_pax_replanned_w_conn.loc[i_not_null, mct_col]
+        )
+
+        # Create a new column for minutes
+        buffer_min_col = buffer_col + "_min"
+
+        pot_affected_pax_replanned_w_conn.loc[i_not_null, buffer_min_col] = (
+                pot_affected_pax_replanned_w_conn.loc[i_not_null, buffer_col]
+                .dt.total_seconds() / 60
+        )
+
 
     # Identify all buffer_x_y columns dynamically
-    buffer_cols = [col for col in pot_affected_pax_replanned_w_conn.columns if col.startswith("buffer_")]
+    buffer_min_cols = [col for col in pot_affected_pax_replanned_w_conn.columns if col.startswith("buffer_") and
+                   col.endswith("_min")]
+
 
     # Create masks
-    all_positive_mask = (pot_affected_pax_replanned_w_conn[buffer_cols].fillna(0) >= 0).all(axis=1)  # True if all buffer_x_y >= 0
+    all_positive_mask = (
+        pot_affected_pax_replanned_w_conn[buffer_min_cols]
+        .fillna(0)
+        .ge(0)
+        .all(axis=1)
+    )
+
     contains_negative_mask = ~all_positive_mask  # Opposite of the above
 
     # Split the DataFrame
@@ -424,7 +427,7 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         df_flights.rename(columns={'pax': 'max_pax_in_service'}, inplace=True)
         df_flights['max_pax_in_service'] = df_flights['max_pax_in_service'].fillna(0)
 
-        index_flights_no_service = ((df_flights.max_seats_service == 0) & (df_flights.max_pax_in_service == 0))
+        index_flights_no_service = ((df_flights.max_seats_service == 0) | (df_flights.max_pax_in_service == 0))
         df_flights.loc[index_flights_no_service, 'load_factor'] = 1.0  # There's no room if the're are no seats
 
         df_flights.loc[~index_flights_no_service, 'load_factor'] = df_flights['max_pax_in_service'] / \
@@ -449,12 +452,6 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         df_rail['stop_orig'] = df_rail['service_id'].apply(lambda x: int(x.split('_')[1]))
         df_rail['stop_dest'] = df_rail['service_id'].apply(lambda x: int(x.split('_')[2]))
 
-        def get_min_capacity_services(services_id):
-            # Minimum capacity of all services
-            return min([dict_seats_service['rail'][x] for x in services_id])
-
-        dict_capacities_rail = df_rail.groupby('rail_service_id')['service_id'].apply(get_min_capacity_services).to_dict()
-        df_rail['max_seats_service'] = df_rail['rail_service_id'].apply(lambda x: dict_capacities_rail[x])
 
         # For each service compute the number of pax per stop
         def compute_pax_per_consecutive_segment(stops_pax):
@@ -501,8 +498,15 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         df_rail['max_pax_in_service'] = df_rail['service_id'].apply(lambda x: get_max_pax_in_segment(x,
                                                                                                      capacity_services_consecutive_segments))
 
-        index_trains_no_service = ((df_rail.max_seats_service==0) & (df_rail.max_pax_in_service==0))
+        index_trains_no_service = ((df_rail.max_seats_service==0) | (df_rail.max_pax_in_service==0))
         df_rail.loc[index_trains_no_service, 'load_factor'] = 1.0 # There's no room if there are no seats
+        df_rail.loc[index_trains_no_service, 'max_pax_in_service'] = 0 # There are no pax if there are no seats avaliable
+                                                                        # Even if overlaps with other sergments, e.g.
+                                                                        # if for service 1307 stops 1 to 2 is cancelled
+                                                                        # 1307_1_3 needs to be 0, even if 1307_2_3 is valid
+                                                                        # and has 124 pax. 1307_1_3 is not full 124
+                                                                        # it is just 0 as it's not possible
+
         df_rail.loc[~index_trains_no_service, 'load_factor'] = df_rail['max_pax_in_service'] / \
                                                                df_rail['max_seats_service']
 

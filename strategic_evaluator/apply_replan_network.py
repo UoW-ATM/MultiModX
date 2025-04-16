@@ -29,49 +29,97 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
     rs_planned['status'] = 'planned'
 
     # Remove cancelled services
+    services_removed = []
     if rail_cancelled is not None:
         # Remove trains cancelled
         rs_planned = rs_planned.merge(rail_cancelled, left_on='trip_id', right_on='service_id', how='left')
 
-        # keep rs that are not cancelled
-        rs_planned = rs_planned[~(((~rs_planned['from'].isna()) & (rs_planned['to'].isna()) & (
-                rs_planned['stop_sequence'] >= rs_planned['from'])) |
-                                  ((~rs_planned['from'].isna()) & (~rs_planned['to'].isna()) & (
-                                          rs_planned['stop_sequence'] >= rs_planned['from']) & (
-                                           rs_planned['stop_sequence'] <= rs_planned['to'])) |
-                                  ((rs_planned['from'].isna()) & (~rs_planned['to'].isna()) & (
-                                          rs_planned['stop_sequence'] <= rs_planned['to']))
-                                  )].copy()
+        # Possible cancel if they have service_id
+        rs_possible_cancel = rs_planned[~rs_planned.service_id.isna()]
 
-        rs_planned = rs_planned.drop(['service_id', 'from', 'to'], axis=1)
+        # Get first and last stop of possible cancelled
+        mms = rs_possible_cancel.groupby('trip_id')['stop_sequence'].agg(['min', 'max']).reset_index()
+        rs_possible_cancel = rs_possible_cancel.merge(mms, on='trip_id')
+
+
+        '''
+        Cancellation rules
+        from to
+        NaN NaN --> all
+        1 NaN --> all
+        NaN last --> all
+        NaN 8 --> 1-8 (8-onward)
+        3 NaN --> 1-3
+        1 3 --> 3-onward
+        6 last --> 1-6
+        3 5 --> 1-3 & 5-onward
+        
+        Note that now if cancelled stop intermediate trips which jump that stop are valid
+        e.g. if we have service 1055 from 10 to	12, it will cancel 
+        '1055_1_11', '1055_2_11', '1055_4_11', '1055_8_11', '1055_9_11', '1055_11_13', '1055_11_15', '1055_11_16'
+        but '1055_9_13', '1055_9_15' or '1055_9_16' will be valid (even if they pass the cancelled
+        segment).
+        This is because here we only remove stops... we might need to remove them from services later on if the
+        cancellation is to be interpreted as a 'barrier', i.e., in this example only allowing
+        1055 to 10 and 12 onward.
+        '''
+
+        # From those a subset of rows will be cancelled
+        i_cancelled = rs_possible_cancel[(
+            ((rs_possible_cancel['from'].isna()) & (rs_possible_cancel['to'].isna())) | #NaN NaN ---> remove all
+
+            ((rs_possible_cancel['from']<=rs_possible_cancel['min']) & (rs_possible_cancel['to'].isna())) | #frist NaN --> remove all
+
+            ((rs_possible_cancel['from'].isna()) & (rs_possible_cancel['to']>=rs_possible_cancel['max'])) | # NaN last --> remove all
+
+            ((rs_possible_cancel['from'].isna()) & (rs_possible_cancel['to']<rs_possible_cancel['max']) &
+             (rs_possible_cancel['stop_sequence']<rs_possible_cancel['to'])) | # NaN x --> remove first x-1
+
+            ((rs_possible_cancel['from'] > rs_possible_cancel['min']) & (rs_possible_cancel['to'].isna()) &
+            (rs_possible_cancel['stop_sequence'] > rs_possible_cancel['from']))  | # x NaN --> remove x+1 - last
+
+            ((rs_possible_cancel['from'] > rs_possible_cancel['min']) & (rs_possible_cancel['to'] < rs_possible_cancel['max']) &
+             (rs_possible_cancel['stop_sequence'] > rs_possible_cancel['from']) &
+             (rs_possible_cancel['stop_sequence'] < rs_possible_cancel['to']))  | # x y --> remove x+1 - y-1
+
+            ((rs_possible_cancel['from'] <= rs_possible_cancel['min']) & (
+                        rs_possible_cancel['to'] < rs_possible_cancel['max']) &
+             (rs_possible_cancel['stop_sequence'] >= rs_possible_cancel['from']) &
+             (rs_possible_cancel['stop_sequence'] < rs_possible_cancel['to']))  | # first y --> remove first - y-1
+
+            ((rs_possible_cancel['from'] > rs_possible_cancel['min']) & (
+                    rs_possible_cancel['to'] >= rs_possible_cancel['max']) &
+             (rs_possible_cancel['stop_sequence'] > rs_possible_cancel['from']) &
+             (rs_possible_cancel['stop_sequence'] <= rs_possible_cancel['to']))  |  # x last --> remove x+1 - last
+
+            ((rs_possible_cancel['from'] <= rs_possible_cancel['min']) & (
+                    rs_possible_cancel['to'] >= rs_possible_cancel['max']))  # first last --> remove all
+        )
+              ].index
+
+        # These are the cancelled ones
+        rs_planned_cancelled = rs_possible_cancel.loc[i_cancelled].copy()
+        # Create an id for them tripid_stopsequence
+        rs_planned_cancelled['trip_stop_id'] = rs_planned_cancelled['trip_id'].astype(str) + '_' + rs_planned_cancelled['stop_sequence'].astype(str)
+        # Do same id for rs_planned to remove the cancelled ones
+        rs_planned['trip_stop_id'] = rs_planned['trip_id'].astype(str) + '_' + rs_planned['stop_sequence'].astype(str)
+        rs_planned = rs_planned[~rs_planned.trip_stop_id.isin(rs_planned_cancelled.trip_stop_id)].copy()
+        rs_planned = rs_planned.drop(['service_id', 'from', 'to', 'trip_stop_id'], axis=1)
 
         # Remove from the dict_seats_service the services impacted
         # Function to determine if a service should be removed
-        def should_remove(row, removal_df):
+        def should_remove(row, rs_planned_cancelled):
             sid = row['service_id']
             f = row['from_stop']
             t = row['to_stop']
-
-            matches = removal_df[removal_df['service_id'] == sid]
-            for _, r in matches.iterrows():
-                from_stop = r['from']
-                to_stop = r['to']
-                # Case 1: remove entire service
-                if pd.isna(from_stop) and pd.isna(to_stop):
+            if sid not in list(rs_planned_cancelled['trip_id'].astype(str)):
+                return False
+            else:
+                stops_cancelled = list(rs_planned_cancelled[rs_planned_cancelled.trip_id==sid].stop_sequence)
+                if f in stops_cancelled or t in stops_cancelled:
                     return True
-                # Case 2: remove from specific stop onwards
-                elif pd.notna(from_stop) and pd.isna(to_stop):
-                    if f >= from_stop:
-                        return True
-                # Case 3: remove up to a specific stop
-                elif pd.isna(from_stop) and pd.notna(to_stop):
-                    if t <= to_stop:
-                        return True
-                # Case 4: remove range
-                elif pd.notna(from_stop) and pd.notna(to_stop):
-                    if f >= from_stop and t <= to_stop:
-                        return True
-            return False
+                else:
+                    return False
 
         # Parse the list into a DataFrame
         id_rail_dict_seats = list(dict_seats_service['rail'].keys())
@@ -81,7 +129,7 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
         services_df['service_id'] = services_df['service_id'].astype(str)
 
         # Apply the function to identify services to remove
-        services_df['remove'] = services_df.apply(lambda row: should_remove(row, rail_cancelled), axis=1)
+        services_df['remove'] = services_df.apply(lambda row: should_remove(row, rs_planned_cancelled), axis=1)
 
         # Filter services to remove
         services_remove = services_df.loc[services_df['remove'], 'raw'].tolist()
@@ -93,6 +141,8 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
         for s in services_remove:
             dict_seats_service['rail'][s] = 0
             #dict_seats_service['rail'].pop(s, None)
+
+        services_removed = services_remove
 
     # Remove trains replanned (as they'll be added as replanned)
     if rail_replanned is not None:
@@ -128,7 +178,7 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
     # Remove duplicates (in case)
     rs_planned = rs_planned.drop_duplicates()
 
-    return rs_planned, dict_seats_service
+    return rs_planned, dict_seats_service, services_removed
 
 
 def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs_added=None,
