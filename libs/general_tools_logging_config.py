@@ -110,12 +110,14 @@ def process_strategic_config_file(toml_file, end_output_folder=None):
     if end_output_folder is not None:
         toml_config['general']['output_folder'] = toml_config['general']['output_folder'] + end_output_folder
 
-    toml_config['network_definition']['processed_folder'] = toml_config['general']['output_folder']
     if 'output' not in toml_config.keys():
         toml_config['output'] = {}
-    toml_config['output']['output_folder'] = (Path(toml_config['general']['experiment_path']) /
-                                              toml_config['general']['output_folder'] /
-                                              'paths_itineraries')
+
+    if 'output_folder' in toml_config['general']:
+        toml_config['network_definition']['processed_folder'] = toml_config['general']['output_folder']
+        toml_config['output']['output_folder'] = (Path(toml_config['general']['experiment_path']) /
+                                                  toml_config['general']['output_folder'] /
+                                                  'paths_itineraries')
 
     toml_config['demand']['demand'] = toml_config['general']['experiment_path'] + toml_config['demand']['demand']
 

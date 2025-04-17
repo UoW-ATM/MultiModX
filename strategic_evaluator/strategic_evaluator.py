@@ -294,6 +294,7 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
         # We don't preprocess but just copy the preprocessed values
         if 'air_network' in network_definition_config:
             # We have air network, copy the processed file
+
             flight_schedule_pre_proc_path = (Path(network_definition_config['network_path']) /
                                              network_definition_config['pre_processed_input_folder'] /
                                              ('flight_schedules_proc_' + str(pre_processed_version) + '.csv'))
@@ -325,7 +326,7 @@ def preprocess_input(network_definition_config, pre_processed_version=0, policy_
             else:
                 # We have them in gtfs format... might need some processing
                 def copy_if_exist(orig_path, destination_path):
-                    if os.path.exists(orig_path):
+                    if os.path.exists(orig_path) and (orig_path != destination_path):
                         shutil.copy2(orig_path, destination_path)
 
                 # Check if rail_timetable_all_gtfs_#.csv exist and if sc copy it

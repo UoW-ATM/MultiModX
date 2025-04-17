@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 import logging
 import time
 import pytz
-from pyomo.environ import minimize, Var, Constraint, maximize
 
 import sys
 sys.path.insert(1, '../..')
@@ -17,14 +16,13 @@ from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_s
 from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules,
                                                        compute_itineraries_in_replanned_network,
                                                        compute_alternatives_possibles_pax_itineraries,
-                                                       filter_options_pax_it_w_constraints)
+                                                       filter_options_pax_it_w_constraints,
+                                                       preprocess_network_replanned)
 
 from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
                                                process_strategic_config_file)
 from libs.time_converstions import  convert_to_utc_vectorized
-from libs.passenger_assigner.passenger_assigner import create_model_passenger_reassigner_pyomo
-from libs.passenger_assigner.lexicographic_lib import lexicographic_optimization
 
 
 def parse_time_with_date(time_str, base_date):
@@ -81,18 +79,19 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     ###########################
     # Recreate output folders #
     ##########################
-    output_folder_path = (Path(toml_config['general']['experiment_path']) /
-                               toml_config['general']['output_folder'])
+    output_processed_folder_path = toml_config['network_definition']['processed_folder']
+    output_pax_folder_path = toml_config['output']['output_folder_pax']
+    output_paths_folder_path = toml_config['output']['output_folder']
 
     if recreate_output_fld:
         # Check if output folder exists, if not create it
-        recreate_output_folder(output_folder_path,
+        recreate_output_folder(output_processed_folder_path,
                                delete_previous=True,
                                logger=logger)
-        recreate_output_folder(toml_config['output']['output_folder'],
+        recreate_output_folder(output_paths_folder_path,
                                delete_previous=True,
                                logger=logger)
-        recreate_output_folder((output_folder_path / 'pax_replanned'),
+        recreate_output_folder(output_pax_folder_path,
                                 delete_previous=True,
                                logger=logger)
 
@@ -129,23 +128,21 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
 
     # Replanned operations
-    path_cancelled_flights = (Path(toml_config['general']['experiment_path']) /
-                             toml_config['general']['replanned_input_folder'] /
+    replanned_actions_folder_path = (Path(toml_config['general']['experiment_path']) /
+                                     toml_config['general']['replanned_input_folder'] /
+                                     toml_config['general']['replanned_actions_folder'])
+
+    path_cancelled_flights = (replanned_actions_folder_path /
                              ('flights_cancelled_' + str(pre_processed_version) + '.csv'))
-    path_cancelled_rail = (Path(toml_config['general']['experiment_path']) /
-                           toml_config['general']['replanned_input_folder'] /
+    path_cancelled_rail = (replanned_actions_folder_path /
                            ('rail_cancelled_' + str(pre_processed_version) + '.csv'))
-    path_flights_replanned = (Path(toml_config['general']['experiment_path']) /
-                              toml_config['general']['replanned_input_folder'] /
+    path_flights_replanned = (replanned_actions_folder_path /
                               ('flight_replanned_proc_' + str(pre_processed_version) + '.csv'))
-    path_trains_replanned = (Path(toml_config['general']['experiment_path']) /
-                             toml_config['general']['replanned_input_folder'] /
+    path_trains_replanned = (replanned_actions_folder_path /
                              ('rail_timetable_replanned_all_gtfs_' + str(pre_processed_version) + '.csv'))
-    path_flights_additional = (Path(toml_config['general']['experiment_path']) /
-                             toml_config['general']['replanned_input_folder'] /
+    path_flights_additional = (replanned_actions_folder_path /
                              ('flight_added_schedules_proc_' + str(pre_processed_version) + '.csv'))
-    path_trains_additional = (Path(toml_config['general']['experiment_path']) /
-                             toml_config['general']['replanned_input_folder'] /
+    path_trains_additional = (replanned_actions_folder_path /
                              ('rail_timetable_added_all_gtfs_' + str(pre_processed_version) + '.csv'))
 
     # Infrastructure paths (MCTs)
@@ -230,7 +227,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     date_to_set_rail = toml_config['network_definition']['rail_network'][0]['date_to_set_rail']  # "20190906"
     base_date = datetime.strptime(date_to_set_rail, "%Y%m%d").date()
 
-    rs_planned, rs_planned_ids = pre_process_rail_input(rs_planned, base_date, df_stops, df_stops_considered)
+    # Do not pass df_stops_considered so that all stops are kept, if not they are removed and rail is not gtfs_all anymore
+    rs_planned, rs_planned_ids = pre_process_rail_input(rs_planned, base_date, df_stops, df_stops_considered=None)
 
 
     ### Read replanned operations ###
@@ -398,15 +396,27 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         else "-".join(str(x).split("-")[0:-1]) if '-' in str(x)
         else str(x))
 
-    fs_replanned_to_save.to_csv((output_folder_path /
+    fs_replanned_to_save.to_csv((output_processed_folder_path /
                          ('flight_schedules_proc_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
 
-    rs_replanned.to_csv((output_folder_path /
+    rs_replanned.to_csv((output_processed_folder_path /
                          ('rail_timetable_all_gtfs_' + str(
                              pre_processed_version) + '.csv')),
                         index=False)
+
+    #####################################
+    # Preprocess the replanned network  #
+    #####################################
+
+    # Regardless of having to replan_pax preprocess replanned network
+    # Add path to  pre-processed input (flight and rail timetable processed)
+    toml_config['general']['pre_processed_input_folder'] = output_processed_folder_path
+    toml_config['network_definition']['pre_processed_input_folder'] = toml_config['general']['replanned_input_folder'] + "/processed/"
+    toml_config['network_definition']['processed_folder'] = toml_config['general']['replanned_input_folder'] + "/processed/"
+
+    preprocess_network_replanned(toml_config, pre_processed_version = pre_processed_version)
 
     ########################################
     #  Then identify pax need reassigning  #
@@ -422,21 +432,22 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                                                    dict_mcts)
 
 
+
     # Pax itineraries initial with impact of replanning
     # Save pax_assigned_planned with their status due to replanning
-    pax_assigned_planned.to_csv((output_folder_path / 'pax_replanned' /
+    pax_assigned_planned.to_csv((output_pax_folder_path /
                                  ('0.pax_assigned_to_itineraries_options_status_replanned_'+ str(pre_processed_version) +'.csv')),
                                  index=False)
 
     # Pax kept their initial itinerary after replanning
     # Could be unnafected, delayed or replanned doable
-    pax_kept.to_csv((output_folder_path / 'pax_replanned' /
+    pax_kept.to_csv((output_pax_folder_path /
                      ('1.pax_assigned_to_itineraries_options_kept_' + str(
                          pre_processed_version) + '.csv')),
                     index=False)
 
     # These are pax itineraries that needed replanning
-    pax_need_replannning.to_csv((output_folder_path / 'pax_replanned' /
+    pax_need_replannning.to_csv((output_pax_folder_path /
                                ('2.pax_assigned_need_replanning_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
@@ -470,9 +481,9 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         services_w_capacity, services_wo_capacity = compute_capacities_available_services(demand=pax_kept,
                                                                                           dict_services_w_capacity=dict_seats_service)
 
-        services_w_capacity.to_csv((toml_config['output']['output_folder'] /
+        services_w_capacity.to_csv((output_paths_folder_path /
                                     ('services_w_capacity_'+ str(pre_processed_version)+'.csv')), index=False)
-        services_wo_capacity.to_csv((toml_config['output']['output_folder'] /
+        services_wo_capacity.to_csv((output_paths_folder_path /
                                      ('services_wo_capacity_'+ str(pre_processed_version)+'.csv')), index=False)
 
         # Compute capacity available overall per service
@@ -480,10 +491,10 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         capacity_available['capacity'] = capacity_available['max_seats_service'] - capacity_available['max_pax_in_service']
         capacity_available = capacity_available[['service_id', 'type', 'capacity']]
 
-        capacity_available.to_csv((toml_config['output']['output_folder'] /
+        capacity_available.to_csv((output_paths_folder_path /
                                    ('services_capacities_'+ str(pre_processed_version)+'.csv')), index=False)
 
-        capacity_available.to_csv((toml_config['output']['output_folder'] / 'services_capacity_available.csv'), index=False)
+        capacity_available.to_csv((output_paths_folder_path / 'services_capacity_available.csv'), index=False)
 
         # Compute o-d demand that needs to be reassigned so that suitable itineraries can be computed
         # Get o-d with total demand that needs reacommodating
@@ -493,7 +504,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         # Set date as date_to_set_rail, if rail exist, as that's the date of the flight (not that it matters, I think)
         od_demand_need_reaccomodating['date'] = toml_config.get('network_definition').get('rail_network',[{}])[0].get('date_to_set_rail', '20190906')
         od_demand_need_reaccomodating = od_demand_need_reaccomodating.rename({'pax': 'trips'}, axis=1)
-        od_demand_need_reaccomodating.to_csv((toml_config['output']['output_folder'] /
+        od_demand_need_reaccomodating.to_csv((output_paths_folder_path /
                                               ('demand_missing_reaccomodate_'+ str(pre_processed_version) +'.csv')),
                                              index=False)
 
@@ -501,13 +512,6 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         toml_config['demand']['demand'] = Path((toml_config['output']['output_folder'] /
                                            ('demand_missing_reaccomodate_' + str(pre_processed_version) + '.csv')))
 
-        # Add path to  pre-processed input (flight and rail timetable processed)
-        toml_config['general']['pre_processed_input_folder'] = toml_config['general']['output_folder']
-        toml_config['network_definition']['pre_processed_input_folder'] = toml_config['general']['pre_processed_input_folder']
-        toml_config['network_definition']['processed_folder'] = (toml_config['general']['output_folder'] + '/processed')
-
-        recreate_output_folder((Path(toml_config['network_definition']['network_path']) /
-                                toml_config['network_definition']['processed_folder']))
 
         allow_mixed_operators_itineraries = not toml_config['replanning_considerations']['constraints']['new_itineraries_respect_alliances']
 
@@ -519,7 +523,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                   allow_mixed_operators_itineraries = allow_mixed_operators_itineraries,
                                                                   use_heuristics_precomputed = use_heuristics_precomputed,
                                                                   pre_processed_version = pre_processed_version,
-                                                                  capacity_available = capacity_available)
+                                                                  capacity_available = capacity_available,
+                                                                  pre_process_input = False)
 
 
         pax_need_replanning_w_it_options = compute_alternatives_possibles_pax_itineraries(pax_need_replannning,
@@ -630,7 +635,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     df_pax_need_replanning_demand['unfulfilled'] = (df_pax_need_replanning_demand['demand_to_assign'] -
                                                     df_pax_need_replanning_demand['pax_assigned'])
     df_pax_need_replanning_demand[['pax_group_id', 'origin', 'destination',
-                                   'demand_to_assign', 'pax_assigned', 'unfulfilled']].to_csv((output_folder_path / 'pax_replanned' /
+                                   'demand_to_assign', 'pax_assigned', 'unfulfilled']].to_csv((output_pax_folder_path /
                                           ('5.pax_demand_assigned_summary_' + str(pre_processed_version) + '.csv'
                                           )), index=False)
 
@@ -639,13 +644,13 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
 
     # These are the pax itineraries which have been reassigned to other options
-    pax_reassigned.to_csv((output_folder_path / 'pax_replanned' /
+    pax_reassigned.to_csv((output_pax_folder_path /
                                ('3.pax_reassigned_to_itineraries_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
 
     # These are pax itineraries which are stranded
-    pax_stranded.to_csv((output_folder_path / 'pax_replanned' /
+    pax_stranded.to_csv((output_pax_folder_path /
                                ('4.pax_assigned_to_itineraries_replanned_stranded_' + str(
                                      pre_processed_version) + '.csv')),
                                 index=False)
@@ -699,15 +704,32 @@ if __name__ == '__main__':
     if args.n_proc is not None:
         pc = int(args.n_proc)
 
-    # Check if output folder exists, if not create it
-    recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
-                           toml_config['network_definition']['processed_folder'],
-                           delete_previous=False,
+    output_folder_path = (Path(toml_config['general']['experiment_path']) /
+                          toml_config['general']['replanned_input_folder'] /
+                          'processed')
+    toml_config['network_definition']['processed_folder'] = output_folder_path
+    toml_config['general']['output_folder'] = toml_config['general']['replanned_input_folder']
+
+    toml_config['output']['output_folder'] = (Path(toml_config['general']['experiment_path']) /
+                                              toml_config['general']['replanned_input_folder'] /
+                                              'paths_itineraries')
+    toml_config['output']['output_folder_pax'] = (Path(toml_config['general']['experiment_path']) /
+                                              toml_config['general']['replanned_input_folder'] /
+                                              'pax_replanned')
+
+
+    # Recreate output folders
+    recreate_output_folder(output_folder_path,
+                           delete_previous=True,
                            logger=logger)
-    recreate_output_folder(Path(toml_config['output']['output_folder']),
-                           delete_previous=False,
+    recreate_output_folder(toml_config['output']['output_folder'],
+                           delete_previous=True,
+                           logger=logger)
+    recreate_output_folder(toml_config['output']['output_folder_pax'],
+                           delete_previous=True,
                            logger=logger)
 
+    save_information_config_used(toml_config, args)
 
     logger.important_info("Running reassing passengers in replanned network")
 
@@ -717,7 +739,8 @@ if __name__ == '__main__':
                                             n_itineraries=int(args.num_itineraries),
                                             max_connections=int(args.max_connections),
                                             pre_processed_version=int(args.preprocessed_version),
-                                            use_heuristics_precomputed=args.use_heuristics_precomputed)
+                                            use_heuristics_precomputed=args.use_heuristics_precomputed,
+                                            recreate_output_fld=False)
 
-    save_information_config_used(toml_config, args)
+
 

@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 # Loading functions here so that logging setting is inherited
 from strategic_evaluator.strategic_evaluator import (
     create_network, preprocess_input, compute_possible_itineraries_network,
-    cluster_options_itineraries, keep_pareto_equivalent_solutions,
-    keep_itineraries_options
+    cluster_options_itineraries
 )
 
 
@@ -220,16 +219,41 @@ def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs
     return fs_planned, dict_seats_service
 
 
-def compute_itineraries_in_replanned_network(toml_config, pc=1, n_paths=15, n_itineraries = 50,  max_connections = 1,
-                                             allow_mixed_operators_itineraries = False,
-                                             use_heuristics_precomputed = False,
-                                             pre_processed_version = 0,
-                                             capacity_available = None):
+def preprocess_network_replanned(toml_config, pre_processed_version = 0):
     # Preprocess input
     logger.info("Pre-processing input")
     preprocess_input(toml_config['network_definition'],
                      pre_processed_version=pre_processed_version,
                      policy_package=toml_config.get('policy_package'))
+
+    # Create network to trigger computation of missing files
+    allow_mixed_operators_itineraries = not toml_config['replanning_considerations']['constraints'][
+        'new_itineraries_respect_alliances']
+
+    # Create network to generate rail_timetable_proc_x.csv and transition_layer_connecting_times.csv
+    # Code that do that could be brought here in future: TODO
+
+    create_network(toml_config['network_definition'],
+                             compute_simplified=True,
+                             allow_mixed_operators=allow_mixed_operators_itineraries,
+                             heuristics_precomputed=None,
+                             pre_processed_version=pre_processed_version,
+                             policy_package=toml_config.get('policy_package'))
+
+
+
+def compute_itineraries_in_replanned_network(toml_config, pc=1, n_paths=15, n_itineraries = 50,  max_connections = 1,
+                                             allow_mixed_operators_itineraries = False,
+                                             use_heuristics_precomputed = False,
+                                             pre_processed_version = 0,
+                                             capacity_available = None,
+                                             pre_process_input = True):
+    # Preprocess input
+    if pre_process_input:
+        logger.info("Pre-processing input")
+        preprocess_input(toml_config['network_definition'],
+                         pre_processed_version=pre_processed_version,
+                         policy_package=toml_config.get('policy_package'))
 
     # Read demand
     logger.info("Reading demand")
