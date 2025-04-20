@@ -233,12 +233,27 @@ def preprocess_network_replanned(toml_config, pre_processed_version = 0):
     # Create network to generate rail_timetable_proc_x.csv and transition_layer_connecting_times.csv
     # Code that do that could be brought here in future: TODO
 
-    create_network(toml_config['network_definition'],
-                             compute_simplified=True,
-                             allow_mixed_operators=allow_mixed_operators_itineraries,
-                             heuristics_precomputed=None,
-                             pre_processed_version=pre_processed_version,
-                             policy_package=toml_config.get('policy_package'))
+    # Simplified network so that only rail and multimodality layers are
+    # computed/estimated
+
+    simplified_dict_network = {}
+
+    simplified_dict_network['network_path'] = toml_config['network_definition']['network_path']
+    simplified_dict_network['processed_folder'] = toml_config['network_definition']['processed_folder']
+    simplified_dict_network['pre_processed_input_folder'] = toml_config['network_definition']['pre_processed_input_folder']
+
+    if 'rail_network' in toml_config['network_definition'].keys():
+        simplified_dict_network['rail_network'] = toml_config['network_definition']['rail_network']
+    if 'multimodal' in toml_config['network_definition'].keys():
+        simplified_dict_network['multimodal'] = toml_config['network_definition']['multimodal']
+        simplified_dict_network['processing_time'] = toml_config['network_definition']['processing_time']
+
+    create_network(simplified_dict_network,
+                   compute_simplified=True,
+                   allow_mixed_operators=allow_mixed_operators_itineraries,
+                   heuristics_precomputed=None,
+                   pre_processed_version=pre_processed_version,
+                   policy_package=toml_config.get('policy_package'))
 
 
 

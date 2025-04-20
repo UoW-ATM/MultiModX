@@ -1169,14 +1169,26 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
 
         if need_save:
             frail = 'rail_timetable_proc_' + str(pre_processed_version) + '.csv'
-            df_rail_data.to_csv((Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
+            if 'departure_time_utc' in df_rail_data.columns:
+                # This I think it's alsways, as otherwise we'll be doing
+                # rail network from services and the proc would be pre-processed
+                # TODO: Review pipeline process rail to simplify pre-process
+                # and rail layer creation
+                df_rail_data_to_save = df_rail_data.copy()
+                df_rail_data_to_save['arrival_time'] = df_rail_data_to_save['arrival_time_local'].dt.tz_localize(None)
+                df_rail_data_to_save['departure_time'] = df_rail_data_to_save['departure_time_local'].dt.tz_localize(None)
+                df_rail_data_to_save = df_rail_data_to_save[['destination', 'departure_time', 'arrival_time', 'provider',
+                                                     'alliance', 'cost', 'seats', 'emissions', 'country',
+                                                     'lat_orig', 'lon_orig', 'lat_dest', 'lon_dest', 'gcdistance']]
+            else:
+                df_rail_data_to_save = df_rail_data
+            df_rail_data_to_save.to_csv((Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
                          index=False)
-        else:
-            # We save it still for reference as this is the dataframe used downstream
-            frail = 'rail_timetable_proc_' + str(pre_processed_version) + '_used_internally.csv'
-            df_rail_data.to_csv(
-                (Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
-                index=False)
+        # We save it still for reference as this is the dataframe used downstream
+        frail = 'rail_timetable_proc_' + str(pre_processed_version) + '_used_internally.csv'
+        df_rail_data.to_csv(
+            (Path(path_network_dict['network_path']) / path_network_dict['processed_folder']) / frail,
+            index=False)
 
         # Get regions access for rail
         df_ra_rail = None

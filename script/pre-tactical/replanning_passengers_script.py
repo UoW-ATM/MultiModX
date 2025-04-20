@@ -402,9 +402,18 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                 index=False)
 
     rs_replanned.to_csv((output_processed_folder_path /
+                         ('rail_timetable_all_gtfs_w_additional_utc_local_' + str(
+                             pre_processed_version) + '.csv')),
+                        index=False)
+
+    rs_replanned[['trip_id', 'arrival_time', 'departure_time', 'stop_id', 'stop_sequence', 'pickup_type',
+                  'drop_off_type', 'border_point', 'load_unload', 'check_in', 'check_out', 'provider',
+                  'alliance', 'country', 'status']].to_csv((output_processed_folder_path /
                          ('rail_timetable_all_gtfs_' + str(
                              pre_processed_version) + '.csv')),
                         index=False)
+
+
 
     #####################################
     # Preprocess the replanned network  #
