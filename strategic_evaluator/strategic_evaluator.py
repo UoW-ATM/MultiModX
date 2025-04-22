@@ -1177,7 +1177,7 @@ def create_network(path_network_dict, compute_simplified=False, allow_mixed_oper
                 df_rail_data_to_save = df_rail_data.copy()
                 df_rail_data_to_save['arrival_time'] = df_rail_data_to_save['arrival_time_local'].dt.tz_localize(None)
                 df_rail_data_to_save['departure_time'] = df_rail_data_to_save['departure_time_local'].dt.tz_localize(None)
-                df_rail_data_to_save = df_rail_data_to_save[['destination', 'departure_time', 'arrival_time', 'provider',
+                df_rail_data_to_save = df_rail_data_to_save[['service_id', 'destination', 'departure_time', 'arrival_time', 'provider',
                                                      'alliance', 'cost', 'seats', 'emissions', 'country',
                                                      'lat_orig', 'lon_orig', 'lat_dest', 'lon_dest', 'gcdistance']]
             else:
