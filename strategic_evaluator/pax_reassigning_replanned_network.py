@@ -21,6 +21,10 @@ def get_affected_pax_due_flight(pax_assigned_planned, flights_impacted):
     # Split DataFrames
     affected_pax_flight = pax_assigned_planned[mask]  # Rows with cancelled flights
     unaffected_pax_flight = pax_assigned_planned[~mask]  # Rows without cancelled flights
+    if len(affected_pax_flight) == 0:
+        afected_pax_flight = None
+    if len(unaffected_pax_flight) == 0:
+        unaffected_pax_flight = None
     return affected_pax_flight, unaffected_pax_flight
 
 
@@ -49,7 +53,8 @@ def get_affected_pax_due_train(pax_assigned_planned, trains_cancelled):
         train_columns = get_train_columns(row)  # Find relevant columns
 
         for col in train_columns:
-            if row[col] in trains_cancelled:
+            # Either the whole service (service_stop_stop) or the service (split("_")[0]) can be cancelled
+            if (row[col] in trains_cancelled) or (row[col].split("_")[0] in trains_cancelled):
                 return True  # Mark row as cancelled if any train is affected
         return False
 
@@ -63,7 +68,10 @@ def get_affected_pax_due_train(pax_assigned_planned, trains_cancelled):
     # Split the DataFrame
     affected_pax_train = pax_assigned_planned[mask]
     unaffected_pax_train = pax_assigned_planned[~mask]
-
+    if len(affected_pax_train) == 0:
+        affected_pax_train = None
+    if len(unaffected_pax_train) == 0:
+        unaffected_pax_train = None
 
     return affected_pax_train, unaffected_pax_train
 
@@ -105,7 +113,11 @@ def get_affected_pax_due_to_replaning(pax_assigned_planned, flight_replanned=Non
         affected_pax_train, unaffected_pax = get_affected_pax_due_train(unaffected_pax, trains_replanned)
 
     # Total affected pax:
-    affected_pax = pd.concat([affected_pax_flight, affected_pax_train])
+    if (affected_pax_flight is not None) or (unaffected_pax is not None):
+        affected_pax = pd.concat([affected_pax_flight, affected_pax_train])
+    else:
+        affected_pax = None
+
 
     return affected_pax, unaffected_pax
 
@@ -373,7 +385,6 @@ def compute_pax_status_in_replanned_network(pax_demand_planned,
 
         pax_demand_planned.loc[
             pax_demand_planned.pax_group_id.isin(pax_affected_delayed.pax_group_id), 'pax_status_replanned'] = 'delayed'
-
 
     # Now check if there are replanned with connections which
     # as for those some might make the connection while others might

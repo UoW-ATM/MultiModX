@@ -63,10 +63,8 @@ def pre_process_rail_input(rail_time_table, base_date, df_stops=None, df_stops_c
 
     rail_time_table_ids = rail_time_table[['trip_id']].drop_duplicates().rename({'trip_id': 'service_id'}, axis=1)
     rail_time_table_ids['service_id'] = rail_time_table_ids['service_id'].astype(str)
-    rail_time_table_ids['from'] = np.nan
-    rail_time_table_ids['to'] = np.nan
 
-    return rail_time_table, rail_time_table_ids
+    return rail_time_table, rail_time_table_ids['service_id'].tolist()
 
 
 def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
@@ -361,12 +359,26 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     # First adjust rail and flight network with modifications replanned #
     ####################################################################
 
+    if trains_replanned is not None:
+        logger.important_info("Replanning rail")
+    if trains_cancelled is not None:
+        logger.important_info("Cancelling rail")
+    if trains_added is not None:
+        logger.important_info("Adding rail")
+
     rs_replanned, dict_seats_service, services_removed = replan_rail_timetable(rs_planned,
                                                              rail_replanned=trains_replanned,
                                                              rail_cancelled=trains_cancelled,
                                                              rail_added=trains_added,
                                                              dict_seats_service=dict_seats_service)
     trains_cancelled = services_removed
+
+    if flights_replanned is not None:
+        logger.important_info("Replanning flights")
+    if flights_cancelled is not None:
+        logger.important_info("Cancelling flights")
+    if flights_added is not None:
+        logger.important_info("Adding flights")
 
     fs_replanned, dict_seats_service = replan_flight_schedules(fs_planned,
                                                                fs_replanned=flights_replanned,

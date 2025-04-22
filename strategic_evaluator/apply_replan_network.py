@@ -28,7 +28,7 @@ def replan_rail_timetable(rs_planned, rail_replanned=None, rail_cancelled=None, 
     rs_planned['status'] = 'planned'
 
     # Remove cancelled services
-    services_removed = []
+    services_removed = None
     if rail_cancelled is not None:
         # Remove trains cancelled
         rs_planned = rs_planned.merge(rail_cancelled, left_on='trip_id', right_on='service_id', how='left')
