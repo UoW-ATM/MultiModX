@@ -16,11 +16,11 @@ def read_strategic_output(path_to_strategic_output,preprocessed_version):
 	pax_assigned_seats_max_target = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_seats_max_target_'+preprocessed_version+'.csv'))
 	pax_assigned_tactical = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_tactical_'+preprocessed_version+'.csv'))
 	pax_assigned_tactical_not_supported = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_tactical_not_supported_'+preprocessed_version+'.csv'))
-	rail_timetable_proc = pd.read_csv(Path(path_to_strategic_output) / '..' / ('rail_timetable_proc_'+preprocessed_version+'.csv'))
-	flight_schedules_proc = pd.read_csv(Path(path_to_strategic_output) / '..' / ('flight_schedules_proc_'+preprocessed_version+'.csv'))
+	rail_timetable_proc_used_internally = pd.read_csv(Path(path_to_strategic_output) / '..' / 'processed' /('rail_timetable_proc_'+preprocessed_version+'_used_internally.csv'))
+	flight_schedules_proc = pd.read_csv(Path(path_to_strategic_output) / '..' /  'processed' /('flight_schedules_proc_'+preprocessed_version+'.csv'))
 	nuts_regional_archetype_info = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' /'..' / 'nuts_regional_archetype_info_v0.2.csv')
 
-	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc':rail_timetable_proc,'flight_schedules_proc':flight_schedules_proc, 'nuts_regional_archetype_info':nuts_regional_archetype_info}
+	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally,'flight_schedules_proc':flight_schedules_proc, 'nuts_regional_archetype_info':nuts_regional_archetype_info}
 	return data
 
 def read_tactical_data(path_to_tactical_output,path_to_tactical_input):
@@ -60,7 +60,7 @@ def save_results(results):
 	#print(results)
 	for indicator, variants in results.items():
 		for variant in variants:
-			#print(variant)
+			# print(variant, isinstance(variant['val'], pd.DataFrame),isinstance(variant['val'], pd.Series))
 			if isinstance(variant['val'], pd.DataFrame):
 				variant['val'].to_csv(Path(config['output']['path_to_output']) / (indicator+'__'+variant['name']+'.csv'),index=False)
 			if np.isscalar(variant['val']):
@@ -96,12 +96,12 @@ def read_results_replanned(paths,config):
 	for i,path in enumerate(paths):
 		data = {}
 		preprocessed_version = config['input']['preprocessed_version'][i]
-		flights_path = Path(config['output']['path_to_output']) / path / ('flight_schedules_proc_'+preprocessed_version+'.csv')
-		rail_path = Path(config['output']['path_to_output']) / path / ('rail_timetable_proc_'+preprocessed_version+'.csv')
+		flights_path = Path(config['output']['path_to_output']) / path /  'processed' /('flight_schedules_proc_'+preprocessed_version+'.csv')
+		rail_path = Path(config['output']['path_to_output']) / path /  'processed' /('rail_timetable_proc_'+preprocessed_version+'_used_internally.csv')
 		flight_schedules_proc = pd.read_csv(flights_path, parse_dates=['sobt','sibt'])
-		rail_timetable_proc = pd.read_csv(rail_path, parse_dates=['arrival_time','departure_time'])
-		rail_timetable_proc['departure_time'] = pd.to_datetime(rail_timetable_proc['departure_time'], utc=True)
-		rail_timetable_proc['arrival_time'] = pd.to_datetime(rail_timetable_proc['arrival_time'], utc=True)
+		rail_timetable_proc_used_internally = pd.read_csv(rail_path, parse_dates=['arrival_time_utc','departure_time_utc'])
+		rail_timetable_proc_used_internally['departure_time_utc'] = pd.to_datetime(rail_timetable_proc_used_internally['departure_time_utc'], utc=True)
+		rail_timetable_proc_used_internally['arrival_time_utc'] = pd.to_datetime(rail_timetable_proc_used_internally['arrival_time_utc'], utc=True)
 
 		pax_path0 = Path(config['output']['path_to_output']) / path / 'pax_replanned' / ('0.pax_assigned_to_itineraries_options_status_replanned_'+preprocessed_version+'.csv')
 		pax_path3 = Path(config['output']['path_to_output']) / path / 'pax_replanned' / ('3.pax_reassigned_to_itineraries_'+preprocessed_version+'.csv')
@@ -120,12 +120,28 @@ def read_results_replanned(paths,config):
 			pax_demand_assigned_summary = pd.read_csv(pax_path5)
 			data['pax_demand_assigned_summary']=pax_demand_assigned_summary
 
-		data.update({'flight_schedules_proc':flight_schedules_proc,'rail_timetable_proc':rail_timetable_proc})
+		data.update({'flight_schedules_proc':flight_schedules_proc,'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally})
 		data_list.append(data)
 
 	return data_list
 
 if __name__ == '__main__':
+
+	"""
+	Configuration is in mmx_kpis.toml: Paths to data, where to save the results, which indicators to compute
+
+	-ex: name of the folder with processed data  (after running strategic pipeline)
+
+	-c: if we want to compare 2 experiments (need to have computed the indicators first for each experiment individually)
+
+	-ppv: post-processing version (default 0): defines the number that is in file names, e.g. possible_itineraries_1.csv
+
+	The results are saved into a specified folder 'indicators' (path in .toml) as csv or plots.
+		# Examples of usage
+		python3 mmx_kpis.py -ex processed_cs10.pp00.so00_c1
+		python3 mmx_kpis.py -c processed_cs10.pp00.so00_c1 processed_cs10.pp10.so00_c1
+		python3 mmx_kpis.py -c processed_cs10.pp00.so00_c2 processed_c1_replan -ppv 0 1
+	"""
 
 	parser = argparse.ArgumentParser(description='mmx_kpis', add_help=True)
 	parser.add_argument('-tf', '--toml_file', help='TOML defining the indicator configuration', required=False, default='mmx_kpis.toml')
@@ -133,10 +149,6 @@ if __name__ == '__main__':
 	parser.add_argument('-c','--compare', nargs='+', help='Compare experiments', required=False)
 	parser.add_argument('-ppv', '--preprocessed_version', nargs='+', help='Preprocessed version of schedules to use', required=False, default=['0'])
 
-	# Examples of usage
-	#python3 mmx_kpis.py -ex processed_cs10.pp00.so00_c1
-	#python3 mmx_kpis.py -c processed_cs10.pp00.so00_c1 processed_cs10.pp10.so00_c1
-	#python3 mmx_kpis.py -c processed_cs10.pp00.so00_c2 processed_c1_replan -ppv 0 1
 
 
 	# Parse parameters

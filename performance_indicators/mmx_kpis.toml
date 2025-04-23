@@ -32,7 +32,7 @@
 		[[indicators.strategic.demand_served]]
 			variant = "total"
 		[[indicators.strategic.load_factor]]
-			variant = "total"
+			variant = "modes"
 		[[indicators.strategic.resilience_alternatives]]
 			variant = "by_nuts"
 		[[indicators.strategic.buffer_in_itineraries]]

@@ -292,7 +292,7 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
 
 	return df_final
 
-def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timetable_proc,flight_schedules_proc):
+def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timetable_proc_used_internally,flight_schedules_proc):
 
 	def sum_segments(segment,dist):
 		segments = dist[(dist['rail_service_id']==segment['rail_service_id']) & (dist['stop_orig']>=segment['stop_orig']) & (dist['stop_dest']<=segment['stop_dest'])]
@@ -324,26 +324,26 @@ def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timeta
 		df_pax_per_service_rail['rail_service_id'] = df_pax_per_service_rail['service_id'].apply(lambda x: x.split('_')[0])
 		df_pax_per_service_rail['stop_orig'] = df_pax_per_service_rail['service_id'].apply(lambda x: int(x.split('_')[1]))
 		df_pax_per_service_rail['stop_dest'] = df_pax_per_service_rail['service_id'].apply(lambda x: int(x.split('_')[2]))
-		#add some columns to rail_timetable_proc
-		rail_timetable_proc['rail_service_id'] = rail_timetable_proc['service_id'].apply(lambda x: x.split('_')[0])
-		rail_timetable_proc['stop_orig'] = rail_timetable_proc['service_id'].apply(lambda x: int(x.split('_')[1]))
-		rail_timetable_proc['stop_dest'] = rail_timetable_proc['service_id'].apply(lambda x: int(x.split('_')[2]))
+		#add some columns to rail_timetable_proc_used_internally
+		rail_timetable_proc_used_internally['rail_service_id'] = rail_timetable_proc_used_internally['service_id'].apply(lambda x: x.split('_')[0])
+		rail_timetable_proc_used_internally['stop_orig'] = rail_timetable_proc_used_internally['service_id'].apply(lambda x: int(x.split('_')[1]))
+		rail_timetable_proc_used_internally['stop_dest'] = rail_timetable_proc_used_internally['service_id'].apply(lambda x: int(x.split('_')[2]))
 
 		#build a df of successive segments for each rail_service_id, e.g. 1-2, 2-3, 3-4
-		rail_timetable_proc['cumulative_count'] = rail_timetable_proc.groupby(['rail_service_id','stop_orig']).cumcount()
-		dist = rail_timetable_proc[rail_timetable_proc['cumulative_count']==0]
+		rail_timetable_proc_used_internally['cumulative_count'] = rail_timetable_proc_used_internally.groupby(['rail_service_id','stop_orig']).cumcount()
+		dist = rail_timetable_proc_used_internally[rail_timetable_proc_used_internally['cumulative_count']==0]
 
-		#dist = rail_timetable_proc[(rail_timetable_proc['stop_dest']-rail_timetable_proc['stop_orig'])==1]
+		#dist = rail_timetable_proc_used_internally[(rail_timetable_proc_used_internally['stop_dest']-rail_timetable_proc_used_internally['stop_orig'])==1]
 		#dist['cumulative_dist'] = dist.groupby(dist['rail_service_id'])['gcdistance'].cumsum()
 		#print('dist', dist[dist['rail_service_id']=='1185'])
 
 		#distance of a service is a sum of its successive segments, e.g. 1-4 = 1-2 + 2-3 + 3-4
-		rail_timetable_proc['dist'] = rail_timetable_proc.apply(lambda row:sum_segments(row,dist),axis=1)
+		rail_timetable_proc_used_internally['dist'] = rail_timetable_proc_used_internally.apply(lambda row:sum_segments(row,dist),axis=1)
 		#find out the total dist of a rail_service_id and seats
-		capacity = rail_timetable_proc.groupby('rail_service_id')[['dist','seats']].max().reset_index().rename(columns={'dist':'maxdist','seats':'max_seats'})
+		capacity = rail_timetable_proc_used_internally.groupby('rail_service_id')[['dist','seats']].max().reset_index().rename(columns={'dist':'maxdist','seats':'max_seats'})
 		capacity['max_paxkm'] = capacity['max_seats']*capacity['maxdist']
 		#calculate paxkm = pax*dist
-		df_pax_per_service_rail = df_pax_per_service_rail.merge(rail_timetable_proc[['service_id','dist','seats']],how='left',on='service_id')
+		df_pax_per_service_rail = df_pax_per_service_rail.merge(rail_timetable_proc_used_internally[['service_id','dist','seats']],how='left',on='service_id')
 		df_pax_per_service_rail['paxkm'] = df_pax_per_service_rail['dist']*df_pax_per_service_rail['pax']
 
 		#print('df_pax_per_service_rail',df_pax_per_service_rail)
@@ -369,7 +369,7 @@ def load_factor(data,config,pi_config,variant='total'):
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 	pax_assigned_seats_max_target = data['pax_assigned_seats_max_target']
 	dict_seats_service = pax_assigned_seats_max_target[['nid','max_seats']].set_index(['nid'])['max_seats'].to_dict()
-	rail_timetable_proc = data['rail_timetable_proc']
+	rail_timetable_proc_used_internally = data['rail_timetable_proc_used_internally']
 	flight_schedules_proc = data['flight_schedules_proc']
 
 	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered],axis=1)
@@ -405,7 +405,7 @@ def load_factor(data,config,pi_config,variant='total'):
 	#df_pax_per_service = df_pax_per_service.groupby(['service_id', 'type'])['pax'].sum().reset_index()
 
 	# Compute load factor per service
-	loads = compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timetable_proc,flight_schedules_proc)
+	loads = compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timetable_proc_used_internally,flight_schedules_proc)
 	#loads.to_csv('loads.csv')
 
 	#flatten itineraries
@@ -421,7 +421,7 @@ def load_factor(data,config,pi_config,variant='total'):
 
 		return loads['load_factor'].mean()
 
-	modes = loads.groupby(['mode'])['load_factor'].mean()
+	modes = loads.groupby(['mode'])['load_factor'].mean().reset_index()
 	print(modes)
 	if variant == 'modes':
 		return modes
@@ -577,14 +577,14 @@ def resilience_replanned(data,config,pi_config,variant='total'):
 	rows = []
 	flight_schedules_proc0 = data[0]['flight_schedules_proc']
 	flight_schedules_proc1 = data[1]['flight_schedules_proc']
-	rail_timetable_proc0 = data[0]['rail_timetable_proc']#.drop_duplicates(subset=['trip_id'],keep='first')
-	rail_timetable_proc1 = data[1]['rail_timetable_proc']#.drop_duplicates(subset=['trip_id'],keep='first')
-	rail_timetable_proc0['rail_service_id'] = rail_timetable_proc0['service_id'].apply(lambda x: x.split('_')[0])
-	rail_timetable_proc1['rail_service_id'] = rail_timetable_proc1['service_id'].apply(lambda x: x.split('_')[0])
-	#rail_timetable_proc0 = rail_timetable_proc0.drop_duplicates(subset=['rail_service_id'],keep='first')
-	#rail_timetable_proc1 = rail_timetable_proc1.drop_duplicates(subset=['rail_service_id'],keep='first')
+	rail_timetable_proc_used_internally0 = data[0]['rail_timetable_proc_used_internally']#.drop_duplicates(subset=['trip_id'],keep='first')
+	rail_timetable_proc_used_internally1 = data[1]['rail_timetable_proc_used_internally']#.drop_duplicates(subset=['trip_id'],keep='first')
+	rail_timetable_proc_used_internally0['rail_service_id'] = rail_timetable_proc_used_internally0['service_id'].apply(lambda x: x.split('_')[0])
+	rail_timetable_proc_used_internally1['rail_service_id'] = rail_timetable_proc_used_internally1['service_id'].apply(lambda x: x.split('_')[0])
+	#rail_timetable_proc_used_internally0 = rail_timetable_proc_used_internally0.drop_duplicates(subset=['rail_service_id'],keep='first')
+	#rail_timetable_proc_used_internally1 = rail_timetable_proc_used_internally1.drop_duplicates(subset=['rail_service_id'],keep='first')
 
-	print(rail_timetable_proc0.dtypes)
+	print(rail_timetable_proc_used_internally0.dtypes)
 
 	flights = flight_schedules_proc0.merge(flight_schedules_proc1,how='outer',on=['service_id'],indicator='dataframe')
 	new_flights = flights[flights['dataframe']=='right_only']
@@ -593,11 +593,11 @@ def resilience_replanned(data,config,pi_config,variant='total'):
 	same_flights['difference'] = abs((same_flights['sobt_x'] - same_flights['sobt_y']).dt.total_seconds()/60)
 	rescheduled_flights = same_flights[same_flights['difference']>0]
 
-	rail = rail_timetable_proc0.merge(rail_timetable_proc1,how='outer',on=['service_id'],indicator='dataframe')
+	rail = rail_timetable_proc_used_internally0.merge(rail_timetable_proc_used_internally1,how='outer',on=['service_id'],indicator='dataframe')
 	new_rail = rail[rail['dataframe']=='right_only']
 	cancelled_rail = rail[rail['dataframe']=='left_only']
 	same_rail = rail[rail['dataframe']=='both'].copy()
-	same_rail['difference'] = abs((same_rail['departure_time_x'] - same_rail['departure_time_y']).dt.total_seconds()/60)
+	same_rail['difference'] = abs((same_rail['departure_time_utc_x'] - same_rail['departure_time_utc_y']).dt.total_seconds()/60)
 	rescheduled_rail = same_rail[same_rail['difference']>0].drop_duplicates(subset=['rail_service_id_x','origin_x'],keep='first')
 
 	#print(flights,new_flights,cancelled_flights)
@@ -638,6 +638,7 @@ def pax_resilience_replanned(data,config,pi_config,variant='total'):
 	pax_demand_assigned_summary = data[i]['pax_demand_assigned_summary']
 
 	pax_reassigned_to_itineraries['weigthed_delay'] = pax_reassigned_to_itineraries['delay_total_travel_time']*pax_reassigned_to_itineraries['pax_assigned']
+	pax_reassigned_to_itineraries['weigthed_delay_arrival_home'] = pax_reassigned_to_itineraries['delay_arrival_home']*pax_reassigned_to_itineraries['pax_assigned']
 
 	if variant == 'total':
 		rows.append({'field':'total_pax','value':pax_assigned_to_itineraries_options_status_replanned['pax'].sum()})
@@ -651,6 +652,8 @@ def pax_resilience_replanned(data,config,pi_config,variant='total'):
 
 		rows.append({'field':'sum_delay_travel_time','value':pax_reassigned_to_itineraries['weigthed_delay'].sum()})
 		rows.append({'field':'avg_delay_travel_time','value':pax_reassigned_to_itineraries['weigthed_delay'].sum()/pax_reassigned_to_itineraries['pax_assigned'].sum()})
+		rows.append({'field':'sum_delay_arrival_home','value':pax_reassigned_to_itineraries['weigthed_delay_arrival_home'].sum()})
+		rows.append({'field':'avg_delay_arrival_home','value':pax_reassigned_to_itineraries['weigthed_delay_arrival_home'].sum()/pax_reassigned_to_itineraries['pax_assigned'].sum()})
 		rows.append({'field':'same_modes_percent','value':(pax_reassigned_to_itineraries['same_modes']*pax_reassigned_to_itineraries['pax_assigned']).sum()/pax_reassigned_to_itineraries['pax_assigned'].sum()})
 
 		rows.append({'field':'pax_no_option','value':pax_assigned_to_itineraries_replanned_stranded[pax_assigned_to_itineraries_replanned_stranded['stranded_type']=='no_option']['pax_stranded'].sum()})
