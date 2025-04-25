@@ -34,6 +34,12 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		print('avg',kpi)
 		return kpi
 
+	if variant == 'avg_connecting_itineraries':
+		df = df.dropna(subset=['nid_f2'])
+		kpi = df['weigthed_total_time'].sum()/df['pax'].sum()
+		print('avg_connecting_itineraries',kpi)
+		return kpi
+
 	if variant == 'avg_by_nuts':
 		#group by NUTS2/1
 		#
@@ -193,6 +199,10 @@ def demand_served(data,config,pi_config,variant='total'):
 	if variant == 'total':
 		return total
 
+	if variant == 'total_connecting_itineraries':
+		df = pax_assigned_to_itineraries_options.dropna(subset=['nid_f2']).copy()
+		total = df['pax'].sum()/demand['trips'].sum()
+		return total
 
 	#grouping by nuts
 	demand_nuts = demand.groupby(['origin','destination'])['trips'].sum().reset_index()
@@ -201,7 +211,7 @@ def demand_served(data,config,pi_config,variant='total'):
 	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax']>0]
 	grouped = df.groupby(['origin','destination'])['pax'].sum().reset_index()
 	grouped = grouped.merge(demand_nuts,how='left',on=['origin','destination'])
-	grouped['perc'] = grouped['pax']/grouped['demand']
+	grouped['perc'] = np.minimum(grouped['pax'] / grouped['demand'], 1)
 	print(grouped[['origin','destination','pax','demand','perc']])
 
 	if variant == 'by_nuts':

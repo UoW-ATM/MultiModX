@@ -14,7 +14,7 @@
 			plot = true
 			#name = "my_sum"
 		[[indicators.strategic.strategic_total_journey_time]]
-			variant = "avg"
+			variant = "avg_connecting_itineraries"
 		[[indicators.strategic.strategic_total_journey_time]]
 			variant = "avg_by_nuts"
 			plot = true
@@ -30,7 +30,7 @@
 		[[indicators.strategic.pax_time_efficiency]]
 			variant = "total"
 		[[indicators.strategic.demand_served]]
-			variant = "total"
+			variant = "total_connecting_itineraries"
 		[[indicators.strategic.load_factor]]
 			variant = "modes"
 		[[indicators.strategic.resilience_alternatives]]
