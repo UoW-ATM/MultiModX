@@ -7,7 +7,7 @@ import tomli
 import numpy as np
 import matplotlib.pyplot as plt
 from kpi_lib_strategic import strategic_total_journey_time, diversity_of_destinations, modal_share, pax_time_efficiency, demand_served, load_factor, resilience_alternatives, catchment_area, cost_per_user,co2_emissions, buffer_in_itineraries, seamless_of_travel, pax_processes_time, resilience_replanned, pax_resilience_replanned
-from kpi_lib_tactical import flight_arrival_delay, kerb2gate_time, total_journey_time, variability
+from kpi_lib_tactical import flight_arrival_delay, kerb2gate_time, total_journey_time, variability, total_arrival_delay, stranded_pax, ratio_stranded_pax, missed_connections
 
 def read_strategic_output(path_to_strategic_output,preprocessed_version):
 	pax_assigned_to_itineraries_options = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_to_itineraries_options_'+preprocessed_version+'.csv'))
@@ -23,15 +23,16 @@ def read_strategic_output(path_to_strategic_output,preprocessed_version):
 	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally,'flight_schedules_proc':flight_schedules_proc, 'nuts_regional_archetype_info':nuts_regional_archetype_info}
 	return data
 
-def read_tactical_data(path_to_tactical_output,path_to_tactical_input):
+def read_tactical_data(path_to_tactical_output,tactical_output_name,iteration,path_to_tactical_input):
 
-	df_pax = pd.read_csv(Path(path_to_tactical_output) / 'output_pax.csv.gz',index_col=0,low_memory=False)
-	df_flights = pd.read_csv(Path(path_to_tactical_output) / 'output_flights.csv.gz',index_col=0,low_memory=False)
+	postprocessing_pax = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'postprocessing_pax.csv',index_col=0,low_memory=False)
+	pax_not_supported = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'pax_not_supported.csv',index_col=0,low_memory=False)
+	df_flights = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'output_flights.csv.gz',index_col=0,low_memory=False)
 	airport_processes = pd.read_parquet(Path(path_to_tactical_input) / 'data' / 'airports' / 'airport_processes.parquet')
 	#input_pax = pd.read_parquet(Path(path_to_tactical_input) / 'case_studies' / 'case_study=0' / 'data' / 'pax' / 'pax_assigned_tactical_0.parquet')
 	rail_stations_processes = pd.read_parquet(Path(path_to_tactical_input) / 'case_studies' / 'case_study=0' / 'data' / 'ground_mobility' / 'rail_stations_processes_v0.1.parquet')
 
-	data = {'pax':df_pax,'flights':df_flights,'airport_processes':airport_processes,'rail_stations_processes':rail_stations_processes}
+	data = {'postprocessing_pax':postprocessing_pax, 'pax_not_supported':pax_not_supported,'flights':df_flights,'airport_processes':airport_processes,'rail_stations_processes':rail_stations_processes}
 	return data
 
 def recreate_output_folder(folder_path: Path):
@@ -55,7 +56,7 @@ def read_config(toml_path):
 
 	return toml_config
 
-def save_results(results):
+def save_results(results,filename='indicators.csv'):
 	res_list = []
 	#print(results)
 	for indicator, variants in results.items():
@@ -67,7 +68,7 @@ def save_results(results):
 				#print('x',variant['val'])
 				res_list.append({'indicator':indicator,'variant':variant['name'],'value':variant['val']})
 	if len(res_list)>0:
-		pd.DataFrame(res_list).to_csv(Path(config['output']['path_to_output']) / ('indicators.csv'),index=False)
+		pd.DataFrame(res_list).to_csv(Path(config['output']['path_to_output']) / (filename),index=False)
 
 def read_results(paths,config):
 	plot_column = 'strategic_total_journey_time__sum'
@@ -170,7 +171,7 @@ if __name__ == '__main__':
 		data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],config['input']['preprocessed_version'])
 
 
-		data_tactical = read_tactical_data(config['input']['path_to_tactical_output'],config['input']['path_to_tactical_input'])
+
 		results = {}
 
 		for indicator, vals in config['indicators']['strategic'].items():
@@ -209,7 +210,38 @@ if __name__ == '__main__':
 					val = pax_processes_time(data_strategic,config,variant,variant=variant['variant'])
 				results[indicator].append({'name':variant['name'],'val':val})
 
-			save_results(results)
+		save_results(results)
+
+	if 'tactical' in config['indicators']:
+		iterations = config['input']['iterations']
+		data_tactical = []
+		for iteration in range(iterations):
+			data_tactical.append(read_tactical_data(config['input']['path_to_tactical_output'],config['input']['tactical_output_name'],iteration,config['input']['path_to_tactical_input']))
+		results = {}
+
+		for indicator, vals in config['indicators']['tactical'].items():
+			results[indicator] = []
+			for variant in vals:
+				if variant['variant'] is False:
+					continue
+				if 'name' not in variant:
+					variant['name'] = variant['variant']
+				if indicator == 'total_arrival_delay':
+					val = total_arrival_delay(data_tactical,config,variant,variant=variant['variant'])
+				if indicator == 'stranded_pax':
+					val = stranded_pax(data_tactical,config,variant,variant=variant['variant'])
+				if indicator == 'ratio_stranded_pax':
+					val = ratio_stranded_pax(data_tactical,config,variant,variant=variant['variant'])
+				if indicator == 'missed_connections':
+					val = missed_connections(data_tactical,config,variant,variant=variant['variant'])
+				if indicator == 'total_journey_time':
+					val = total_journey_time(data_tactical,config,variant,variant=variant['variant'])
+				if indicator == 'flight_arrival_delay':
+					val = flight_arrival_delay(data_tactical,config,variant,variant=variant['variant'])
+				if indicator == 'variability':
+					val = variability(data_tactical,config,variant,variant=variant['variant'])
+				results[indicator].append({'name':variant['name'],'val':val})
+		save_results(results,filename='indicators_tactical.csv')
 
 	if args.compare is not None:
 		print(args.compare)

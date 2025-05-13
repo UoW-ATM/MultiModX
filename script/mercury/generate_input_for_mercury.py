@@ -12,6 +12,7 @@ def find_similar_fp(fp_pool,fp_pool_point_m,missing,schedules,path_to_mercury_in
 	seats['B789']=333
 	print('seats',seats)
 
+
 	compatible_ac = {ac:[] for ac in seats}
 	for ac in seats:
 		for ac2 in seats:
@@ -64,10 +65,10 @@ def find_similar_fp(fp_pool,fp_pool_point_m,missing,schedules,path_to_mercury_in
 	schedules['airline'] = schedules['airline'].replace('CDN','IBB')
 	#print(schedules)
 	schedules.to_csv(path_to_mercury_input+'schedules.csv')
-	schedules.to_parquet(path_to_mercury_input+'flight_schedules_tactical_0.parquet')
-	new_fp_pool = pd.concat([fp_pool]+selecteds)
-	new_fp_pool.to_parquet(path_to_mercury_input+'new_fp_pool.parquet')
-	new_fp_pool.to_csv(path_to_mercury_input+'new_fp_pool.csv')
+	schedules.to_parquet(path_to_mercury_input+'flight_schedules_tactical_1.parquet')
+	# new_fp_pool = pd.concat([fp_pool]+selecteds)
+	# new_fp_pool.to_parquet(path_to_mercury_input+'new_fp_pool.parquet')
+	# new_fp_pool.to_csv(path_to_mercury_input+'new_fp_pool.csv')
 
 def recreate_output_folder(folder_path: Path):
     """
@@ -82,43 +83,46 @@ def recreate_output_folder(folder_path: Path):
 
     folder_path.mkdir(parents=True, exist_ok=True)
 
-experiment = 'processed_cs10.pp00.so00_c1'
-path_to_data = './CS10/v=0.13/'+experiment+'/paths_itineraries/'
+experiment = 'processed_cs10.pp20.nd02.so10.01'
+path_to_data = '../../../data/CS10/v=0.16/output/'+experiment+'/paths_itineraries/'
 path_to_mercury_input = path_to_data+'../mercury_input/'
 recreate_output_folder(Path(path_to_mercury_input))
 
-pax = pd.read_csv(path_to_data+'pax_assigned_tactical_0.csv')
+pax = pd.read_csv(path_to_data+'pax_assigned_tactical_1.csv')
 if 'leg3' not in pax.columns:
 	pax['leg3'] = np.nan
 	#print(pax[['leg1','leg2']])
-pax['gtfs_pre'] = 'gtfs_es_UIC_v1.0.zip'
-pax['gtfs_post'] = 'gtfs_es_UIC_v1.0.zip'
+pax['gtfs_pre'] = 'gtfs_es_UIC_v2.3.zip'
+pax['gtfs_post'] = 'gtfs_es_UIC_v2.3.zip'
 pax['rail_pre'] = pax['rail_pre'].apply(lambda x: x.split('_')[0] if '_' in str(x) else x)
 pax['rail_post'] = pax['rail_post'].apply(lambda x: x.split('_')[0] if '_' in str(x) else x)
 pax = pax.rename(columns={'nid_x':'nid'})
-pax.to_parquet(path_to_mercury_input+'pax_assigned_tactical_0.parquet')
-pax.to_csv(path_to_mercury_input+'pax_assigned_tactical_0.csv')
+pax.to_parquet(path_to_mercury_input+'pax_assigned_tactical_1.parquet')
+pax.to_csv(path_to_mercury_input+'pax_assigned_tactical_1.csv')
 
 
 
 
-filename = 'flight_schedules_tactical_0'
+filename = 'flight_schedules_tactical_1'
 f = pd.read_csv(path_to_data+filename+'.csv', parse_dates=['sobt','sibt'])
-f_filtered = f[(f['nid'].isin(pax['leg1'])) | (f['nid'].isin(pax['leg2']))]
+f_filtered = f[(f['nid'].isin(pax['leg1'])) | (f['nid'].isin(pax['leg2'])) | (f['nid'].isin(pax['leg3']))]
 #f_filtered.to_parquet(path_to_mercury_input+filename+'_intra.parquet')
 #f_filtered.to_csv(path_to_data+filename+'_filtered.csv')
 f_filtered['domestic'] = f_filtered.apply(lambda row: ((row['origin'][:2] in ['GC','LE']) or (row['origin']=='GEML')) and ((row['destination'][:2] in ['GC','LE']) or (row['origin']=='GEML')), axis=1)
 intra = f_filtered[f_filtered['domestic']==True]
-#print('flight_schedules_tactical_0',f_filtered,f_filtered.dtypes)
+#print('flight_schedules_tactical_1',f_filtered,f_filtered.dtypes)
 #print(intra)
 
-route_pool = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/route_pool.parquet')
+route_pool = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/route_pool_new.parquet')
 fp_pool = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/flight_plans_pool/fp_pool_m_w_tv.parquet')
 fp_pool_point_m = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/flight_plans_pool/fp_pool_point_m.parquet')
 airlines_static = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/airlines/airline_static_old1409.parquet')
 #airlines_static.to_csv(path_to_mercury_input+'airlines_static.csv')
 eaman = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/eaman/eaman_definition_old1409.parquet')
-new_eaman = eaman.iloc[[0]]
+row = ['D','GCLP',20,12]
+row_df = pd.DataFrame(columns=eaman.columns, data=[row])
+# new_eaman = eaman.iloc[[0]]
+new_eaman = pd.concat([eaman,row_df])
 new_eaman.to_parquet(path_to_mercury_input+'eaman.parquet')
 new_eaman.to_csv(path_to_mercury_input+'eaman.csv')
 
@@ -133,7 +137,7 @@ missing.to_csv(path_to_mercury_input+'missing.csv')
 find_similar_fp(fp_pool,fp_pool_point_m,missing,f_filtered,path_to_mercury_input,airlines_static)
 
 
-connecting_times = pd.read_csv(path_to_data+'../transition_layer_connecting_times.csv')
+connecting_times = pd.read_csv(path_to_data+'../processed/transition_layer_connecting_times.csv')
 
 a_to_b = pd.DataFrame()
 a_to_b['origin'] = connecting_times['origin']
@@ -184,8 +188,8 @@ airports.to_parquet(path_to_mercury_input+'airport_info_static.parquet')
 #print(bada)
 #bada.to_csv('bada.csv')
 
-airport_processes = pd.read_csv(path_to_data+'../../infrastructure/pax_processes/airport_processes_v0.1.csv')
-airport_codes = pd.read_csv(path_to_data+'../../infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv')
+airport_processes = pd.read_csv(path_to_data+'../../../infrastructure/pax_processes/airport_processes_v0.1.csv')
+airport_codes = pd.read_csv(path_to_data+'../../../infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv')
 airport_processes = airport_processes.merge(airport_codes[['IATA','ICAO']],how='left', left_on='airport',right_on='IATA').rename(columns={"ICAO": "icao_id", }).drop(['IATA','airport'], axis=1)
 
 df = pd.DataFrame()
@@ -200,5 +204,5 @@ airport_processes['g2k_std'] = 0.0
 airport_processes.to_csv(path_to_mercury_input+'airport_processes.csv')
 airport_processes.to_parquet(path_to_mercury_input+'airport_processes.parquet')
 
-rail_stations_processes = pd.read_csv(path_to_data+'../../infrastructure/pax_processes/rail_stations_processes_v0.1.csv')
+rail_stations_processes = pd.read_csv(path_to_data+'../../../infrastructure/pax_processes/rail_stations_processes_v0.1.csv')
 rail_stations_processes.to_parquet(path_to_mercury_input+'rail_stations_processes_v0.1.parquet')

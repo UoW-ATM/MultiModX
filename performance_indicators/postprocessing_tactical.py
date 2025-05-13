@@ -6,21 +6,21 @@ import ast
 import random
 import tomli
 
-def read_strategic_output(path_to_strategic_output):
-	pax_assigned_to_itineraries_options = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_to_itineraries_options_0.csv')
-	possible_itineraries_clustered_pareto_filtered = pd.read_csv(Path(path_to_strategic_output) / 'possible_itineraries_clustered_pareto_filtered_0.csv')
-	demand = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / 'demand'/'demand_ES_MD_intra_v0.4.csv')
-	pax_assigned_seats_max_target = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_seats_max_target_0.csv')
-	pax_assigned_tactical = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_tactical_0.csv')
-	pax_assigned_tactical_not_supported = pd.read_csv(Path(path_to_strategic_output) / 'pax_assigned_tactical_not_supported_0.csv')
+def read_strategic_output(path_to_strategic_output,ppv):
+	pax_assigned_to_itineraries_options = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_to_itineraries_options_'+ppv+'.csv'))
+	possible_itineraries_clustered_pareto_filtered = pd.read_csv(Path(path_to_strategic_output) / ('possible_itineraries_clustered_pareto_filtered_'+ppv+'.csv'))
+	demand = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / '..' / 'demand'/'demand_ES_MD_intra_v0.4.csv')
+	pax_assigned_seats_max_target = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_seats_max_target_'+ppv+'.csv'))
+	pax_assigned_tactical = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_tactical_'+ppv+'.csv'))
+	pax_assigned_tactical_not_supported = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_tactical_not_supported_'+ppv+'.csv'))
 
 	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported}
 	return data
 
-def read_tactical_data(path_to_tactical_output,path_to_tactical_input):
+def read_tactical_data(path_to_tactical_output,tactical_output_name,iteration,path_to_tactical_input):
 
-	df_pax = pd.read_csv(Path(path_to_tactical_output) / 'output_pax.csv.gz',index_col=0,low_memory=False)
-	df_flights = pd.read_csv(Path(path_to_tactical_output) / 'output_flights.csv.gz',index_col=0,low_memory=False)
+	df_pax = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'output_pax.csv.gz',index_col=0,low_memory=False)
+	df_flights = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'output_flights.csv.gz',index_col=0,low_memory=False)
 	airport_processes = pd.read_parquet(Path(path_to_tactical_input) / 'data' / 'airports' / 'airport_processes.parquet')
 	#input_pax = pd.read_parquet(Path(path_to_tactical_input) / 'case_studies' / 'case_study=0' / 'data' / 'pax' / 'pax_assigned_tactical_0.parquet')
 	rail_stations_processes = pd.read_parquet(Path(path_to_tactical_input) / 'case_studies' / 'case_study=0' / 'data' / 'ground_mobility' / 'rail_stations_processes_v0.1.parquet')
@@ -28,7 +28,7 @@ def read_tactical_data(path_to_tactical_output,path_to_tactical_input):
 	data = {'pax':df_pax,'flights':df_flights,'airport_processes':airport_processes,'rail_stations_processes':rail_stations_processes}
 	return data
 
-def add_airport_processes(df_pax,airport_processes,pax_assigned_tactical,config):
+def add_airport_processes(df_pax,airport_processes,pax_assigned_tactical,iteration,config):
 
 	#adding airport processes to the output from mercury for air/multimodal pax
 
@@ -49,12 +49,14 @@ def add_airport_processes(df_pax,airport_processes,pax_assigned_tactical,config)
 	df_pax = pd.concat([df,air_pax])
 
 	#add access/egress time from input
-	df_pax = df_pax.merge(pax_assigned_tactical[['nid_x','origin','destination','access_time','egress_time']], left_on=['original_id'], right_on=['nid_x'], how='left', indicator=True)
+	pax_assigned_tactical['nid_x'] = pax_assigned_tactical['nid_x'].astype(str)
+	df_pax['original_id'] = df_pax['original_id'].astype(str)
+	df_pax = df_pax.merge(pax_assigned_tactical[['nid_x','origin','destination','d2i_time','i2d_time']], left_on=['original_id'], right_on=['nid_x'], how='left', indicator=True)
 
-	df_pax['total_time'] = df_pax['kerb2gate_time']+df_pax['tot_journey_time']+df_pax['gate2kerb_time']+df_pax['access_time']+df_pax['egress_time']
+	df_pax['total_time'] = df_pax['kerb2gate_time']+df_pax['tot_journey_time']+df_pax['gate2kerb_time']+df_pax['d2i_time']+df_pax['i2d_time']
 	df_pax['source'] = 'mercury'
 	print(df_pax)
-	df_pax.to_csv('pax.csv')
+	df_pax.to_csv(Path(config['input']['path_to_tactical_output']) / (config['input']['tactical_output_name']+'_'+str(iteration)) / 'postprocessing_pax.csv')
 
 def airport_process_time_generator(pax,config,airport_processes,process='k2g'):
 
@@ -65,6 +67,9 @@ def airport_process_time_generator(pax,config,airport_processes,process='k2g'):
 		pax['kerb2gate_time'] = pax.apply(lambda row: norm(loc=airport_processes.loc[airport_processes['icao_id']==row['airport1'],'k2g'], scale=airport_processes.loc[airport_processes['icao_id']==row['airport1'],'k2g_std']).rvs()+norm(loc=0., scale=airports__taxi_estimation_scale).rvs(), axis=1)
 	elif process == 'g2k':
 		print('generating gate2kerb_time')
+		if 'airport4' not in pax.columns:
+			pax['airport4'] = None
+
 		pax['airport_last'] = pax.apply(lambda row: row['airport4'] if not pd.isnull(row['airport4']) else row['airport3'] if not pd.isnull(row['airport3']) else row['airport2'], axis=1)
 		pax['gate2kerb_time'] = pax.apply(lambda row: norm(loc=airport_processes.loc[airport_processes['icao_id']==row['airport_last'],'g2k'], scale=airport_processes.loc[airport_processes['icao_id']==row['airport_last'],'g2k_std']).rvs()+norm(loc=0., scale=airports__taxi_estimation_scale).rvs(), axis=1)
 	print(pax[['kerb2gate_time','gate2kerb_time']])
@@ -90,11 +95,11 @@ def rail_station_process_time_generator(pax,rail_stations_processes):
 	print(pax.head())
 	return pax
 
-def pax_not_supported(df_pax,rail_stations_processes,pax_assigned_to_itineraries_options,config):
+def pax_not_supported(df_pax,rail_stations_processes,pax_assigned_to_itineraries_options,iteration,config):
 
-	pax_rail = df_pax[df_pax['type'].isin(['rail','rail_rail'])].copy()
+	pax_rail = df_pax[df_pax['type'].isin(['rail','rail_rail','rail_rail_rail','rail_flight_rail'])].copy()
 	pax = rail_station_process_time_generator(pax_rail,rail_stations_processes)
-	pax = pax.merge(pax_assigned_to_itineraries_options[['option_number','total_time']], how='left', left_on='option_number', right_on='option_number')
+	pax = pax.merge(pax_assigned_to_itineraries_options[['pax_group_id','total_time']], how='left', left_on='pax_group_id', right_on='pax_group_id')
 	pax = rail_delay(pax,config)
 	pax['total_time'] = pax['total_time'] + pax['train_delay']
 	pax['source'] = 'postprocessing'
@@ -102,14 +107,19 @@ def pax_not_supported(df_pax,rail_stations_processes,pax_assigned_to_itineraries
 	pax['tot_arrival_delay'] = pax['train_delay']
 	pax['modified_itinerary'] = False
 	pax['final_destination_reached'] = True
-	pax.to_csv('pax_not_supported.csv')
+
+	#other pax not supported
+	other_pax = df_pax[df_pax['type'].isin(['rail_rail_flight','flight_rail_flight', 'flight_rail_rail'])].copy()
+	other_pax = other_pax.merge(pax_assigned_to_itineraries_options[['pax_group_id','total_time']], how='left', left_on='pax_group_id', right_on='pax_group_id')
+	pax = pd.concat([pax,other_pax])
+	pax.to_csv(Path(config['input']['path_to_tactical_output']) / (config['input']['tactical_output_name']+'_'+str(iteration)) / 'pax_not_supported.csv')
 
 def rail_delay(df_pax,config):
 
 	delay_prob = config['paras']['trains']['delay_prob'] #probability of train being delayed
 	delay_mean = config['paras']['trains']['delay_mean'] #mean delay value
 	delay_std = config['paras']['trains']['delay_std']
-	df_pax['nid_last'] = df_pax.apply(lambda row: row['nid_f1'] if pd.isnull(row['nid_f2']) else row['nid_f2'], axis=1)
+	df_pax['nid_last'] = df_pax.apply(lambda row: row['nid_f1'] if pd.isnull(row['nid_f2']) else row['nid_f2'] if pd.isnull(row['nid_f3']) else row['nid_f3'], axis=1)
 	trains = set(df_pax['nid_last'])
 	delay={train:norm(loc=delay_mean,scale=delay_std).rvs() for train in trains if random.random()<=delay_prob}
 	df_pax['train_delay'] = df_pax.apply(lambda row: delay[row['nid_last']] if row['nid_last'] in delay else 0, axis=1)
@@ -131,11 +141,13 @@ if __name__ == '__main__':
 	print ('postprocessing tactical output... ')
 
 	config = read_config('postprocessing.toml')
+	iterations = config['input']['iterations']
+	ppv = str(config['input']['ppv'])
 	#print(config)
-	data_strategic = read_strategic_output(config['input']['path_to_strategic_output'])
+	data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],ppv)
 
+	for iteration in range(iterations):
+		data_tactical = read_tactical_data(config['input']['path_to_tactical_output'],config['input']['tactical_output_name'],iteration,config['input']['path_to_tactical_input'])
 
-	data_tactical = read_tactical_data(config['input']['path_to_tactical_output'],config['input']['path_to_tactical_input'])
-
-	add_airport_processes(data_tactical['pax'],data_tactical['airport_processes'],data_strategic['pax_assigned_tactical'],config)
-	pax_not_supported(data_strategic['pax_assigned_tactical_not_supported'],data_tactical['rail_stations_processes'],data_strategic['pax_assigned_to_itineraries_options'],config)
+		add_airport_processes(data_tactical['pax'],data_tactical['airport_processes'],data_strategic['pax_assigned_tactical'],iteration,config)
+		pax_not_supported(data_strategic['pax_assigned_tactical_not_supported'],data_tactical['rail_stations_processes'],data_strategic['pax_assigned_to_itineraries_options'],iteration,config)

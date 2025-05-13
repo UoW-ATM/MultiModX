@@ -7,19 +7,24 @@ from scipy.stats import norm, lognorm, expon
 import ast
 import random
 
-def flight_arrival_delay(df_flights):
-
+def flight_arrival_delay(data,config,pi_config,variant="total"):
+	results = []
 	thresholds = [0,15,30,45,60]
-	results = {}
-	#drop cancelled flights
-	df_flights_filtered = df_flights.dropna(subset=['arrival_delay_min'])
-	for threshold in thresholds:
-		df = df_flights_filtered[df_flights_filtered['arrival_delay_min']>=threshold]
-		kpi = df['arrival_delay_min'].count()/df_flights['arrival_delay_min'].count()
-		results[threshold] = kpi
+	for iteration, data_iter in enumerate(data):
+		df_flights = data_iter['flights']
 
-	print(results)
-	return results
+		res = {}
+		#drop cancelled flights
+		df_flights_filtered = df_flights.dropna(subset=['arrival_delay_min'])
+		for threshold in thresholds:
+			df = df_flights_filtered[df_flights_filtered['arrival_delay_min']>=threshold]
+			kpi = df['arrival_delay_min'].count()/df_flights['arrival_delay_min'].count()
+			res[threshold] = kpi
+
+		print(res)
+		results.append(res)
+	if variant == 'total':
+		return pd.DataFrame(results)
 
 def kerb2gate_time(df_pax,airport_processes):
 	print('kerb2gate_time')
@@ -53,57 +58,185 @@ def gate2kerb_time(df_pax,airport_processes):
 	kpi = df['weigthed_time'].sum()/df['n_pax'].sum()
 	print('gate2kerb_time',kpi)
 
-def total_arrival_delay(df_pax):
+def total_arrival_delay(data,config,pi_config,variant="total"):
 	print('tot_arrival_delay')
-	df = df_pax[df_pax['tot_arrival_delay']<10000].copy()
+	results = []
+	for iteration, data_iter in enumerate(data):
+		df_pax0 = data_iter['postprocessing_pax']
+		df_pax1 = data_iter['pax_not_supported']
+		df_pax = pd.concat([df_pax0,df_pax1])
 
-	#weigth total_time with pax
-	df['weigthed_time'] = df['tot_arrival_delay']*df['n_pax']
-	missed_connection = df[df['modified_itinerary']==True]
+		df = df_pax[df_pax['tot_arrival_delay']<10000].copy()
 
-	kpi = df['weigthed_time'].sum()/df['n_pax'].sum()
-	print(kpi)
+		#weigth total_time with pax
+		df['weigthed_time'] = df['tot_arrival_delay']*df['n_pax']
+		missed_connection = df[df['modified_itinerary']==True]
 
-def stranded_pax(df_pax):
+		kpi = df['weigthed_time'].sum()/df['n_pax'].sum()
+		print(kpi)
+		results.append(kpi)
+	if variant == 'total':
+		return np.mean(results)
+	if variant == 'missed_connection':
+		results = []
+		for iteration, data_iter in enumerate(data):
+			df_pax0 = data_iter['postprocessing_pax']
+			df_pax1 = data_iter['pax_not_supported']
+			df_pax = pd.concat([df_pax0,df_pax1])
+
+			df = df_pax[(df_pax['tot_arrival_delay']<10000) & (df_pax['modified_itinerary']==True)].copy()
+
+			#weigth total_time with pax
+			df['weigthed_time'] = df['tot_arrival_delay']*df['n_pax']
+			missed_connection = df[df['modified_itinerary']==True]
+			if df['n_pax'].sum() > 0:
+				kpi = df['weigthed_time'].sum()/df['n_pax'].sum()
+				print(kpi)
+				results.append(kpi)
+			else:
+				continue
+		return np.mean(results)
+
+def stranded_pax(data,config,pi_config,variant="total"):
 	print('stranded_pax')
-	df = df_pax.copy()
+	results = []
+	for iteration, data_iter in enumerate(data):
+		df_pax0 = data_iter['postprocessing_pax']
+		df_pax1 = data_iter['pax_not_supported']
+		df_pax = pd.concat([df_pax0,df_pax1])
+		df = df_pax.copy()
 
-	#weigth total_time with pax
+		#weigth total_time with pax
 
-	stranded = df[df['final_destination_reached']==False]
+		stranded = df[df['final_destination_reached']==False]
 
-	kpi = stranded['n_pax'].sum()/df['n_pax'].sum()
-	print(kpi)
+		kpi = stranded['n_pax'].sum()/df['n_pax'].sum()
+		print(kpi)
+		results.append(kpi)
+	if variant == 'total':
+		return np.mean(results)
+	if variant == 'missed_air2rail':
+		results = []
+		for iteration, data_iter in enumerate(data):
+			df_pax0 = data_iter['postprocessing_pax']
+			df_pax1 = data_iter['pax_not_supported']
+			df_pax = pd.concat([df_pax0,df_pax1])
+			df = df_pax.copy()
 
-def ratio_stranded_pax(df_pax):
+			#weigth total_time with pax
+			stranded = df[(df['final_destination_reached']==False)]
+			strandedx = df[(df['final_destination_reached']==False) & (df['missed_air2rail']==True)]
+
+			kpi = strandedx['n_pax'].sum()/stranded['n_pax'].sum()
+			print(kpi)
+			results.append(kpi)
+		return np.mean(results)
+	if variant == 'missed_rail2air':
+		results = []
+		for iteration, data_iter in enumerate(data):
+			df_pax0 = data_iter['postprocessing_pax']
+			df_pax1 = data_iter['pax_not_supported']
+			df_pax = pd.concat([df_pax0,df_pax1])
+			df = df_pax.copy()
+
+			#weigth total_time with pax
+			stranded = df[(df['final_destination_reached']==False)]
+			strandedx = df[(df['final_destination_reached']==False) & (df['missed_rail2air']==True)]
+
+			kpi = strandedx['n_pax'].sum()/stranded['n_pax'].sum()
+			print(kpi)
+			results.append(kpi)
+		return np.mean(results)
+	if variant == 'abs':
+		results = []
+		for iteration, data_iter in enumerate(data):
+			df_pax0 = data_iter['postprocessing_pax']
+			df_pax1 = data_iter['pax_not_supported']
+			df_pax = pd.concat([df_pax0,df_pax1])
+			df = df_pax.copy()
+
+			#weigth total_time with pax
+
+			stranded = df[df['final_destination_reached']==False]
+
+			kpi = stranded['n_pax'].sum()
+			print(kpi)
+			results.append(kpi)
+		return np.mean(results)
+
+def ratio_stranded_pax(data,config,pi_config,variant="total"):
 	print('ratio_stranded_pax')
-	df = df_pax.copy()
+	results = []
+	for iteration, data_iter in enumerate(data):
+		df_pax0 = data_iter['postprocessing_pax']
+		df_pax1 = data_iter['pax_not_supported']
+		df_pax = pd.concat([df_pax0,df_pax1])
+		df = df_pax.copy()
 
-	#weigth total_time with pax
+		#weigth total_time with pax
 
-	stranded = df[df['final_destination_reached']==False]
-	missed_connection = df[df['modified_itinerary']==True]
+		stranded = df[df['final_destination_reached']==False]
+		missed_connection = df[df['modified_itinerary']==True]
 
-	kpi = stranded['n_pax'].sum()/missed_connection['n_pax'].sum()
-	print(kpi)
+		kpi = stranded['n_pax'].sum()/missed_connection['n_pax'].sum()
+		print(kpi)
+		results.append(kpi)
+	if variant == 'total':
+		return np.mean(results)
 
-def missed_connections(df_pax):
+def missed_connections(data,config,pi_config,variant="total"):
 	print('missed_connections')
-	df = df_pax.copy()
+	results = []
+	for iteration, data_iter in enumerate(data):
+		df_pax0 = data_iter['postprocessing_pax']
+		df_pax1 = data_iter['pax_not_supported']
+		df_pax = pd.concat([df_pax0,df_pax1])
+		df = df_pax.copy()
 
 
-	missed_connection = df[df['modified_itinerary']==True]
+		missed_connection = df[df['modified_itinerary']==True]
 
-	kpi = missed_connection['n_pax'].sum()/df['n_pax'].sum()
-	print(kpi)
+		kpi = missed_connection['n_pax'].sum()/df['n_pax'].sum()
+		print(kpi)
+		results.append(kpi)
+	if variant == 'total':
+		return np.mean(results)
+	if variant == 'abs':
+		results = []
+		for iteration, data_iter in enumerate(data):
+			df_pax0 = data_iter['postprocessing_pax']
+			df_pax1 = data_iter['pax_not_supported']
+			df_pax = pd.concat([df_pax0,df_pax1])
+			df = df_pax.copy()
 
-def total_journey_time(df_pax,airport_processes,pax_assigned_tactical):
+			#weigth total_time with pax
 
+			missed_connection = df[df['modified_itinerary']==True]
 
-	df_pax['weigthed_time'] = df_pax['total_time']*df_pax['n_pax']
-	print(df_pax)
-	df_pax.to_csv('xxx.csv')
+			kpi = missed_connection['n_pax'].sum()
+			print(kpi)
+			results.append(kpi)
+		return np.mean(results)
 
+def total_journey_time(data,config,pi_config,variant="total"):
+	results = []
+	for iteration, data_iter in enumerate(data):
+		df_pax0 = data_iter['postprocessing_pax']
+		df_pax1 = data_iter['pax_not_supported']
+		df_pax = pd.concat([df_pax0,df_pax1])
+
+		df_pax2 = df_pax[df_pax['tot_arrival_delay']<10000].copy()
+		# df_pax2.to_csv('xxx.csv')
+		# print('iteration',iteration)
+		# print(df_pax2[df_pax2['total_time']=='[]'])
+		df_pax2['total_time'] = df_pax2['total_time'].astype(float)
+		df_pax2['weigthed_time'] = df_pax2['total_time']*df_pax2['n_pax']
+		# print(df_pax)
+		#
+		kpi = df_pax2['weigthed_time'].sum()
+		results.append(kpi)
+	if variant == 'total':
+		return np.mean(results)
 
 
 
@@ -118,19 +251,26 @@ def ground_mobility(df_pax):
 	kpi = df['weigthed_time'].sum()/df['n_pax'].sum()
 	print(kpi)
 
-def variability(df_pax):
-
+def variability(data,config,pi_config,variant="total"):
+	results = []
 	thresholds = [0,15,30,45,60]
-	results = {}
-	#drop stranded pax
-	df = df_pax[df_pax['tot_arrival_delay']<10000].copy()
-	for threshold in thresholds:
-		df_t = df[df['tot_arrival_delay']>=threshold]
-		kpi = df_t['n_pax'].sum()/df_pax['n_pax'].sum()
-		results[threshold] = kpi
+	for iteration, data_iter in enumerate(data):
+		df_pax0 = data_iter['postprocessing_pax']
+		df_pax1 = data_iter['pax_not_supported']
+		df_pax = pd.concat([df_pax0,df_pax1])
 
-	print(results)
-	return results
+		res = {}
+		#drop stranded pax
+		df = df_pax[df_pax['tot_arrival_delay']<10000].copy()
+		for threshold in thresholds:
+			df_t = df[df['tot_arrival_delay']>=threshold]
+			kpi = df_t['n_pax'].sum()/df_pax['n_pax'].sum()
+			res[threshold] = kpi
+
+		print(res)
+		results.append(res)
+	if variant == 'total':
+		return pd.DataFrame(results)
 
 def tactical_pax_time_efficiency(pax_assigned_to_itineraries_options,df_pax):
 

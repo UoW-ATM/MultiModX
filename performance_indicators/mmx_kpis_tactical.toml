@@ -1,11 +1,13 @@
 [input]
-    path_to_strategic_output = "../../data/CS10/v=0.13/output/"
-	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/3.1_9_1_0_ground_mobility__delay_mean_0/"
+    path_to_strategic_output = "../../data/CS10/v=0.16/output/"
+	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/"
+	tactical_output_name = "3.1_1_2"
+	iterations = 10
 	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
 	nuts_data_path = "/home/michal/Documents/westminster/multimodx/data/demand/data/NUTS_RG_01M_2021_4326_shp.shp"
 
 [output]
-	path_to_output = "../../data/CS10/v=0.13/output/"
+	path_to_output = "../../data/CS10/v=0.16/output/"
 
 [indicators]
 	[indicators.strategic]
@@ -48,9 +50,29 @@
 			variant = "avg"
 		[[indicators.strategic.pax_processes_time]]
 			variant = "avg"
-
-	[indicators.replanned]
-		[[indicators.replanned.resilience_replanned]]
+	[indicators.tactical]
+		[[indicators.tactical.total_arrival_delay]]
 			variant = "total"
-		[[indicators.replanned.pax_resilience_replanned]]
+			#name = "my_sum"
+		[[indicators.tactical.total_arrival_delay]]
+			variant = "missed_connection"
+		[[indicators.tactical.stranded_pax]]
+			variant = "total"
+		[[indicators.tactical.stranded_pax]]
+			variant = "missed_air2rail"
+		[[indicators.tactical.stranded_pax]]
+			variant = "missed_rail2air"
+		[[indicators.tactical.stranded_pax]]
+			variant = "abs"
+		[[indicators.tactical.ratio_stranded_pax]]
+			variant = "total"
+		[[indicators.tactical.missed_connections]]
+			variant = "total"
+		[[indicators.tactical.missed_connections]]
+			variant = "abs"
+		[[indicators.tactical.total_journey_time]]
+			variant = "total"
+		[[indicators.tactical.flight_arrival_delay]]
+			variant = "total"
+		[[indicators.tactical.variability]]
 			variant = "total"
