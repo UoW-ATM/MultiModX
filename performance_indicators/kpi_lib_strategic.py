@@ -996,31 +996,31 @@ def buffer_in_itineraries(data,config,pi_config,variant='sum'):
 	df['weigthed_total_waiting_time'] = df['total_waiting_time']*df['pax']
 	kpi = df['weigthed_total_waiting_time'].sum()
 	print(kpi)
-	if pi_config['plot'] == True:
+	if pi_config.get('plot', False):
+		fig, ax = plt.subplots(figsize=(10, 10))
 		plt.hist(df[df['nmodes']>1]['total_waiting_time'], weights=df[df['nmodes']>1]['pax'],bins=[0,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
 		plt.title("Histogram of buffers (multimodal pax)")
 		plt.xlabel("Buffer (min.)")
 		plt.ylabel("Number of passengers")
-		plt.show()
-		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist.png')
+		plt.savefig(Path(config['output']['path_to_output_figs']) / 'buffers_hist.png')
 		plt.close()
 
+		fig, ax = plt.subplots(figsize=(10, 10))
 		plt.hist(df[df['type']=='flight_rail']['total_waiting_time'], weights=df[df['type']=='flight_rail']['pax'],bins=[0,1,2,3,4,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
 		plt.title("Histogram of buffers (flight rail pax)")
-		plt.show()
-		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist_fr.png')
+		plt.savefig(Path(config['output']['path_to_output_figs']) / 'buffers_hist_fr.png')
 		plt.close()
 
+		fig, ax = plt.subplots(figsize=(10, 10))
 		plt.hist(df[df['type']=='rail_flight']['total_waiting_time'], weights=df[df['type']=='rail_flight']['pax'],bins=[0,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
 		plt.title("Histogram of buffers (rail flight pax)")
-		plt.show()
-		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist_rf.png')
+		plt.savefig(Path(config['output']['path_to_output_figs']) / 'buffers_hist_rf.png')
 		plt.close()
 
+		fig, ax = plt.subplots(figsize=(10, 10))
 		plt.hist(df[df['type']=='flight_flight']['total_waiting_time'], weights=df[df['type']=='flight_flight']['pax'],bins=[0,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
 		plt.title("Histogram of buffers (flight flight pax)")
-		plt.show()
-		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist_ff.png')
+		plt.savefig(Path(config['output']['path_to_output_figs']) / 'buffers_hist_ff.png')
 		plt.close()
 
 

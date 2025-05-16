@@ -95,6 +95,7 @@
 			variant = "by_regional_archetype"
 		[[indicators.strategic.buffer_in_itineraries]]
 			variant = "avg"
+			plot = true
 		[[indicators.strategic.buffer_in_itineraries]]
 			variant = "sum"
 		[[indicators.strategic.catchment_area]]
