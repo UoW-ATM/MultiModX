@@ -1,11 +1,14 @@
 import pandas as pd
-import datetime
 import numpy as np
 import plotly.express as px
 import plotly.io as pio
 pio.kaleido.scope.mathjax = None
 from pathlib import Path
+
+import seaborn as sns
 import matplotlib.pyplot as plt
+
+
 
 def add_nuts(df):
 	df['origin_nuts2'] = df.apply(lambda row: row['origin'][:4], axis=1)
@@ -46,19 +49,36 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		#
 		df['origin'] = df.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
 		df['destination'] = df.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
+		add_nuts(df)
 		#its = df.merge(possible_itineraries_clustered_pareto_filtered,how='left',left_on=['alternative_id','option'],right_on=['alternative_id','option'])
 		#print(its)
 		#print(its[['origin','destination','weigthed_total_time']])
 		print(df)
 		grouped = df.groupby(['origin','destination']).sum().reset_index()
 		grouped['total_journey_time_per_pax'] = grouped['weigthed_total_time']/grouped['pax']
-		print(grouped)
-
-		add_nuts(grouped)
-
+		grouped_nuts2 = df.groupby(['origin_nuts2', 'destination_nuts2']).sum().reset_index()
+		grouped_nuts2['total_journey_time_per_pax'] = grouped_nuts2['weigthed_total_time']/grouped_nuts2['pax']
+		#add_nuts(grouped))
 
 		if pi_config['plot'] == True:
-			plot_nuts(grouped,config,title='Avg total_journey_time_per_pax from ES11')
+			add_nuts(grouped)
+			plot_nuts(grouped,config,title='Avg total_journey_time_per_pax from ES51')
+
+		if pi_config.get('plot_matrix', False):
+			plot_heatmap_from_df(grouped, origin_col='origin', destination_col='destination',
+								 value_col="total_journey_time_per_pax",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('avg_by_nuts_matrix_plot'+
+																					   config.get('sufix_fig')+'.png'))
+
+			plot_heatmap_from_df(grouped_nuts2, origin_col='origin_nuts2', destination_col='destination_nuts2',
+								 value_col="total_journey_time_per_pax",
+								 vmin=pi_config.get('vmin_matrix_nuts2'),
+								 vmax=pi_config.get('vmax_matrix_nuts2'),
+								 save_path=Path(config['output']['path_to_output']) / ('avg_by_nuts_2_matrix_plot'+
+																					   config.get('sufix_fig')+'.png'))
+
 
 		return grouped[['origin','destination','total_journey_time_per_pax']]
 
@@ -86,7 +106,7 @@ def plot_nuts(its,config,title=''):
 	nuts_data = gpd.read_file(nuts_data_path)
 	nuts_data.crs = 'EPSG:4326'
 	es_nuts = nuts_data[(nuts_data['LEVL_CODE']==3) & (nuts_data['CNTR_CODE']=='ES')]
-	df = its[its['origin_nuts2']=='ES11'].groupby(['destination'])['total_journey_time_per_pax'].mean().reset_index()
+	df = its[its['origin_nuts2']=='ES51'].groupby(['destination'])['total_journey_time_per_pax'].mean().reset_index()
 	df = df.rename({'destination': 'NUTS_ID'}, axis=1)
 	print(df)
 	es_nuts = es_nuts.merge(df,how='left',on='NUTS_ID')
@@ -99,14 +119,132 @@ def plot_nuts(its,config,title=''):
 	fig.write_html(Path(config['output']['path_to_output']) / 'avg_by_nuts_plot.html', )
 
 
+def plot_heatmap_from_df(
+		df,
+		origin_col,
+		destination_col,
+		value_col,
+		vmin=None,
+		vmax=None,
+		save_path=None
+):
+	"""
+	Plot a heatmap from a DataFrame using specified origin, destination, and value columns.
+
+	Parameters:
+		df (pd.DataFrame): Input DataFrame.
+		origin_col (str): Name of the column representing origins.
+		destination_col (str): Name of the column representing destinations.
+		value_col (str): Name of the column representing the heatmap values.
+		vmin (float, optional): Minimum value for color scale.
+		vmax (float, optional): Maximum value for color scale.
+		save_path (str, optional): If provided, saves the plot to this path using a tight bounding box.
+	"""
+	# Create pivot table
+	pivot = df.pivot_table(index=origin_col, columns=destination_col, values=value_col)
+
+	# Sort rows and columns alphabetically
+	pivot = pivot.sort_index(axis=0).sort_index(axis=1)
+
+	# Plot heatmap
+	plt.figure(figsize=(15, 10))
+	ax = sns.heatmap(
+		pivot,
+		annot=False,
+		cmap="viridis",
+		vmin=vmin,
+		vmax=vmax,
+		linewidths=0.5,
+		linecolor='gray'
+	)
+	# Set ticks and labels to show all
+	ax.set_xticks([i + 0.5 for i in range(len(pivot.columns))])
+	ax.set_xticklabels(pivot.columns, rotation=90, ha='center')
+	ax.set_yticks([i + 0.5 for i in range(len(pivot.index))])
+	ax.set_yticklabels(pivot.index, rotation=0, va='center')
+
+	#ax.set_title(f"Heatmap of {value_col}", fontsize=14)
+	ax.set_xlabel(destination_col)
+	ax.set_ylabel(origin_col)
+
+	# Save or show
+	if save_path:
+		plt.savefig(save_path, bbox_inches='tight')
+	else:
+		plt.show()
+
+
+def plot_top_od_stacked_bars(
+    df,
+    origin_col="origin_nuts2",
+    destination_col="destination_nuts2",
+    journey_type_col="journey_type",
+    value_col="pax",
+    top_n=10,
+	od_totals=None,
+    percentage=False,
+    save_path=None
+):
+	"""
+	Plot stacked bar chart of journey_type distribution for top N OD pairs by value_col.
+
+	Parameters:
+		df (pd.DataFrame): Input data
+		origin_col (str): Column name for origin
+		destination_col (str): Column name for destination
+		journey_type_col (str): Column name for journey type
+		value_col (str): Column name for values to plot ('pax' or 'percentage')
+		top_n (int): Number of top OD pairs to show
+		od_totals (pd.DataFrame): If provided total pax per OD to use for ordering columns
+		percentage (bool): Normalize values to percentages per OD
+		save_path (str or None): If provided, save the plot to this path
+	"""
+	# Copy and create OD label
+	df = df.copy()
+	df["OD"] = df[origin_col] + " → " + df[destination_col]
+
+	# Get top OD pairs by total pax (regardless of value_col)
+	if od_totals is not None:
+		od_totals["OD"] = od_totals[origin_col] + " → "  + od_totals[destination_col]
+		od_totals = od_totals.groupby("OD")[value_col].sum()
+		print(od_totals)
+
+	else:
+		od_totals = df.groupby("OD")[value_col].sum()
+
+	top_od = od_totals.sort_values(ascending=False).head(top_n).index
+
+	# Filter and pivot
+	df_top = df[df["OD"].isin(top_od)]
+	pivot = df_top.pivot_table(index="OD", columns=journey_type_col, values=value_col, fill_value=0)
+
+	# Reorder by top_od directly
+	pivot = pivot.reindex(index=top_od)
+
+	if percentage:
+		pivot = pivot.div(pivot.sum(axis=1), axis=0)
+
+	# Plot
+	ax = pivot.plot(kind="bar", stacked=True, figsize=(12, 6), colormap="viridis")
+
+	ylabel = "Share of Passengers" if percentage else "Number of Passengers"
+	plt.ylabel(ylabel)
+	plt.title(f"{'Percentage' if percentage else 'Total'} Pax by Journey Type for Top {top_n} OD Pairs")
+	plt.xticks(rotation=45, ha="right")
+	plt.tight_layout()
+
+	if save_path:
+		plt.savefig(save_path, bbox_inches='tight')
+	else:
+		plt.show()
+
+
 def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 	results = {}
 	if variant == 'nuts':
 		df = possible_itineraries_clustered_pareto_filtered.groupby(['origin']).nunique().reset_index()[['origin','destination']]
-		print(df)
-
-		if pi_config['plot'] == True:
+		if pi_config.get('plot', False):
 			fig = px.bar(df, x='origin', y='destination')
 			#fig.show()
 			fig.write_html(Path(config['output']['path_to_output']) / 'diversity_of_destinations_nuts.html', )
@@ -130,10 +268,11 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 		df['es_airport'] = df["hub"].apply(lambda x: True if str(x)[:2] in ['LE','GC'] else False)
 		df = df[df['es_airport']==True]
 		df_out = df.drop_duplicates(subset=['hub','leg_out','destination_out','mode_out'])[['hub','leg_out','destination_out','mode_out']]
-		con_out = df_out.groupby(["hub",'mode_out']).count().reset_index().sort_values(by='leg_out')
-		con_out2 = df_out.drop_duplicates(subset=['hub','destination_out','mode_out'])[["hub",'destination_out','mode_out']].groupby(["hub",'mode_out']).count().reset_index().sort_values(by='destination_out')
+		#con_out = df_out.groupby(["hub",'mode_out']).count().reset_index().sort_values(by='leg_out')
+		con_out2 = df_out.drop_duplicates(subset=['hub','destination_out','mode_out'])[['hub','destination_out','mode_out']].groupby(['hub',
+																																	  'mode_out']).count().reset_index().sort_values(by='destination_out')
 		#print(con_out2)
-		if pi_config['plot'] == True:
+		if pi_config.get('plot', False):
 			fig = px.bar(con_out2, x='hub', y='destination_out',color='mode_out', barmode='relative')
 			fig.update_layout(xaxis={'categoryorder':'total ascending'})
 			#fig.show()
@@ -155,11 +294,143 @@ def modal_share(data,config,pi_config,variant='total'):
 	if variant == 'by_nuts':
 		#grouping by nuts
 		total = df.groupby(['origin'])['pax'].sum().reset_index()
-		print(total)
 		grouped = df.groupby(['origin','journey_type']).sum().reset_index()
 		grouped['percentage'] = grouped.apply(lambda row: row['pax']/total[total['origin']==row['origin']]['pax'].iloc[0], axis=1)
-		print(grouped[['origin','journey_type','pax','percentage']])
 		return  grouped[['origin','journey_type','pax','percentage']]
+	if variant == 'between_nuts':
+		#grouping by nuts but pair or nuts
+		df = pd.concat(
+			[pax_assigned_to_itineraries_options, possible_itineraries_clustered_pareto_filtered[['journey_type']]],
+			axis=1)
+		df = df[df['pax'] > 0][['pax', 'journey_type', 'origin', 'destination']]
+		grouped = df.groupby(['origin', 'destination', 'journey_type']).sum().reset_index()
+		grouped['percentage'] = grouped.apply(
+			lambda row: row['pax'] / grouped[((grouped['origin'] == row['origin']) &
+											  (grouped['destination'] == row['destination']))]['pax'].sum(), axis=1)
+		grouped = grouped[['origin', 'destination', 'journey_type', 'pax', 'percentage']]
+
+		if pi_config.get('plot', False):
+			demand = data['demand'].copy()
+			demand.rename(columns={'trips': 'pax'}, inplace=True)
+			demand_agg_nuts = demand.groupby(['origin', 'destination'])['pax'].sum().reset_index()
+			demand_agg_nuts.to_csv('./demand_nuts.csv')
+
+
+			plot_top_od_stacked_bars(
+				grouped,
+				origin_col="origin",
+				destination_col="destination",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				percentage=False,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_pax'+
+																					   config.get('sufix_fig')+'.png'))
+				
+
+			plot_top_od_stacked_bars(
+				grouped,
+				origin_col="origin",
+				destination_col="destination",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				od_totals=demand_agg_nuts,
+				percentage=False,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_pax_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
+
+			plot_top_od_stacked_bars(
+				grouped,
+				origin_col="origin",
+				destination_col="destination",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				percentage=True,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_share'+
+																					   config.get('sufix_fig')+'.png'))
+
+			plot_top_od_stacked_bars(
+				grouped,
+				origin_col="origin",
+				destination_col="destination",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				od_totals=demand_agg_nuts,
+				percentage=True,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_share_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
+
+		return grouped
+
+	if variant == 'between_nuts_level2':
+		#grouping by nuts but pair or nuts at level2
+		df = pd.concat(
+			[pax_assigned_to_itineraries_options, possible_itineraries_clustered_pareto_filtered[['journey_type']]],
+			axis=1)
+		df = df[df['pax'] > 0][['pax', 'journey_type', 'origin', 'destination']]
+		add_nuts(df)
+		grouped_nuts2 = df.groupby(['origin_nuts2', 'destination_nuts2', 'journey_type']).sum().reset_index()
+		grouped_nuts2['percentage'] = grouped_nuts2.apply(
+			lambda row: row['pax'] / grouped_nuts2[((grouped_nuts2['origin_nuts2'] == row['origin_nuts2']) &
+											  (grouped_nuts2['destination_nuts2'] == row['destination_nuts2']))]['pax'].sum(), axis=1)
+		grouped_nuts2 = grouped_nuts2[['origin_nuts2', 'destination_nuts2', 'journey_type', 'pax', 'percentage']]
+		if pi_config.get('plot', False):
+			# doing plot
+			demand = data['demand'].copy()
+			add_nuts(demand)
+			demand.rename(columns={'trips': 'pax'}, inplace=True)
+			demand_agg_nuts = demand.groupby(['origin_nuts2', 'destination_nuts2'])['pax'].sum().reset_index()
+
+			plot_top_od_stacked_bars(
+				grouped_nuts2,
+				origin_col="origin_nuts2",
+				destination_col="destination_nuts2",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				percentage=False,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_pax'+
+																					   config.get('sufix_fig')+'.png'))
+
+			plot_top_od_stacked_bars(
+				grouped_nuts2,
+				origin_col="origin_nuts2",
+				destination_col="destination_nuts2",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				od_totals=demand_agg_nuts,
+				percentage=False,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_pax_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
+
+			plot_top_od_stacked_bars(
+				grouped_nuts2,
+				origin_col="origin_nuts2",
+				destination_col="destination_nuts2",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				percentage=True,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_share'+
+																					   config.get('sufix_fig')+'.png'))
+
+			plot_top_od_stacked_bars(
+				grouped_nuts2,
+				origin_col="origin_nuts2",
+				destination_col="destination_nuts2",
+				journey_type_col="journey_type",
+				value_col="pax",
+				top_n=pi_config.get('plot_top', 10),
+				od_totals=demand_agg_nuts,
+				percentage=True,
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_share_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
+
+		return grouped_nuts2
 
 	if variant == 'by_regional_archetype':
 		#grouping by nuts
@@ -182,10 +453,9 @@ def pax_time_efficiency(data,config,pi_config,variant='total'):
 	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax']>0].copy()
 	df['efficiency'] = df.apply(lambda row: best.loc[row['origin'],row['destination']]/row['total_time'], axis=1)
 	df['weigthed_efficiency'] = df['efficiency']*df['pax']
-	print(df)
-	print('total',df['weigthed_efficiency'].sum()/df['pax'].sum())
 	if variant == 'total':
 		return df['weigthed_efficiency'].sum()/df['pax'].sum()
+
 
 def demand_served(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
@@ -196,7 +466,6 @@ def demand_served(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options['destination'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
 
 	total = pax_assigned_to_itineraries_options['pax'].sum()/demand['trips'].sum()
-	print('total',total)
 	if variant == 'total':
 		return total
 
@@ -206,22 +475,58 @@ def demand_served(data,config,pi_config,variant='total'):
 		return total
 
 	#grouping by nuts
+	demand['trips'] = np.ceil(demand['trips'])
 	demand_nuts = demand.groupby(['origin','destination'])['trips'].sum().reset_index()
-	demand_nuts['demand'] = np.ceil(demand_nuts['trips'])
 
 	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax']>0]
 	grouped = df.groupby(['origin','destination'])['pax'].sum().reset_index()
-	grouped = grouped.merge(demand_nuts,how='left',on=['origin','destination'])
-	grouped['perc'] = np.minimum(grouped['pax'] / grouped['demand'], 1)
-	print(grouped[['origin','destination','pax','demand','perc']])
+	grouped = grouped.merge(demand_nuts,how='right',on=['origin','destination'])
+	grouped['pax'] = grouped['pax'].fillna(0)
+	grouped['perc'] = np.minimum(grouped['pax'] / grouped['trips'], 1) # Could be >1 due to logit model assigning .x pax and ceil
 
 	if variant == 'by_nuts':
-		return grouped[['origin','destination','pax','demand','perc']]
+		add_nuts(grouped)
+		grouped_n2 = grouped.groupby(['origin_nuts2','destination_nuts2'])[['pax', 'trips']].sum().reset_index()
+		grouped_n2['perc'] = np.minimum(grouped_n2['pax'] / grouped_n2['trips'], 1)
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(grouped, origin_col='origin', destination_col='destination',
+								 value_col="perc",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('demand_served_nuts3_' +
+																					   config.get(
+																						   'sufix_fig') + '.png'))
+
+			plot_heatmap_from_df(grouped_n2, origin_col='origin_nuts2', destination_col='destination_nuts2',
+								 value_col="perc",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('demand_served_nuts2_' +
+																					   config.get(
+																						   'sufix_fig') + '.png'))
+
+		return {'_n3': grouped[['origin','destination','pax','trips','perc']],
+				'_n2': grouped_n2[['origin_nuts2', 'destination_nuts2', 'pax', 'trips', 'perc']],}
 	if variant == 'by_regional_archetype':
 		grouped = grouped.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped2 = grouped.groupby(['regional_archetype'])[['pax','demand']].sum().reset_index()
-		grouped2['perc'] = grouped2['pax']/grouped2['demand']
-		return grouped2[['regional_archetype','pax','demand','perc']]
+		grouped.rename(columns={'regional_archetype': 'origin_regional_archetype'}, inplace=True)
+		grouped = grouped.merge(nuts_regional_archetype_info, how='left', left_on='destination', right_on='origin')
+		grouped.rename(columns={'regional_archetype': 'destination_regional_archetype'}, inplace=True)
+		grouped2 = grouped.groupby(['origin_regional_archetype', 'destination_regional_archetype'])[['pax', 'trips']].sum().reset_index()
+		grouped2['perc'] = np.minimum(grouped2['pax'] / grouped2['trips'], 1)
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(grouped2, origin_col='origin_regional_archetype', destination_col='destination_regional_archetype',
+								 value_col="perc",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('demand_served_regional_arch_' +
+																					   config.get(
+																						   'sufix_fig') + '.png'))
+
+		return grouped2[['origin_regional_archetype', 'destination_regional_archetype', 'pax', 'trips', 'perc']]
+
 
 def compute_load_factor(df_pax_per_service, dict_seats_service):
 	# Divide dataframe between flights and rail services
@@ -433,24 +738,107 @@ def load_factor(data,config,pi_config,variant='total'):
 		return loads['load_factor'].mean()
 
 	modes = loads.groupby(['mode'])['load_factor'].mean().reset_index()
-	print(modes)
 	if variant == 'modes':
 		return modes
 
 def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 
-	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
-	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
+	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered'].copy()
+	nuts_regional_archetype_info = data['nuts_regional_archetype_info'].copy()
 
-	df = possible_itineraries_clustered_pareto_filtered.groupby(['origin','destination'])['option'].count().reset_index()
-	print(df)
+	df = possible_itineraries_clustered_pareto_filtered.groupby(['origin','destination', 'journey_type'])['option'].count().reset_index()
+
 	if variant == 'by_nuts':
-		return df
-	if variant == 'by_regional_archetype':
+		dftotal = possible_itineraries_clustered_pareto_filtered.groupby(['origin', 'destination'])[
+			'option'].count().reset_index()
+		add_nuts(possible_itineraries_clustered_pareto_filtered)
+		dfn2 = \
+		possible_itineraries_clustered_pareto_filtered.groupby(['origin_nuts2', 'destination_nuts2', 'journey_type'])[
+			'option'].count().reset_index()
+		dftotaln2 = \
+			possible_itineraries_clustered_pareto_filtered.groupby(['origin_nuts2', 'destination_nuts2'])[
+				'option'].count().reset_index()
 
-		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped = df.groupby(['regional_archetype'])['option'].sum().reset_index()
-		return grouped
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(dftotal, origin_col='origin', destination_col='destination',
+								 value_col="option",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('resilience_options_nuts'+
+																					   config.get('sufix_fig')+'.png'))
+
+			plot_heatmap_from_df(dftotaln2, origin_col='origin_nuts2', destination_col='destination_nuts2',
+								 value_col="option",
+								 vmin=pi_config.get('vmin_matrix_nuts2'),
+								 vmax=pi_config.get('vmax_matrix_nuts2'),
+								 save_path=Path(config['output']['path_to_output']) /
+										   ('resilience_options_nuts2'+config.get('sufix_fig')+'.png'))
+
+			for mode in df['journey_type'].drop_duplicates():
+				vmin = pi_config.get('vmin_matrix_' + mode)
+				vmax = pi_config.get('vmax_matrix_' + mode)
+				plot_heatmap_from_df(df[df.journey_type==mode],
+									 origin_col='origin',
+									 destination_col='destination',
+									 value_col="option",
+									 vmin=vmin,
+									 vmax=vmax,
+									 save_path=Path(config['output']['path_to_output']) /
+											   ('resilience_options_nuts_' + mode + config.get('sufix_fig')+'.png'))
+
+				vmin = pi_config.get('vmin_matrix_nuts2_' + mode)
+				vmax = pi_config.get('vmax_matrix_nuts2_' + mode)
+				plot_heatmap_from_df(dfn2[dfn2.journey_type == mode],
+									 origin_col='origin_nuts2',
+									 destination_col='destination_nuts2',
+									 vmax=vmax,
+									 vmin=vmin,
+									 value_col="option",
+									 save_path=Path(config['output']['path_to_output']) / (
+												 'resilience_options_nuts2_' + mode + config.get('sufix_fig')+'.png'))
+
+		return {'_w_jt': df, '_total': dftotal,
+				'_w_jt_n2': dfn2, '_total_n2': dftotaln2}
+
+
+
+	if variant == 'by_regional_archetype':
+		nuts_regional_archetype_info.rename(columns={'origin':'region'}, inplace=True)
+
+		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='region')
+		df.rename(columns={'regional_archetype':'regional_archetype_origin'}, inplace=True)
+		df.drop('region', axis=1, inplace=True)
+		df = df.merge(nuts_regional_archetype_info, how='left', left_on='destination', right_on='region')
+		df.rename(columns={'regional_archetype': 'regional_archetype_destination'}, inplace=True)
+		df.drop('region', axis=1, inplace=True)
+		grouped_all = df.groupby(['regional_archetype_origin', 'regional_archetype_destination'])['option'].sum().reset_index()
+		grouped_type = df.groupby(['regional_archetype_origin', 'regional_archetype_destination', 'journey_type'])[
+			'option'].sum().reset_index()
+
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(grouped_all, origin_col='regional_archetype_origin', destination_col='regional_archetype_destination',
+								 value_col="option",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch'+
+																					   config.get('sufix_fig')+'.png'))
+
+			for mode in grouped_type['journey_type'].drop_duplicates():
+				vmin = pi_config.get('vmin_matrix_'+mode)
+				vmax = pi_config.get('vmax_matrix_'+mode)
+				plot_heatmap_from_df(grouped_type[grouped_type.journey_type==mode],
+									 origin_col='regional_archetype_origin',
+									 destination_col='regional_archetype_destination',
+									 vmin=vmin,
+									 vmax=vmax,
+									 value_col="option",
+									 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch_'+mode+
+																					   config.get('sufix_fig')+'.png'))
+
+		return  {'_total': grouped_all, '_w_jt': grouped_type}
+
 
 def buffer_in_itineraries(data,config,pi_config,variant='sum'):
 	print('buffer_in_itineraries')

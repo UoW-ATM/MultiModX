@@ -20,7 +20,16 @@ def read_strategic_output(path_to_strategic_output,preprocessed_version):
 	flight_schedules_proc = pd.read_csv(Path(path_to_strategic_output) / '..' /  'processed' /('flight_schedules_proc_'+preprocessed_version+'.csv'))
 	nuts_regional_archetype_info = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' /'..' / 'nuts_regional_archetype_info_v0.2.csv')
 
-	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally,'flight_schedules_proc':flight_schedules_proc, 'nuts_regional_archetype_info':nuts_regional_archetype_info}
+	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options,
+			'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered,
+			'demand':demand,
+			'pax_assigned_seats_max_target':pax_assigned_seats_max_target,
+			'pax_assigned_tactical':pax_assigned_tactical,
+			'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported,
+			'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally,
+			'flight_schedules_proc':flight_schedules_proc,
+			'nuts_regional_archetype_info':nuts_regional_archetype_info}
+
 	return data
 
 def read_tactical_data(path_to_tactical_output,tactical_output_name,iteration,parameter_name,path_to_tactical_input):
@@ -153,6 +162,7 @@ if __name__ == '__main__':
 	parser.add_argument('-ex', '--experiment', help='Folder with the experiment', required=False)
 	parser.add_argument('-c','--compare', nargs='+', help='Compare experiments', required=False)
 	parser.add_argument('-ppv', '--preprocessed_version', nargs='+', help='Preprocessed version of schedules to use', required=False, default=['0'])
+	parser.add_argument('-sf', '--sufix_fig', help='Suffix name to add to figures', required=False, default='')
 
 
 
@@ -166,13 +176,17 @@ if __name__ == '__main__':
 		config['output']['path_to_output'] = Path(config['output']['path_to_output']) / args.experiment / 'indicators'
 		config['input']['preprocessed_version'] = args.preprocessed_version[0]
 
+	if len(args.sufix_fig) > 0:
+		args.sufix_fig = '_' + args.sufix_fig
+
+	config['sufix_fig'] = args.sufix_fig
+
 	print ('KPI calculation... ')
-	print(args)
-	print(config)
 
 	if args.experiment is not None:
 		recreate_output_folder(Path(config['output']['path_to_output']))
-		data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],config['input']['preprocessed_version'])
+		data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],
+											   config['input']['preprocessed_version'])
 
 
 
@@ -212,7 +226,13 @@ if __name__ == '__main__':
 					val = seamless_of_travel(data_strategic,config,variant,variant=variant['variant'])
 				if indicator == 'pax_processes_time':
 					val = pax_processes_time(data_strategic,config,variant,variant=variant['variant'])
-				results[indicator].append({'name':variant['name'],'val':val})
+
+				if isinstance(val, dict):
+					# val can be a dictionary where key is to be added to varian_name and v is the actual value
+					for k, v in val.items():
+						results[indicator].append({'name': variant['name']+k, 'val': v})
+				else:
+					results[indicator].append({'name':variant['name'],'val':val})
 
 		save_results(results)
 

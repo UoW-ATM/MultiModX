@@ -1,11 +1,11 @@
 [input]
-    path_to_strategic_output = "../../data/CS10/v=0.13/output/"
+    path_to_strategic_output = "../data/CS10/v=0.16/output/"
 	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/3.1_9_1_0_ground_mobility__delay_mean_0/"
 	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
-	nuts_data_path = "/home/michal/Documents/westminster/multimodx/data/demand/data/NUTS_RG_01M_2021_4326_shp.shp"
+	nuts_data_path = "/home/luis/MultiModX/data/EUROSTAT/NUTS_RG_01M_2021_4326.shp/NUTS_RG_01M_2021_4326.shp"
 
 [output]
-	path_to_output = "../../data/CS10/v=0.13/output/"
+	path_to_output = "../data/CS10/v=0.16/output/"
 
 [indicators]
 	[indicators.strategic]
@@ -18,25 +18,85 @@
 		[[indicators.strategic.strategic_total_journey_time]]
 			variant = "avg_by_nuts"
 			plot = true
+			plot_matrix = true
+			vmin_matrix = 0
+			vmax_matrix = 800
+			vmin_matrix_nuts2 = 100
+			vmax_matrix_nuts2 = 600
 		[[indicators.strategic.strategic_total_journey_time]]
 			variant = "sum_per_region_archetype"
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "avg_per_region_archetype"
 		[[indicators.strategic.diversity_of_destinations]]
 			variant = "nuts"
+			plot = true
+		[[indicators.strategic.diversity_of_destinations]]
+			variant = "hubs"
 			plot = true
 		[[indicators.strategic.modal_share]]
 			variant = "total"
 		[[indicators.strategic.modal_share]]
 			variant = "by_regional_archetype"
+		[[indicators.strategic.modal_share]]
+			variant = "by_nuts"
+		[[indicators.strategic.modal_share]]
+			variant = "between_nuts"
+			plot = true
+			plot_top = 50
+		[[indicators.strategic.modal_share]]
+			variant = "between_nuts_level2"
+			plot = true
+			plot_top = 20
 		[[indicators.strategic.pax_time_efficiency]]
 			variant = "total"
 		[[indicators.strategic.demand_served]]
 			variant = "total_connecting_itineraries"
+		[[indicators.strategic.demand_served]]
+			variant = "total"
+		[[indicators.strategic.demand_served]]
+			variant = "by_nuts"
+			vmin_matrix = 0
+			vmax_matrix = 1
+			plot = true
+		[[indicators.strategic.demand_served]]
+			variant = "by_regional_archetype"
+			vmin_matrix = 0.7
+			vmax_matrix = 1
+		    plot = true
 		[[indicators.strategic.load_factor]]
 			variant = "modes"
+		[[indicators.strategic.load_factor]]
+			variant = "total"
 		[[indicators.strategic.resilience_alternatives]]
 			variant = "by_nuts"
+			vmin_matrix = 0
+			vmax_matrix = 60
+			vmin_matrix_air = 0
+			vmax_matrix_air = 36
+			vmin_matrix_rail = 10
+			vmax_matrix_rail = 60
+			vmin_matrix_multimodal = 0
+			vmax_matrix_multimodal = 30
+			vmin_matrix_nuts2 = 25
+			vmax_matrix_nuts2 = 500
+			vmin_matrix_nuts2_air = 25
+			vmax_matrix_nuts2_air = 300
+			vmin_matrix_nuts2_rail = 25
+			vmax_matrix_nuts2_rail = 300
+			vmin_matrix_nuts2_multimodal = 10
+			vmax_matrix_nuts2_multimodal = 200
+			plot = true
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_regional_archetype"
+			plot = true
+			vmin_matrix = 400
+			vmax_matrix = 6000
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_regional_archetype"
 		[[indicators.strategic.buffer_in_itineraries]]
 			variant = "avg"
+		[[indicators.strategic.buffer_in_itineraries]]
+			variant = "sum"
 		[[indicators.strategic.catchment_area]]
 			variant = "hubs"
 			plot = true
