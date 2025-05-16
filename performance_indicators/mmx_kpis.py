@@ -218,7 +218,13 @@ if __name__ == '__main__':
 					val = seamless_of_travel(data_strategic,config,variant,variant=variant['variant'])
 				if indicator == 'pax_processes_time':
 					val = pax_processes_time(data_strategic,config,variant,variant=variant['variant'])
-				results[indicator].append({'name':variant['name'],'val':val})
+
+				if isinstance(val, dict):
+					# val can be a dictionary where key is to be added to varian_name and v is the actual value
+					for k, v in val.items():
+						results[indicator].append({'name': variant['name']+k, 'val': v})
+				else:
+					results[indicator].append({'name':variant['name'],'val':val})
 
 		save_results(results)
 

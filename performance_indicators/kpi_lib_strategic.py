@@ -62,7 +62,7 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 			add_nuts(grouped)
 			plot_nuts(grouped,config,title='Avg total_journey_time_per_pax from ES51')
 
-		if pi_config.get('plot_matrix', False) == True:
+		if pi_config.get('plot_matrix', False):
 			plot_heatmap_from_df(grouped, origin_col='origin', destination_col='destination',
 								 value_col="total_journey_time_per_pax",
 								 vmin=pi_config.get('vmin_matrix'),
@@ -74,7 +74,6 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 								 vmin=pi_config.get('vmin_matrix_nuts2'),
 								 vmax=pi_config.get('vmax_matrix_nuts2'),
 								 save_path=Path(config['output']['path_to_output']) / 'avg_by_nuts_2_matrix_plot.png')
-
 
 
 		return grouped[['origin','destination','total_journey_time_per_pax']]
@@ -700,18 +699,85 @@ def load_factor(data,config,pi_config,variant='total'):
 
 def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 
-	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
-	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
+	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered'].copy()
+	nuts_regional_archetype_info = data['nuts_regional_archetype_info'].copy()
 
-	df = possible_itineraries_clustered_pareto_filtered.groupby(['origin','destination'])['option'].count().reset_index()
-	print(df)
+	df = possible_itineraries_clustered_pareto_filtered.groupby(['origin','destination', 'journey_type'])['option'].count().reset_index()
+
 	if variant == 'by_nuts':
-		return df
-	if variant == 'by_regional_archetype':
+		dftotal = possible_itineraries_clustered_pareto_filtered.groupby(['origin', 'destination'])[
+			'option'].count().reset_index()
+		add_nuts(possible_itineraries_clustered_pareto_filtered)
+		dfn2 = \
+		possible_itineraries_clustered_pareto_filtered.groupby(['origin_nuts2', 'destination_nuts2', 'journey_type'])[
+			'option'].count().reset_index()
+		dftotaln2 = \
+			possible_itineraries_clustered_pareto_filtered.groupby(['origin_nuts2', 'destination_nuts2'])[
+				'option'].count().reset_index()
 
-		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped = df.groupby(['regional_archetype'])['option'].sum().reset_index()
-		return grouped
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(dftotal, origin_col='origin', destination_col='destination',
+								 value_col="option",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / 'resilience_options_nuts.png')
+
+			plot_heatmap_from_df(dftotaln2, origin_col='origin_nuts2', destination_col='destination_nuts2',
+								 value_col="option",
+								 vmin=pi_config.get('vmin_matrix_nuts2'),
+								 vmax=pi_config.get('vmax_matrix_nuts2'),
+								 save_path=Path(config['output']['path_to_output']) / 'resilience_options_nuts2.png')
+
+			for mode in df['journey_type'].drop_duplicates():
+				plot_heatmap_from_df(df[df.journey_type==mode],
+									 origin_col='origin',
+									 destination_col='destination',
+									 value_col="option",
+									 save_path=Path(config['output']['path_to_output']) / ('resilience_options_nuts_'+mode+'.png'))
+				plot_heatmap_from_df(dfn2[dfn2.journey_type == mode],
+									 origin_col='origin_nuts2',
+									 destination_col='destination_nuts2',
+									 vmax=min(dfn2[dfn2.journey_type == mode].option.max(), 300),
+									 value_col="option",
+									 save_path=Path(config['output']['path_to_output']) / (
+												 'resilience_options_nuts2_' + mode + '.png'))
+
+		return {'_w_jt': df, '_total': dftotal,
+				'_w_jt_n2': dfn2, '_total_n2': dftotaln2}
+
+
+
+	if variant == 'by_regional_archetype':
+		nuts_regional_archetype_info.rename(columns={'origin':'region'}, inplace=True)
+
+		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='region')
+		df.rename(columns={'regional_archetype':'regional_archetype_origin'}, inplace=True)
+		df.drop('region', axis=1, inplace=True)
+		df = df.merge(nuts_regional_archetype_info, how='left', left_on='destination', right_on='region')
+		df.rename(columns={'regional_archetype': 'regional_archetype_destination'}, inplace=True)
+		df.drop('region', axis=1, inplace=True)
+		grouped_all = df.groupby(['regional_archetype_origin', 'regional_archetype_destination'])['option'].sum().reset_index()
+		grouped_type = df.groupby(['regional_archetype_origin', 'regional_archetype_destination', 'journey_type'])[
+			'option'].sum().reset_index()
+
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(grouped_all, origin_col='regional_archetype_origin', destination_col='regional_archetype_destination',
+								 value_col="option",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / 'resilience_options_reg_arch.png')
+
+			for mode in grouped_type['journey_type'].drop_duplicates():
+				plot_heatmap_from_df(grouped_type[grouped_type.journey_type==mode],
+									 origin_col='regional_archetype_origin',
+									 destination_col='regional_archetype_destination',
+									 value_col="option",
+									 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch_'+mode+'.png'))
+
+		return  {'_total': grouped_all, '_w_jt': grouped_type}
+
 
 def buffer_in_itineraries(data,config,pi_config,variant='sum'):
 
