@@ -242,9 +242,7 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 	results = {}
 	if variant == 'nuts':
 		df = possible_itineraries_clustered_pareto_filtered.groupby(['origin']).nunique().reset_index()[['origin','destination']]
-		print(df)
-
-		if pi_config['plot'] == True:
+		if pi_config.get('plot', False):
 			fig = px.bar(df, x='origin', y='destination')
 			#fig.show()
 			fig.write_html(Path(config['output']['path_to_output']) / 'diversity_of_destinations_nuts.html', )
@@ -268,10 +266,11 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 		df['es_airport'] = df["hub"].apply(lambda x: True if str(x)[:2] in ['LE','GC'] else False)
 		df = df[df['es_airport']==True]
 		df_out = df.drop_duplicates(subset=['hub','leg_out','destination_out','mode_out'])[['hub','leg_out','destination_out','mode_out']]
-		con_out = df_out.groupby(["hub",'mode_out']).count().reset_index().sort_values(by='leg_out')
-		con_out2 = df_out.drop_duplicates(subset=['hub','destination_out','mode_out'])[["hub",'destination_out','mode_out']].groupby(["hub",'mode_out']).count().reset_index().sort_values(by='destination_out')
+		#con_out = df_out.groupby(["hub",'mode_out']).count().reset_index().sort_values(by='leg_out')
+		con_out2 = df_out.drop_duplicates(subset=['hub','destination_out','mode_out'])[['hub','destination_out','mode_out']].groupby(['hub',
+																																	  'mode_out']).count().reset_index().sort_values(by='destination_out')
 		#print(con_out2)
-		if pi_config['plot'] == True:
+		if pi_config.get('plot', False):
 			fig = px.bar(con_out2, x='hub', y='destination_out',color='mode_out', barmode='relative')
 			fig.update_layout(xaxis={'categoryorder':'total ascending'})
 			#fig.show()
@@ -452,10 +451,9 @@ def pax_time_efficiency(data,config,pi_config,variant='total'):
 	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax']>0].copy()
 	df['efficiency'] = df.apply(lambda row: best.loc[row['origin'],row['destination']]/row['total_time'], axis=1)
 	df['weigthed_efficiency'] = df['efficiency']*df['pax']
-	print(df)
-	print('total',df['weigthed_efficiency'].sum()/df['pax'].sum())
 	if variant == 'total':
 		return df['weigthed_efficiency'].sum()/df['pax'].sum()
+
 
 def demand_served(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
@@ -466,7 +464,6 @@ def demand_served(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options['destination'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
 
 	total = pax_assigned_to_itineraries_options['pax'].sum()/demand['trips'].sum()
-	print('total',total)
 	if variant == 'total':
 		return total
 
@@ -476,22 +473,58 @@ def demand_served(data,config,pi_config,variant='total'):
 		return total
 
 	#grouping by nuts
+	demand['trips'] = np.ceil(demand['trips'])
 	demand_nuts = demand.groupby(['origin','destination'])['trips'].sum().reset_index()
-	demand_nuts['demand'] = np.ceil(demand_nuts['trips'])
 
 	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax']>0]
 	grouped = df.groupby(['origin','destination'])['pax'].sum().reset_index()
-	grouped = grouped.merge(demand_nuts,how='left',on=['origin','destination'])
-	grouped['perc'] = np.minimum(grouped['pax'] / grouped['demand'], 1)
-	print(grouped[['origin','destination','pax','demand','perc']])
+	grouped = grouped.merge(demand_nuts,how='right',on=['origin','destination'])
+	grouped['pax'] = grouped['pax'].fillna(0)
+	grouped['perc'] = np.minimum(grouped['pax'] / grouped['trips'], 1) # Could be >1 due to logit model assigning .x pax and ceil
 
 	if variant == 'by_nuts':
-		return grouped[['origin','destination','pax','demand','perc']]
+		add_nuts(grouped)
+		grouped_n2 = grouped.groupby(['origin_nuts2','destination_nuts2'])[['pax', 'trips']].sum().reset_index()
+		grouped_n2['perc'] = np.minimum(grouped_n2['pax'] / grouped_n2['trips'], 1)
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(grouped, origin_col='origin', destination_col='destination',
+								 value_col="perc",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('demand_served_nuts3_' +
+																					   config.get(
+																						   'sufix_fig') + '.png'))
+
+			plot_heatmap_from_df(grouped_n2, origin_col='origin_nuts2', destination_col='destination_nuts2',
+								 value_col="perc",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('demand_served_nuts2_' +
+																					   config.get(
+																						   'sufix_fig') + '.png'))
+
+		return {'_n3': grouped[['origin','destination','pax','trips','perc']],
+				'_n2': grouped_n2[['origin_nuts2', 'destination_nuts2', 'pax', 'trips', 'perc']],}
 	if variant == 'by_regional_archetype':
 		grouped = grouped.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
-		grouped2 = grouped.groupby(['regional_archetype'])[['pax','demand']].sum().reset_index()
-		grouped2['perc'] = grouped2['pax']/grouped2['demand']
-		return grouped2[['regional_archetype','pax','demand','perc']]
+		grouped.rename(columns={'regional_archetype': 'origin_regional_archetype'}, inplace=True)
+		grouped = grouped.merge(nuts_regional_archetype_info, how='left', left_on='destination', right_on='origin')
+		grouped.rename(columns={'regional_archetype': 'destination_regional_archetype'}, inplace=True)
+		grouped2 = grouped.groupby(['origin_regional_archetype', 'destination_regional_archetype'])[['pax', 'trips']].sum().reset_index()
+		grouped2['perc'] = np.minimum(grouped2['pax'] / grouped2['trips'], 1)
+		if pi_config.get('plot', False):
+			# plots
+			plot_heatmap_from_df(grouped2, origin_col='origin_regional_archetype', destination_col='destination_regional_archetype',
+								 value_col="perc",
+								 vmin=pi_config.get('vmin_matrix'),
+								 vmax=pi_config.get('vmax_matrix'),
+								 save_path=Path(config['output']['path_to_output']) / ('demand_served_regional_arch_' +
+																					   config.get(
+																						   'sufix_fig') + '.png'))
+
+		return grouped2[['origin_regional_archetype', 'destination_regional_archetype', 'pax', 'trips', 'perc']]
+
 
 def compute_load_factor(df_pax_per_service, dict_seats_service):
 	# Divide dataframe between flights and rail services
@@ -703,7 +736,6 @@ def load_factor(data,config,pi_config,variant='total'):
 		return loads['load_factor'].mean()
 
 	modes = loads.groupby(['mode'])['load_factor'].mean().reset_index()
-	print(modes)
 	if variant == 'modes':
 		return modes
 

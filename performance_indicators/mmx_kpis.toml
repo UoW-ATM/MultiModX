@@ -30,6 +30,9 @@
 		[[indicators.strategic.diversity_of_destinations]]
 			variant = "nuts"
 			plot = true
+		[[indicators.strategic.diversity_of_destinations]]
+			variant = "hubs"
+			plot = true
 		[[indicators.strategic.modal_share]]
 			variant = "total"
 		[[indicators.strategic.modal_share]]
@@ -48,8 +51,22 @@
 			variant = "total"
 		[[indicators.strategic.demand_served]]
 			variant = "total_connecting_itineraries"
+		[[indicators.strategic.demand_served]]
+			variant = "total"
+		[[indicators.strategic.demand_served]]
+			variant = "by_nuts"
+			vmin_matrix = 0
+			vmax_matrix = 1
+			plot = true
+		[[indicators.strategic.demand_served]]
+			variant = "by_regional_archetype"
+			vmin_matrix = 0.7
+			vmax_matrix = 1
+		    plot = true
 		[[indicators.strategic.load_factor]]
 			variant = "modes"
+		[[indicators.strategic.load_factor]]
+			variant = "total"
 		[[indicators.strategic.resilience_alternatives]]
 			variant = "by_nuts"
 			vmin_matrix = 0
