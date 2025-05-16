@@ -6,8 +6,14 @@ import pandas as pd
 import tomli
 import numpy as np
 import matplotlib.pyplot as plt
-from kpi_lib_strategic import strategic_total_journey_time, diversity_of_destinations, modal_share, pax_time_efficiency, demand_served, load_factor, resilience_alternatives, catchment_area, cost_per_user,co2_emissions, buffer_in_itineraries, seamless_of_travel, pax_processes_time, resilience_replanned, pax_resilience_replanned
-from kpi_lib_tactical import flight_arrival_delay, kerb2gate_time, total_journey_time, variability, total_arrival_delay, stranded_pax, ratio_stranded_pax, missed_connections
+from kpi_lib_strategic import (strategic_total_journey_time, diversity_of_destinations, modal_share,
+							   pax_time_efficiency, demand_served, load_factor, resilience_alternatives,
+							   catchment_area, cost_per_user,co2_emissions, buffer_in_itineraries,
+							   seamless_of_travel, pax_processes_time, resilience_replanned,
+							   pax_resilience_replanned, capacity_available)
+from kpi_lib_tactical import (flight_arrival_delay, kerb2gate_time, total_journey_time, variability,
+							  total_arrival_delay, stranded_pax, ratio_stranded_pax, missed_connections)
+
 
 def read_strategic_output(path_to_strategic_output,preprocessed_version):
 	pax_assigned_to_itineraries_options = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_to_itineraries_options_'+preprocessed_version+'.csv'))
@@ -57,9 +63,9 @@ def recreate_output_folder(folder_path: Path):
 	"""
 	if folder_path.exists():
 
-		#shutil.rmtree(folder_path)
+		shutil.rmtree(folder_path)
 
-		folder_path.mkdir(parents=True, exist_ok=True)
+	folder_path.mkdir(parents=True, exist_ok=True)
 
 
 def read_config(toml_path):
@@ -232,6 +238,8 @@ if __name__ == '__main__':
 					val = seamless_of_travel(data_strategic,config,variant,variant=variant['variant'])
 				if indicator == 'pax_processes_time':
 					val = pax_processes_time(data_strategic,config,variant,variant=variant['variant'])
+				if indicator == 'capacity_available':
+					val = capacity_available(data_strategic,config,variant,variant=variant['variant'])
 
 				if isinstance(val, dict):
 					# val can be a dictionary where key is to be added to varian_name and v is the actual value

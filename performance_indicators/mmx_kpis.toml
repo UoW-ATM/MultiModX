@@ -168,6 +168,8 @@
 			variant = "avg"
 		[[indicators.strategic.pax_processes_time]]
 			variant = "avg"
+		[[indicators.strategic.capacity_available]]
+			variant = "all"
 
 	[indicators.replanned]
 		[[indicators.replanned.resilience_replanned]]

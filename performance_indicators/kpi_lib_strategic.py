@@ -11,6 +11,9 @@ import geopandas as gpd
 from matplotlib.ticker import MaxNLocator
 import ast
 from shapely.geometry import Point
+import sys
+sys.path.append('..')
+from strategic_evaluator.pax_reassigning_replanned_network import compute_capacities_available_services
 
 
 
@@ -1621,3 +1624,67 @@ def pax_resilience_replanned(data,config,pi_config,variant='total'):
 		df = pd.DataFrame(rows)
 		print(df)
 		return df
+
+
+def capacity_available(data,config,pi_config,variant='all'):
+	demand = data['pax_assigned_to_itineraries_options'].copy()
+	dict_services_w_capacity = {
+		mode: dict(group[["nid", "max_seats"]].values)
+		for mode, group in data['pax_assigned_seats_max_target'].groupby("mode_transport")
+	}
+
+	services_w_capacity, services_wo_capacity = compute_capacities_available_services(demand=demand,
+																					  dict_services_w_capacity=dict_services_w_capacity)
+
+	services_w_capacity['pax_possible'] = services_w_capacity['max_seats_service'] -services_w_capacity['max_pax_in_service']
+
+	possible_itineraries = data['possible_itineraries_clustered_pareto_filtered'].copy()
+
+	# Step 1: Build lookup sets and dict
+	wo_set = set(services_wo_capacity['service_id'])
+	w_dict = dict(zip(services_w_capacity['service_id'], services_w_capacity['pax_possible']))
+
+	# Step 2: Identify service columns
+	service_cols = [col for col in possible_itineraries.columns if col.startswith("service_id_")]
+
+	# Step 3: Define function to process each row
+	def compute_capacity_and_flag(row):
+		services = [row[col] for col in service_cols if pd.notna(row[col])]
+
+		# Flag if any service is missing in both tables
+		unknown_services = [s for s in services if s not in w_dict and s not in wo_set]
+
+		# If any service is in wo_capacity, total capacity is 0
+		if any(s in wo_set for s in services):
+			return pd.Series({'max_pax': 0, 'flag_unknown_service': bool(unknown_services)})
+
+		# Otherwise, get min capacity of known services
+		capacities = [w_dict[s] for s in services if s in w_dict]
+
+		# If all services are known, return min capacity
+		if len(capacities) == len(services):
+			return pd.Series({'max_pax': min(capacities), 'flag_unknown_service': False})
+		else:
+			return pd.Series({'max_pax': None, 'flag_unknown_service': True})
+
+	# Step 4: Apply the function
+	df_seats_available = possible_itineraries.copy()
+	df_seats_available[['max_pax', 'flag_unknown_service']] = possible_itineraries.apply(compute_capacity_and_flag, axis=1)
+	df_seats_available = df_seats_available[(['origin', 'destination', 'cluster_id', 'option', 'nservices', 'journey_type',
+											  'path'] + service_cols + ['max_pax', 'flag_unknown_service'])]
+
+	add_nuts(df_seats_available)
+	cap_available_nuts2_journey_type = df_seats_available.groupby(['origin_nuts2', 'destination_nuts2', 'journey_type'])['max_pax'].sum().reset_index()
+	cap_available_nuts3_journey_type = df_seats_available.groupby(['origin', 'destination', 'journey_type'])[
+		'max_pax'].sum().reset_index()
+
+	total_capacity_available = df_seats_available.max_pax.sum()
+	cap_available_nuts2 = df_seats_available.groupby(['origin_nuts2', 'destination_nuts2'])['max_pax'].sum().reset_index()
+	cap_available_nuts3 = df_seats_available.groupby(['origin', 'destination'])['max_pax'].sum().reset_index()
+
+
+	return {'_total': total_capacity_available,
+			'_nuts2_journey_type': cap_available_nuts2_journey_type,
+			'_nuts3_journey_type': cap_available_nuts3_journey_type,
+			'_nuts2': cap_available_nuts2,
+			'_nuts3': cap_available_nuts3,}
