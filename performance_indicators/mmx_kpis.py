@@ -13,12 +13,14 @@ def read_strategic_output(path_to_strategic_output,preprocessed_version):
 	pax_assigned_to_itineraries_options = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_to_itineraries_options_'+preprocessed_version+'.csv'))
 	possible_itineraries_clustered_pareto_filtered = pd.read_csv(Path(path_to_strategic_output) / ('possible_itineraries_clustered_pareto_filtered_'+preprocessed_version+'.csv'))
 	demand = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / '..' / 'demand'/'demand_ES_MD_intra_v0.4.csv')
+	airport_coords = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / '..' / 'infrastructure'/ 'airports_info' / 'airports_coordinates_v1.1.csv')
 	pax_assigned_seats_max_target = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_seats_max_target_'+preprocessed_version+'.csv'))
 	pax_assigned_tactical = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_tactical_'+preprocessed_version+'.csv'))
 	pax_assigned_tactical_not_supported = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_tactical_not_supported_'+preprocessed_version+'.csv'))
 	rail_timetable_proc_used_internally = pd.read_csv(Path(path_to_strategic_output) / '..' / 'processed' /('rail_timetable_proc_'+preprocessed_version+'_used_internally.csv'))
 	flight_schedules_proc = pd.read_csv(Path(path_to_strategic_output) / '..' /  'processed' /('flight_schedules_proc_'+preprocessed_version+'.csv'))
 	nuts_regional_archetype_info = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' /'..' / 'nuts_regional_archetype_info_v0.2.csv')
+	df_stops_rail = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / '..' /  'gtfs_es_UIC_v2.3' / 'stops.txt', dtype={'stop_id': str})
 
 	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options,
 			'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered,
@@ -28,7 +30,9 @@ def read_strategic_output(path_to_strategic_output,preprocessed_version):
 			'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported,
 			'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally,
 			'flight_schedules_proc':flight_schedules_proc,
-			'nuts_regional_archetype_info':nuts_regional_archetype_info}
+			'nuts_regional_archetype_info':nuts_regional_archetype_info,
+			'airport_coords': airport_coords,
+			'df_stops_rail': df_stops_rail}
 
 	return data
 
@@ -170,6 +174,7 @@ if __name__ == '__main__':
 	if args.experiment is not None:
 		config['input']['path_to_strategic_output'] = Path(config['input']['path_to_strategic_output']) / args.experiment / 'paths_itineraries'
 		config['output']['path_to_output'] = Path(config['output']['path_to_output']) / args.experiment / 'indicators'
+		config['output']['path_to_output_figs'] = (config['output']['path_to_output'] / 'figures')
 		config['input']['preprocessed_version'] = args.preprocessed_version[0]
 
 	if len(args.sufix_fig) > 0:
@@ -181,6 +186,7 @@ if __name__ == '__main__':
 
 	if args.experiment is not None:
 		recreate_output_folder(Path(config['output']['path_to_output']))
+		recreate_output_folder(config['output']['path_to_output_figs'])
 		data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],
 											   config['input']['preprocessed_version'])
 

@@ -6,6 +6,10 @@ pio.kaleido.scope.mathjax = None
 from pathlib import Path
 import seaborn as sns
 import matplotlib.pyplot as plt
+import geopandas as gpd
+from matplotlib.ticker import MaxNLocator
+import ast
+from shapely.geometry import Point
 
 
 def add_nuts(df):
@@ -99,7 +103,6 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		return grouped[['regional_archetype','total_journey_time_per_pax']]
 
 def plot_nuts(its,config,title=''):
-	import geopandas as gpd
 	nuts_data_path = config['input']['nuts_data_path']
 	nuts_data = gpd.read_file(nuts_data_path)
 	nuts_data.crs = 'EPSG:4326'
@@ -235,6 +238,143 @@ def plot_top_od_stacked_bars(
 		plt.savefig(save_path, bbox_inches='tight')
 	else:
 		plt.show()
+
+
+def plot_stops_and_nuts_heatmap(
+		nuts3,
+		grouped_nuts,
+		grouped_stops,
+		airport_lat,
+		airport_lon,
+		label='from',
+		exclude_nuts=None,
+		airport_name='Airport',
+		vmin=None,
+		vmax=None,
+		fig_map_name=None,
+		fig_heat_map_name=None,
+		topleft=None, bottomright=None,
+		scenario="",
+		show_plot=False
+):
+	"""
+	Plot NUTS3 heatmap + rail stops + airport location.
+
+	Parameters:
+	- nuts3: GeoDataFrame with NUTS3 regions (must include 'NUTS_ID', 'geometry', 'CNTR_CODE')
+	- grouped_nuts: DataFrame with ['nuts3_<label>', 'total_pax']
+	- grouped_stops: DataFrame with ['stop_lat_<label>', 'stop_lon_<label>', ...]
+	- airport_lat, airport_lon: float, coordinates of the airport
+	- label: str, 'from' or 'to'
+	- exclude_nuts: list of NUTS3 codes to exclude from the plot
+	"""
+
+	# Filter to Spain
+	nuts3_spain = nuts3[nuts3['CNTR_CODE'] == 'ES'].copy()
+
+	# Exclude selected NUTS3 if any
+	if exclude_nuts:
+		nuts3_spain = nuts3_spain[~nuts3_spain['NUTS_ID'].isin(exclude_nuts)]
+
+	# Merge total_pax into NUTS
+	nuts_col = f'nuts3_{label}'
+	nuts3_merged = nuts3_spain.merge(grouped_nuts, left_on='NUTS_ID', right_on=nuts_col, how='left')
+
+	# Set missing values to zero for plotting and flag them separately for grey fill
+	nuts3_merged["has_data"] = nuts3_merged["total_pax"].notna()
+	nuts3_merged["total_pax"] = nuts3_merged["total_pax"].fillna(0)
+
+	if grouped_stops is not None:
+		# Build GeoDataFrame of stops
+		gdf_stops = gpd.GeoDataFrame(
+			grouped_stops,
+			geometry=gpd.points_from_xy(grouped_stops[f'stop_lon_{label}'], grouped_stops[f'stop_lat_{label}']),
+			crs="EPSG:4326"
+		)
+
+	# Min and Max values for color bar
+	if vmin is None:
+		vmin = nuts3_merged["total_pax"].min()
+	if vmax is None:
+		vmax = nuts3_merged["total_pax"].max()
+
+	# Plot
+	fig, ax = plt.subplots(figsize=(10, 10))
+
+	# First plot NUTS without data (in light grey)
+	nuts3_merged[~nuts3_merged["has_data"]].plot(
+		ax=ax, color="#eeeeee", edgecolor="grey", linewidth=0.5
+	)
+
+	# Then plot NUTS with data using a heatmap
+	nuts3_merged[nuts3_merged["has_data"]].plot(
+		ax=ax,
+		column="total_pax",
+		cmap="OrRd",
+		edgecolor="grey",
+		linewidth=0.5,
+		legend=False,  # To not plot the heatmap bar
+		# legend_kwds={"label": "Total Pax"},
+		vmin=vmin,
+		vmax=vmax
+	)
+
+	if grouped_stops is not None:
+		# Plot rail stops
+		gdf_stops.plot(ax=ax, color="black", markersize=30, alpha=0.8, label=f'Rail Station ({label}) {scenario}')
+
+	if airport_lon is not None:
+		# Plot airport
+		ax.scatter(airport_lon, airport_lat, color="red", marker="x", s=100, label=airport_name)
+
+	# Set zoom if coordinates provided
+	if topleft and bottomright:
+		# top-left: (lat1, lon1), bottom-right: (lat2, lon2)
+		lat1, lon1 = topleft
+		lat2, lon2 = bottomright
+		ax.set_xlim(lon1, lon2)
+		ax.set_ylim(lat2, lat1)
+
+	# ax.set_title(f"Passenger Heatmap by NUTS3 ({label})", fontsize=14)
+	ax.set_axis_off()
+	if (airport_lon is not None) or (grouped_stops is not None):
+		ax.legend(fontsize=14)
+	plt.tight_layout()
+	if fig_map_name is not None:
+		plt.savefig(fig_map_name, bbox_inches='tight')
+	if show_plot:
+		plt.show()
+
+	plt.close()
+
+	# Plot 2: Horizontal Heatmap Bar
+	# Plot the heatmap bar
+	# Create the plot
+	fig, ax = plt.subplots(figsize=(20, 3))
+
+	# Plot the heatmap bar only, but do not plot the regions
+	# We are just creating the colorbar here.
+	sm = plt.cm.ScalarMappable(cmap="OrRd", norm=plt.Normalize(vmin=vmin, vmax=vmax))
+	sm.set_array([])  # Empty array, just for colorbar
+
+	# Add the colorbar (heatmap legend)
+	cbar = fig.colorbar(sm, ax=ax, orientation="horizontal", shrink=0.8, pad=0.1)
+	# cbar.set_label("Total Pax", fontsize=18)
+	cbar.set_ticks(MaxNLocator(integer=True, prune='lower'))
+	cbar.ax.tick_params(labelsize=18)
+
+	# Set title and layout adjustments
+	# ax.set_title(f"Heatmap Bar for {label} (Pax Distribution)", fontsize=12)
+	ax.set_axis_off()  # Hide the axes
+
+	# Display the plot
+	plt.tight_layout()
+	if fig_heat_map_name is not None:
+		plt.savefig(fig_heat_map_name, bbox_inches='tight')
+	if show_plot:
+		plt.show()
+
+	plt.close()
 
 
 def diversity_of_destinations(data,config,pi_config,variant='nuts'):
@@ -856,9 +996,105 @@ def buffer_in_itineraries(data,config,pi_config,variant='sum'):
 	if variant == 'avg':
 		return df['weigthed_total_waiting_time'].sum()/df['pax'].sum()
 
+
+def from_to_stops(df, airport, df_stops, nuts3):
+    # Filter rows that contain the airport in the path
+    df_filtered = df[df['path'].apply(lambda p: airport in p)].copy()
+
+    def find_stops(path, airport):
+        if airport not in path:
+            return None, None
+
+        idx = path.index(airport)
+
+        # Search backwards for contiguous digit-only block
+        from_stop = None
+        for i in range(idx - 1, -1, -1):
+            if path[i].isdigit():
+                from_stop = path[i]
+            else:
+                break
+
+        # Search forward for contiguous digit-only block
+        to_stop = None
+        for i in range(idx + 1, len(path)):
+            if path[i].isdigit():
+                to_stop = path[i]
+            else:
+                break
+
+        return from_stop, to_stop
+
+    # Extract from/to stops
+    df_filtered[["from_stop", "to_stop"]] = df_filtered["path"].apply(
+        lambda p: pd.Series(find_stops(p, airport))
+    )
+
+    # Merge for from_stop
+    df_merged = df_filtered.merge(
+        df_stops[['stop_id', 'stop_name', 'stop_lat', 'stop_lon']].add_suffix('_from'),
+        how='left',
+        left_on='from_stop',
+        right_on='stop_id_from'
+    )
+
+    # Merge for to_stop
+    df_merged = df_merged.merge(
+        df_stops[['stop_id', 'stop_name', 'stop_lat', 'stop_lon']].add_suffix('_to'),
+        how='left',
+        left_on='to_stop',
+        right_on='stop_id_to'
+    )
+
+    ### --- FROM BLOCK ---
+    df_from = df_merged[df_merged["from_stop"].notna()].copy()
+    df_from["geometry"] = df_from.apply(
+        lambda row: Point(row["stop_lon_from"], row["stop_lat_from"]), axis=1
+    )
+    gdf_from = gpd.GeoDataFrame(df_from, geometry="geometry", crs="EPSG:4326")
+    gdf_from = gpd.sjoin(gdf_from, nuts3[["NUTS_ID", "geometry"]], how="left", predicate="within")
+    gdf_from = gdf_from.rename(columns={"NUTS_ID": "nuts3_from"}).drop(columns=["index_right", "geometry"])
+
+    grouped_from = (
+        gdf_from.groupby(["stop_id_from", "stop_name_from", "stop_lat_from", "stop_lon_from"], as_index=False)
+        .agg(total_pax=("pax", "sum"))
+    )
+
+    grouped_nuts_from = (
+        gdf_from.groupby("nuts3_from", as_index=False)
+        .agg(total_pax=("pax", "sum"))
+    )
+
+    ### --- TO BLOCK ---
+    df_to = df_merged[df_merged["to_stop"].notna()].copy()
+    df_to["geometry"] = df_to.apply(
+        lambda row: Point(row["stop_lon_to"], row["stop_lat_to"]), axis=1
+    )
+    gdf_to = gpd.GeoDataFrame(df_to, geometry="geometry", crs="EPSG:4326")
+    gdf_to = gpd.sjoin(gdf_to, nuts3[["NUTS_ID", "geometry"]], how="left", predicate="within")
+    gdf_to = gdf_to.rename(columns={"NUTS_ID": "nuts3_to"}).drop(columns=["index_right", "geometry"])
+
+    grouped_to = (
+        gdf_to.groupby(["stop_id_to", "stop_name_to", "stop_lat_to", "stop_lon_to"], as_index=False)
+        .agg(total_pax=("pax", "sum"))
+    )
+
+    grouped_nuts_to = (
+        gdf_to.groupby("nuts3_to", as_index=False)
+        .agg(total_pax=("pax", "sum"))
+    )
+
+    return gdf_from, grouped_from, grouped_nuts_from, gdf_to, grouped_to, grouped_nuts_to
+
+
 def catchment_area(data,config,pi_config,variant='hubs'):
 
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
+	pax_assigned_to_itineraries_options = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options.pax>0].copy()
+
+	if type(pax_assigned_to_itineraries_options['path'].iloc[0]) is str:
+		pax_assigned_to_itineraries_options['path'] = pax_assigned_to_itineraries_options['path'].apply(ast.literal_eval)
+
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 
 	its = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered],axis=1)
@@ -885,14 +1121,310 @@ def catchment_area(data,config,pi_config,variant='hubs'):
 	#df_out = df.drop_duplicates(subset=['hub','leg_out','destination_out','mode_out'])[['hub','leg_out','destination_out','mode_out']]
 	con_out = df_out.groupby(["hub"])['travel_time'].max().reset_index()
 	#con_out2 = df_out.drop_duplicates(subset=['hub','destination_out','mode_out'])[["hub",'destination_out','mode_out']].groupby(["hub",'mode_out']).count().reset_index().sort_values(by='destination_out')
-	print(con_out)
-	if pi_config['plot'] == True:
+	if pi_config.get('plot', False):
 		fig = px.bar(con_out, x='hub', y='travel_time')
 		fig.update_layout(xaxis={'categoryorder':'total ascending'})
 		#fig.show()
-		fig.write_html(Path(config['output']['path_to_output']) / 'catchment_area_hubs.html', )
-	if variant == 'hubs':
+		fig.write_html(Path(config['output']['path_to_output_figs']) / 'catchment_area_hubs.html', )
+
+	if variant == 'hubs_rail_time':
 		return con_out
+
+	nuts_data_path = config['input']['nuts_data_path']
+	nuts_data = gpd.read_file(nuts_data_path)
+	# Filter to only NUTS level 3
+	nuts3 = nuts_data[nuts_data["LEVL_CODE"] == 3]
+
+	if variant in ['access_egress', 'rail_stop_pax', 'access_egress_rail_stop']:
+		dict_output = {}
+
+		exploded_path = pax_assigned_to_itineraries_options['path'].explode()
+
+		# Filter: keep only strings of exactly 4 letters (alphabetic)
+		airports = exploded_path[exploded_path.str.fullmatch(r'[A-Za-z]{4}')]
+
+		# Get distinct entries
+		airports = airports.unique()
+
+		if variant in ['access_egress', 'access_egress_rail_stop']:
+			lae = []
+			# Compute access_egress
+			for airport in airports:
+				# Filter itineraries where the airport is the first or last
+				pax_assigned_to_itineraries_options['first_node'] = pax_assigned_to_itineraries_options['path'].apply(lambda x: x[0])
+				pax_assigned_to_itineraries_options['last_node'] = pax_assigned_to_itineraries_options['path'].apply(
+					lambda x: x[-1])
+
+				first_airport = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options.first_node==airport]
+				last_airport = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options.last_node==airport]
+				first_airport_nuts = first_airport[['origin', 'pax']].groupby(['origin'])['pax'].sum().reset_index()
+				first_airport_nuts['type'] = 'from'
+				first_airport_nuts.rename(columns={'origin': 'nuts3'}, inplace=True)
+				last_airport_nuts = last_airport[['destination', 'pax']].groupby(['destination'])['pax'].sum().reset_index()
+				last_airport_nuts['type'] = 'to'
+				last_airport_nuts.rename(columns={'destination': 'nuts3'}, inplace=True)
+				access_egress_catchment = pd.concat([first_airport_nuts, last_airport_nuts])
+				access_egress_catchment['airport'] = airport
+
+				lae += [access_egress_catchment]
+
+			access_egress_catchment = pd.concat(lae)
+
+			if variant == 'access_egress':
+				dict_output['_access_egress_airports'] = access_egress_catchment
+				if pi_config.get('plot', False):
+					# Plot of access egress
+					for a in pi_config['plot_airports']:
+						aec = access_egress_catchment[access_egress_catchment.airport==a['airport']].copy()
+						if len(aec) > 0:
+							# We have data for the airport
+							aec_from = aec[aec.type=='from'].copy()
+							aec_to = aec[aec.type == 'to'].copy()
+							aec_from.rename(columns={'pax': 'total_pax', 'nuts3': 'nuts3_from'}, inplace=True)
+							aec_to.rename(columns={'pax': 'total_pax', 'nuts3': 'nuts3_to'}, inplace=True)
+
+							topleft = None
+							bottomright = None
+							if a.get('topleft') is not None:
+								topleft = (a['topleft'][0], a['topleft'][1])
+							if a.get('bottomright') is not None:
+								bottomright = (a['bottomright'][0], a['bottomright'][1])
+
+							ac = data['airport_coords'][data['airport_coords']['icao_id']==a['airport']].iloc[0]
+
+							plot_stops_and_nuts_heatmap(nuts3=nuts3,
+														grouped_nuts=aec_from,
+														grouped_stops=None,
+														airport_lat=ac.lat,
+														airport_lon=ac.lon,
+														label='from',
+														exclude_nuts=a.get('exclude_nuts', pi_config.get('exclude_nuts')),
+														airport_name=a['airport'],
+														vmin=a.get('vmin', pi_config.get('vmin')),
+														vmax=a.get('vmax', pi_config.get('vmax')),
+														fig_map_name=Path(config['output']['path_to_output_figs']) / (a['airport']+'_access'+
+																					   config.get('sufix_fig')+'.png'),
+														fig_heat_map_name=Path(config['output']['path_to_output_figs']) / (a['airport']+'_access_hm'+
+																					   config.get('sufix_fig')+'.png'),
+														topleft=topleft,
+														bottomright=bottomright
+														)
+
+							plot_stops_and_nuts_heatmap(nuts3=nuts3,
+														grouped_nuts=aec_to,
+														grouped_stops=None,
+														airport_lat=ac.lat,
+														airport_lon=ac.lon,
+														label='to',
+														exclude_nuts=a.get('exclude_nuts',
+																		   pi_config.get('exclude_nuts')),
+														airport_name=a['airport'],
+														vmin=a.get('vmin', pi_config.get('vmin')),
+														vmax=a.get('vmax', pi_config.get('vmax')),
+														fig_map_name=Path(config['output']['path_to_output_figs']) / (
+																	a['airport'] + '_egress'+
+																					   config.get('sufix_fig')+'.png'),
+														fig_heat_map_name=Path(config['output']['path_to_output_figs']) / (
+																	a['airport'] + '_egress_hm'+
+																					   config.get('sufix_fig')+'.png'),
+														topleft=topleft,
+														bottomright=bottomright
+														)
+				return dict_output
+
+
+		if variant in ['access_egress_rail_stop', 'rail_stop_pax']:
+			lgdf_from = []
+			lgdf_to = []
+			lgrouped_from_to = []
+			lnuts_from_to = []
+
+			for airport in airports:
+				gdf_from, grouped_from, nuts_from, gdf_to, grouped_to, nuts_to = from_to_stops(pax_assigned_to_itineraries_options,
+																							   airport,
+																							   data['df_stops_rail'],
+																							   nuts3)
+
+				grouped_from['type'] = 'from'
+				grouped_from.rename(columns={'stop_id_from': 'stop_id', 'stop_name_from': 'stop_name',
+											'stop_lat_from': 'stop_lat', 'stop_lon_from': 'stop_lon'}, inplace=True)
+				grouped_to['type'] = 'to'
+				grouped_to.rename(columns={'stop_id_to': 'stop_id', 'stop_name_to': 'stop_name',
+											 'stop_lat_to': 'stop_lat', 'stop_lon_to': 'stop_lon'}, inplace=True)
+				grouped_from_to = pd.concat([grouped_from, grouped_to])
+
+				nuts_from['type'] = 'from'
+				nuts_from.rename(columns={'nuts3_from': 'nuts3'}, inplace=True)
+				nuts_to['type'] = 'to'
+				nuts_to.rename(columns={'nuts3_to': 'nuts3'}, inplace=True)
+				nuts_from_to = pd.concat([nuts_from, nuts_to])
+
+				gdf_from['airport'] = airport
+				gdf_to['airport'] = airport
+				grouped_from_to['airport'] = airport
+				nuts_from_to['airport'] = airport
+
+				lgdf_from += [gdf_from]
+				lgdf_to += [gdf_to]
+				lnuts_from_to += [nuts_from_to]
+				lgrouped_from_to += [grouped_from_to]
+
+			gdf_from = pd.concat(lgdf_from)
+			gdf_to = pd.concat(lgdf_to)
+			nuts_from_to = pd.concat(lnuts_from_to)
+			grouped_from_to = pd.concat(lgrouped_from_to)
+
+			if variant == 'rail_stop_pax':
+				dict_output['_gdf_from'] = gdf_from
+				dict_output['_gdf_to'] = gdf_to
+				dict_output['_stops_to_from'] = grouped_from_to
+				dict_output['_nuts_from_to'] = nuts_from_to
+				if pi_config.get('plot', False):
+					# Plot of catchment due to rail multimodal
+					for a in pi_config['plot_airports']:
+						nft = nuts_from_to[nuts_from_to.airport==a['airport']].copy()
+						rstops = grouped_from_to[grouped_from_to.airport==a['airport']].copy()
+						if len(nft) > 0:
+							# We have data for the airport
+							nft_from = nft[nft.type=='from'].copy()
+							nft_to = nft[nft.type == 'to'].copy()
+							rail_stops_from = rstops[rstops.type=='from'].copy()
+							rail_stops_to = rstops[rstops.type == 'to'].copy()
+
+							nft_from.rename(columns={'pax_total': 'total_pax', 'nuts3': 'nuts3_from'}, inplace=True)
+							nft_to.rename(columns={'pax_total': 'total_pax', 'nuts3': 'nuts3_to'}, inplace=True)
+							rail_stops_from.rename(columns={'stop_lon': 'stop_lon_from', 'stop_lat': 'stop_lat_from'}, inplace=True)
+							rail_stops_to.rename(columns={'stop_lon': 'stop_lon_to', 'stop_lat': 'stop_lat_to'},
+												   inplace=True)
+
+							topleft = None
+							bottomright = None
+							if a.get('topleft') is not None:
+								topleft = (a['topleft'][0], a['topleft'][1])
+							if a.get('bottomright') is not None:
+								bottomright = (a['bottomright'][0], a['bottomright'][1])
+
+							ac = data['airport_coords'][data['airport_coords']['icao_id']==a['airport']].iloc[0]
+
+							plot_stops_and_nuts_heatmap(nuts3=nuts3,
+														grouped_nuts=nft_from,
+														grouped_stops=rail_stops_from,
+														airport_lat=ac.lat,
+														airport_lon=ac.lon,
+														label='from',
+														exclude_nuts=a.get('exclude_nuts', pi_config.get('exclude_nuts')),
+														airport_name=a['airport'],
+														vmin=a.get('vmin', pi_config.get('vmin')),
+														vmax=a.get('vmax', pi_config.get('vmax')),
+														fig_map_name=Path(config['output']['path_to_output_figs']) / (a['airport']+'_access_multim_rail'+
+																					   config.get('sufix_fig')+'.png'),
+														fig_heat_map_name=Path(config['output']['path_to_output_figs']) / (a['airport']+'_access_multim_rail_hm'+
+																					   config.get('sufix_fig')+'.png'),
+														topleft=topleft,
+														bottomright=bottomright
+														)
+
+							plot_stops_and_nuts_heatmap(nuts3=nuts3,
+														grouped_nuts=nft_to,
+														grouped_stops=rail_stops_to,
+														airport_lat=ac.lat,
+														airport_lon=ac.lon,
+														label='to',
+														exclude_nuts=a.get('exclude_nuts',
+																		   pi_config.get('exclude_nuts')),
+														airport_name=a['airport'],
+														vmin=a.get('vmin', pi_config.get('vmin')),
+														vmax=a.get('vmax', pi_config.get('vmax')),
+														fig_map_name=Path(config['output']['path_to_output_figs']) / (
+																	a['airport'] + '_egress_multim_rail' +
+																	config.get('sufix_fig') + '.png'),
+														fig_heat_map_name=Path(config['output']['path_to_output_figs']) / (
+																	a['airport'] + '_egress_,multim_rail_hm' +
+																	config.get('sufix_fig') + '.png'),
+														topleft=topleft,
+														bottomright=bottomright
+														)
+
+
+			if variant == 'access_egress_rail_stop':
+				# We have access_egress_catchment and nuts_from_to
+				access_egress_w_rail_catchment = access_egress_catchment.merge(nuts_from_to, how='outer', on=['nuts3', 'type', 'airport'])
+				access_egress_w_rail_catchment['pax'] = access_egress_w_rail_catchment['pax'].fillna(0)
+				access_egress_w_rail_catchment['total_pax'] = access_egress_w_rail_catchment['total_pax'].fillna(0)
+				access_egress_w_rail_catchment['pax_total'] = (access_egress_w_rail_catchment['pax'] +
+																		   access_egress_w_rail_catchment['total_pax'])
+				access_egress_w_rail_catchment.rename(columns={'pax':'pax_access_egress', 'total_pax':'pax_rail_multimodal'}, inplace=True)
+				dict_output['_access_egress_w_rail'] = access_egress_w_rail_catchment
+
+				if pi_config.get('plot', False):
+					# Plot of access egress including rail
+					for a in pi_config['plot_airports']:
+						aec = access_egress_w_rail_catchment[access_egress_w_rail_catchment.airport==a['airport']].copy()
+						rstops = grouped_from_to[grouped_from_to.airport==a['airport']].copy()
+						if len(aec) > 0:
+							# We have data for the airport
+							aec_from = aec[aec.type=='from'].copy()
+							aec_to = aec[aec.type == 'to'].copy()
+							rail_stops_from = rstops[rstops.type=='from'].copy()
+							rail_stops_to = rstops[rstops.type == 'to'].copy()
+
+							aec_from.rename(columns={'pax_total': 'total_pax', 'nuts3': 'nuts3_from'}, inplace=True)
+							aec_to.rename(columns={'pax_total': 'total_pax', 'nuts3': 'nuts3_to'}, inplace=True)
+							rail_stops_from.rename(columns={'stop_lon': 'stop_lon_from', 'stop_lat': 'stop_lat_from'}, inplace=True)
+							rail_stops_to.rename(columns={'stop_lon': 'stop_lon_to', 'stop_lat': 'stop_lat_to'},
+												   inplace=True)
+
+							topleft = None
+							bottomright = None
+							if a.get('topleft') is not None:
+								topleft = (a['topleft'][0], a['topleft'][1])
+							if a.get('bottomright') is not None:
+								bottomright = (a['bottomright'][0], a['bottomright'][1])
+
+							ac = data['airport_coords'][data['airport_coords']['icao_id']==a['airport']].iloc[0]
+
+							plot_stops_and_nuts_heatmap(nuts3=nuts3,
+														grouped_nuts=aec_from,
+														grouped_stops=rail_stops_from,
+														airport_lat=ac.lat,
+														airport_lon=ac.lon,
+														label='from',
+														exclude_nuts=a.get('exclude_nuts', pi_config.get('exclude_nuts')),
+														airport_name=a['airport'],
+														vmin=a.get('vmin', pi_config.get('vmin')),
+														vmax=a.get('vmax', pi_config.get('vmax')),
+														fig_map_name=Path(config['output']['path_to_output_figs']) / (a['airport']+'_access_w_rail'+
+																					   config.get('sufix_fig')+'.png'),
+														fig_heat_map_name=Path(config['output']['path_to_output_figs']) / (a['airport']+'_access_w_rail_hm'+
+																					   config.get('sufix_fig')+'.png'),
+														topleft=topleft,
+														bottomright=bottomright
+														)
+
+							plot_stops_and_nuts_heatmap(nuts3=nuts3,
+														grouped_nuts=aec_to,
+														grouped_stops=rail_stops_to,
+														airport_lat=ac.lat,
+														airport_lon=ac.lon,
+														label='to',
+														exclude_nuts=a.get('exclude_nuts',
+																		   pi_config.get('exclude_nuts')),
+														airport_name=a['airport'],
+														vmin=a.get('vmin', pi_config.get('vmin')),
+														vmax=a.get('vmax', pi_config.get('vmax')),
+														fig_map_name=Path(config['output']['path_to_output_figs']) / (
+																	a['airport'] + '_egress_w_rail' +
+																	config.get('sufix_fig') + '.png'),
+														fig_heat_map_name=Path(config['output']['path_to_output_figs']) / (
+																	a['airport'] + '_egress_w_rail_hm' +
+																	config.get('sufix_fig') + '.png'),
+														topleft=topleft,
+														bottomright=bottomright
+														)
+
+
+		return dict_output
+
 
 def cost_per_user(data,config,pi_config,variant='avg'):
 

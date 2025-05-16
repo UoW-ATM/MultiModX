@@ -98,8 +98,68 @@
 		[[indicators.strategic.buffer_in_itineraries]]
 			variant = "sum"
 		[[indicators.strategic.catchment_area]]
-			variant = "hubs"
+			variant = "hubs_rail_time"
 			plot = true
+		[[indicators.strategic.catchment_area]]
+			variant = "access_egress"
+			plot = true
+			vmin = 0
+			vmax = 2000
+			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMD'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEBL'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEVD'
+				topleft = [43.67, -9]
+				bottomright = [39.6, -2.3]
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMG'
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEZL'
+		[[indicators.strategic.catchment_area]]
+			variant = "rail_stop_pax"
+			plot = true
+			vmin = 0
+			vmax = 2000
+			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMD'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEBL'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEVD'
+				topleft = [43.67, -9]
+				bottomright = [39.6, -2.3]
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMG'
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEZL'
+		[[indicators.strategic.catchment_area]]
+			variant = "access_egress_rail_stop"
+			plot = true
+			vmin = 0
+			vmax = 2000
+			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMD'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEBL'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEVD'
+				topleft = [43.67, -9]
+				bottomright = [39.6, -2.3]
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMG'
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEZL'
 		[[indicators.strategic.cost_per_user]]
 			variant = "avg"
 		[[indicators.strategic.co2_emissions]]
