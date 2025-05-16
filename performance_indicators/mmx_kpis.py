@@ -20,7 +20,16 @@ def read_strategic_output(path_to_strategic_output,preprocessed_version):
 	flight_schedules_proc = pd.read_csv(Path(path_to_strategic_output) / '..' /  'processed' /('flight_schedules_proc_'+preprocessed_version+'.csv'))
 	nuts_regional_archetype_info = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' /'..' / 'nuts_regional_archetype_info_v0.2.csv')
 
-	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options, 'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered, 'demand':demand, 'pax_assigned_seats_max_target':pax_assigned_seats_max_target,'pax_assigned_tactical':pax_assigned_tactical,'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported, 'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally,'flight_schedules_proc':flight_schedules_proc, 'nuts_regional_archetype_info':nuts_regional_archetype_info}
+	data = {'pax_assigned_to_itineraries_options':pax_assigned_to_itineraries_options,
+			'possible_itineraries_clustered_pareto_filtered':possible_itineraries_clustered_pareto_filtered,
+			'demand':demand,
+			'pax_assigned_seats_max_target':pax_assigned_seats_max_target,
+			'pax_assigned_tactical':pax_assigned_tactical,
+			'pax_assigned_tactical_not_supported':pax_assigned_tactical_not_supported,
+			'rail_timetable_proc_used_internally':rail_timetable_proc_used_internally,
+			'flight_schedules_proc':flight_schedules_proc,
+			'nuts_regional_archetype_info':nuts_regional_archetype_info}
+
 	return data
 
 def read_tactical_data(path_to_tactical_output,tactical_output_name,iteration,path_to_tactical_input):
@@ -168,7 +177,8 @@ if __name__ == '__main__':
 
 	if args.experiment is not None:
 		recreate_output_folder(Path(config['output']['path_to_output']))
-		data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],config['input']['preprocessed_version'])
+		data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],
+											   config['input']['preprocessed_version'])
 
 
 
