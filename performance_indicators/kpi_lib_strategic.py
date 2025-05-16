@@ -71,14 +71,14 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 								 value_col="total_journey_time_per_pax",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / ('avg_by_nuts_matrix_plot'+
+								 save_path=Path(config['output']['path_to_output_figs']) / ('avg_by_nuts_matrix_plot'+
 																					   config.get('sufix_fig')+'.png'))
 
 			plot_heatmap_from_df(grouped_nuts2, origin_col='origin_nuts2', destination_col='destination_nuts2',
 								 value_col="total_journey_time_per_pax",
 								 vmin=pi_config.get('vmin_matrix_nuts2'),
 								 vmax=pi_config.get('vmax_matrix_nuts2'),
-								 save_path=Path(config['output']['path_to_output']) / ('avg_by_nuts_2_matrix_plot'+
+								 save_path=Path(config['output']['path_to_output_figs']) / ('avg_by_nuts_2_matrix_plot'+
 																					   config.get('sufix_fig')+'.png'))
 
 
@@ -117,7 +117,7 @@ def plot_nuts(its,config,title=''):
 
 	fig.update_layout(title_text = title)
 	#fig.show()
-	fig.write_html(Path(config['output']['path_to_output']) / 'avg_by_nuts_plot.html', )
+	fig.write_html(Path(config['output']['path_to_output_figs']) / 'avg_by_nuts_plot.html', )
 
 
 def plot_heatmap_from_df(
@@ -385,7 +385,7 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 		if pi_config.get('plot', False):
 			fig = px.bar(df, x='origin', y='destination')
 			#fig.show()
-			fig.write_html(Path(config['output']['path_to_output']) / 'diversity_of_destinations_nuts.html', )
+			fig.write_html(Path(config['output']['path_to_output_figs']) / 'diversity_of_destinations_nuts.html', )
 
 		return df
 
@@ -414,7 +414,7 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 			fig = px.bar(con_out2, x='hub', y='destination_out',color='mode_out', barmode='relative')
 			fig.update_layout(xaxis={'categoryorder':'total ascending'})
 			#fig.show()
-			fig.write_html(Path(config['output']['path_to_output']) / 'diversity_of_destinations_hubs.html', )
+			fig.write_html(Path(config['output']['path_to_output_figs']) / 'diversity_of_destinations_hubs.html', )
 		return con_out2
 
 def modal_share(data,config,pi_config,variant='total'):
@@ -462,7 +462,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_pax'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts_pax'+
 																					   config.get('sufix_fig')+'.png'))
 				
 
@@ -475,7 +475,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_pax_per_demand'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts_pax_per_demand'+
 																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
@@ -486,7 +486,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_share'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts_share'+
 																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
@@ -498,7 +498,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_share_per_demand'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts_share_per_demand'+
 																					   config.get('sufix_fig')+'.png'))
 
 		return grouped
@@ -530,7 +530,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_pax'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts2_pax'+
 																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
@@ -542,7 +542,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_pax_per_demand'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts2_pax_per_demand'+
 																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
@@ -553,7 +553,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_share'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts2_share'+
 																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
@@ -565,7 +565,7 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_share_per_demand'+
+				save_path=Path(config['output']['path_to_output_figs']) / ('mode_share_between_nuts2_share_per_demand'+
 																					   config.get('sufix_fig')+'.png'))
 
 		return grouped_nuts2
@@ -632,7 +632,7 @@ def demand_served(data,config,pi_config,variant='total'):
 								 value_col="perc",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / ('demand_served_nuts3_' +
+								 save_path=Path(config['output']['path_to_output_figs']) / ('demand_served_nuts3_' +
 																					   config.get(
 																						   'sufix_fig') + '.png'))
 
@@ -640,7 +640,7 @@ def demand_served(data,config,pi_config,variant='total'):
 								 value_col="perc",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / ('demand_served_nuts2_' +
+								 save_path=Path(config['output']['path_to_output_figs']) / ('demand_served_nuts2_' +
 																					   config.get(
 																						   'sufix_fig') + '.png'))
 
@@ -659,7 +659,7 @@ def demand_served(data,config,pi_config,variant='total'):
 								 value_col="perc",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / ('demand_served_regional_arch_' +
+								 save_path=Path(config['output']['path_to_output_figs']) / ('demand_served_regional_arch_' +
 																					   config.get(
 																						   'sufix_fig') + '.png'))
 
@@ -903,14 +903,14 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 								 value_col="option",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / ('resilience_options_nuts'+
+								 save_path=Path(config['output']['path_to_output_figs']) / ('resilience_options_nuts'+
 																					   config.get('sufix_fig')+'.png'))
 
 			plot_heatmap_from_df(dftotaln2, origin_col='origin_nuts2', destination_col='destination_nuts2',
 								 value_col="option",
 								 vmin=pi_config.get('vmin_matrix_nuts2'),
 								 vmax=pi_config.get('vmax_matrix_nuts2'),
-								 save_path=Path(config['output']['path_to_output']) /
+								 save_path=Path(config['output']['path_to_output_figs']) /
 										   ('resilience_options_nuts2'+config.get('sufix_fig')+'.png'))
 
 			for mode in df['journey_type'].drop_duplicates():
@@ -922,7 +922,7 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 									 value_col="option",
 									 vmin=vmin,
 									 vmax=vmax,
-									 save_path=Path(config['output']['path_to_output']) /
+									 save_path=Path(config['output']['path_to_output_figs']) /
 											   ('resilience_options_nuts_' + mode + config.get('sufix_fig')+'.png'))
 
 				vmin = pi_config.get('vmin_matrix_nuts2_' + mode)
@@ -933,7 +933,7 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 									 vmax=vmax,
 									 vmin=vmin,
 									 value_col="option",
-									 save_path=Path(config['output']['path_to_output']) / (
+									 save_path=Path(config['output']['path_to_output_figs']) / (
 												 'resilience_options_nuts2_' + mode + config.get('sufix_fig')+'.png'))
 
 		return {'_w_jt': df, '_total': dftotal,
@@ -960,7 +960,7 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 								 value_col="option",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch'+
+								 save_path=Path(config['output']['path_to_output_figs']) / ('resilience_options_reg_arch'+
 																					   config.get('sufix_fig')+'.png'))
 
 			for mode in grouped_type['journey_type'].drop_duplicates():
@@ -972,7 +972,7 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 									 vmin=vmin,
 									 vmax=vmax,
 									 value_col="option",
-									 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch_'+mode+
+									 save_path=Path(config['output']['path_to_output_figs']) / ('resilience_options_reg_arch_'+mode+
 																					   config.get('sufix_fig')+'.png'))
 
 		return  {'_total': grouped_all, '_w_jt': grouped_type}
