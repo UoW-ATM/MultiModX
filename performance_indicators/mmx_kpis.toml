@@ -104,7 +104,7 @@
 			variant = "access_egress"
 			plot = true
 			vmin = 0
-			vmax = 2000
+			vmax = 1000
 			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
 			[[indicators.strategic.catchment_area.plot_airports]]
 				airport= 'LEMD'
@@ -114,6 +114,8 @@
 				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
 			[[indicators.strategic.catchment_area.plot_airports]]
 				airport= 'LEVD'
+				vmin = 0
+				vmax = 100
 				topleft = [43.67, -9]
 				bottomright = [39.6, -2.3]
 			[[indicators.strategic.catchment_area.plot_airports]]
@@ -124,7 +126,7 @@
 			variant = "rail_stop_pax"
 			plot = true
 			vmin = 0
-			vmax = 2000
+			vmax = 1000
 			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
 			[[indicators.strategic.catchment_area.plot_airports]]
 				airport= 'LEMD'
@@ -134,6 +136,8 @@
 				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
 			[[indicators.strategic.catchment_area.plot_airports]]
 				airport= 'LEVD'
+				vmin = 0
+				vmax = 100
 				topleft = [43.67, -9]
 				bottomright = [39.6, -2.3]
 			[[indicators.strategic.catchment_area.plot_airports]]
@@ -144,7 +148,7 @@
 			variant = "access_egress_rail_stop"
 			plot = true
 			vmin = 0
-			vmax = 2000
+			vmax = 1000
 			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
 			[[indicators.strategic.catchment_area.plot_airports]]
 				airport= 'LEMD'
@@ -154,6 +158,8 @@
 				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
 			[[indicators.strategic.catchment_area.plot_airports]]
 				airport= 'LEVD'
+				vmin = 0
+				vmax = 100
 				topleft = [43.67, -9]
 				bottomright = [39.6, -2.3]
 			[[indicators.strategic.catchment_area.plot_airports]]
