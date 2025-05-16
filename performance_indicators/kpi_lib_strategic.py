@@ -67,13 +67,15 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 								 value_col="total_journey_time_per_pax",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / 'avg_by_nuts_matrix_plot.png')
+								 save_path=Path(config['output']['path_to_output']) / ('avg_by_nuts_matrix_plot'+
+																					   config.get('sufix_fig')+'.png'))
 
 			plot_heatmap_from_df(grouped_nuts2, origin_col='origin_nuts2', destination_col='destination_nuts2',
 								 value_col="total_journey_time_per_pax",
 								 vmin=pi_config.get('vmin_matrix_nuts2'),
 								 vmax=pi_config.get('vmax_matrix_nuts2'),
-								 save_path=Path(config['output']['path_to_output']) / 'avg_by_nuts_2_matrix_plot.png')
+								 save_path=Path(config['output']['path_to_output']) / ('avg_by_nuts_2_matrix_plot'+
+																					   config.get('sufix_fig')+'.png'))
 
 
 		return grouped[['origin','destination','total_journey_time_per_pax']]
@@ -321,7 +323,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts_pax.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_pax'+
+																					   config.get('sufix_fig')+'.png'))
 				
 
 			plot_top_od_stacked_bars(
@@ -333,7 +336,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts_pax_per_demand.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_pax_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
 				grouped,
@@ -343,7 +347,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts_share.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_share'+
+																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
 				grouped,
@@ -354,7 +359,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts_share_per_demand.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts_share_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
 
 		return grouped
 
@@ -385,7 +391,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts2_pax.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_pax'+
+																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
 				grouped_nuts2,
@@ -396,7 +403,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=False,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts2_pax_per_demand.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_pax_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
 				grouped_nuts2,
@@ -406,7 +414,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				value_col="pax",
 				top_n=pi_config.get('plot_top', 10),
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts2_share.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_share'+
+																					   config.get('sufix_fig')+'.png'))
 
 			plot_top_od_stacked_bars(
 				grouped_nuts2,
@@ -417,7 +426,8 @@ def modal_share(data,config,pi_config,variant='total'):
 				top_n=pi_config.get('plot_top', 10),
 				od_totals=demand_agg_nuts,
 				percentage=True,
-				save_path=Path(config['output']['path_to_output']) / 'mode_share_between_nuts2_share_per_demand.png')
+				save_path=Path(config['output']['path_to_output']) / ('mode_share_between_nuts2_share_per_demand'+
+																					   config.get('sufix_fig')+'.png'))
 
 		return grouped_nuts2
 
@@ -721,27 +731,38 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 								 value_col="option",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / 'resilience_options_nuts.png')
+								 save_path=Path(config['output']['path_to_output']) / ('resilience_options_nuts'+
+																					   config.get('sufix_fig')+'.png'))
 
 			plot_heatmap_from_df(dftotaln2, origin_col='origin_nuts2', destination_col='destination_nuts2',
 								 value_col="option",
 								 vmin=pi_config.get('vmin_matrix_nuts2'),
 								 vmax=pi_config.get('vmax_matrix_nuts2'),
-								 save_path=Path(config['output']['path_to_output']) / 'resilience_options_nuts2.png')
+								 save_path=Path(config['output']['path_to_output']) /
+										   ('resilience_options_nuts2'+config.get('sufix_fig')+'.png'))
 
 			for mode in df['journey_type'].drop_duplicates():
+				vmin = pi_config.get('vmin_matrix_' + mode)
+				vmax = pi_config.get('vmax_matrix_' + mode)
 				plot_heatmap_from_df(df[df.journey_type==mode],
 									 origin_col='origin',
 									 destination_col='destination',
 									 value_col="option",
-									 save_path=Path(config['output']['path_to_output']) / ('resilience_options_nuts_'+mode+'.png'))
+									 vmin=vmin,
+									 vmax=vmax,
+									 save_path=Path(config['output']['path_to_output']) /
+											   ('resilience_options_nuts_' + mode + config.get('sufix_fig')+'.png'))
+
+				vmin = pi_config.get('vmin_matrix_nuts2_' + mode)
+				vmax = pi_config.get('vmax_matrix_nuts2_' + mode)
 				plot_heatmap_from_df(dfn2[dfn2.journey_type == mode],
 									 origin_col='origin_nuts2',
 									 destination_col='destination_nuts2',
-									 vmax=min(dfn2[dfn2.journey_type == mode].option.max(), 300),
+									 vmax=vmax,
+									 vmin=vmin,
 									 value_col="option",
 									 save_path=Path(config['output']['path_to_output']) / (
-												 'resilience_options_nuts2_' + mode + '.png'))
+												 'resilience_options_nuts2_' + mode + config.get('sufix_fig')+'.png'))
 
 		return {'_w_jt': df, '_total': dftotal,
 				'_w_jt_n2': dfn2, '_total_n2': dftotaln2}
@@ -767,14 +788,20 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 								 value_col="option",
 								 vmin=pi_config.get('vmin_matrix'),
 								 vmax=pi_config.get('vmax_matrix'),
-								 save_path=Path(config['output']['path_to_output']) / 'resilience_options_reg_arch.png')
+								 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch'+
+																					   config.get('sufix_fig')+'.png'))
 
 			for mode in grouped_type['journey_type'].drop_duplicates():
+				vmin = pi_config.get('vmin_matrix_'+mode)
+				vmax = pi_config.get('vmax_matrix_'+mode)
 				plot_heatmap_from_df(grouped_type[grouped_type.journey_type==mode],
 									 origin_col='regional_archetype_origin',
 									 destination_col='regional_archetype_destination',
+									 vmin=vmin,
+									 vmax=vmax,
 									 value_col="option",
-									 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch_'+mode+'.png'))
+									 save_path=Path(config['output']['path_to_output']) / ('resilience_options_reg_arch_'+mode+
+																					   config.get('sufix_fig')+'.png'))
 
 		return  {'_total': grouped_all, '_w_jt': grouped_type}
 

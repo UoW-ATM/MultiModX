@@ -158,6 +158,7 @@ if __name__ == '__main__':
 	parser.add_argument('-ex', '--experiment', help='Folder with the experiment', required=False)
 	parser.add_argument('-c','--compare', nargs='+', help='Compare experiments', required=False)
 	parser.add_argument('-ppv', '--preprocessed_version', nargs='+', help='Preprocessed version of schedules to use', required=False, default=['0'])
+	parser.add_argument('-sf', '--sufix_fig', help='Suffix name to add to figures', required=False, default='')
 
 
 
@@ -171,9 +172,12 @@ if __name__ == '__main__':
 		config['output']['path_to_output'] = Path(config['output']['path_to_output']) / args.experiment / 'indicators'
 		config['input']['preprocessed_version'] = args.preprocessed_version[0]
 
+	if len(args.sufix_fig) > 0:
+		args.sufix_fig = '_' + args.sufix_fig
+
+	config['sufix_fig'] = args.sufix_fig
+
 	print ('KPI calculation... ')
-	print(args)
-	print(config)
 
 	if args.experiment is not None:
 		recreate_output_folder(Path(config['output']['path_to_output']))

@@ -52,6 +52,30 @@
 			variant = "modes"
 		[[indicators.strategic.resilience_alternatives]]
 			variant = "by_nuts"
+			vmin_matrix = 0
+			vmax_matrix = 60
+			vmin_matrix_air = 0
+			vmax_matrix_air = 36
+			vmin_matrix_rail = 10
+			vmax_matrix_rail = 60
+			vmin_matrix_multimodal = 0
+			vmax_matrix_multimodal = 30
+			vmin_matrix_nuts2 = 25
+			vmax_matrix_nuts2 = 500
+			vmin_matrix_nuts2_air = 25
+			vmax_matrix_nuts2_air = 300
+			vmin_matrix_nuts2_rail = 25
+			vmax_matrix_nuts2_rail = 300
+			vmin_matrix_nuts2_multimodal = 10
+			vmax_matrix_nuts2_multimodal = 200
+			plot = true
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_regional_archetype"
+			plot = true
+			vmin_matrix = 400
+			vmax_matrix = 6000
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_regional_archetype"
 		[[indicators.strategic.buffer_in_itineraries]]
 			variant = "avg"
 		[[indicators.strategic.buffer_in_itineraries]]
