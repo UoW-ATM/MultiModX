@@ -1,8 +1,9 @@
 [input]
-    path_to_strategic_output = "../../data/CS10/v=0.16/output/processed_cs10.pp20.nd02.so10.01/paths_itineraries"
+    path_to_strategic_output = "../../data/CS10/v=0.16/output/processed_cs10.pp00.nd00.so00.00/paths_itineraries"
 	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/"
-	tactical_output_name = "3.1_1_4"
-	ppv = 1
+	tactical_output_name = "3.1_1_0"
+	parameter_name = ""#"ground_mobility__delay_mean_30"
+	ppv = 0
 	iterations = 10
 	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
     path_to_scenario = "/home/michal/Documents/westminster/multimodx/input/scenario=1/scenario_config.toml"

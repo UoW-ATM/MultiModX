@@ -2,6 +2,17 @@ import pandas as pd
 from pathlib import Path
 import shutil
 import numpy as np
+import datetime as dt
+
+def add_date_and_handle_overflow(time_str, date):
+    hour, minute, second = map(int, time_str.split(':'))
+    if hour >= 24:
+        # If time exceeds 24 hours, add a day to the date component and adjust the time
+        date_adjusted = date + pd.Timedelta(days=1)
+        hour %= 24
+    else:
+        date_adjusted = date
+    return date_adjusted + pd.Timedelta(hours=hour, minutes=minute, seconds=second)
 
 def find_similar_fp(fp_pool,fp_pool_point_m,missing,schedules,path_to_mercury_input,airlines_static):
 
@@ -65,7 +76,7 @@ def find_similar_fp(fp_pool,fp_pool_point_m,missing,schedules,path_to_mercury_in
 	schedules['airline'] = schedules['airline'].replace('CDN','IBB')
 	#print(schedules)
 	schedules.to_csv(path_to_mercury_input+'schedules.csv')
-	schedules.to_parquet(path_to_mercury_input+'flight_schedules_tactical_1.parquet')
+	schedules.to_parquet(path_to_mercury_input+'flight_schedules_tactical_0.parquet')
 	# new_fp_pool = pd.concat([fp_pool]+selecteds)
 	# new_fp_pool.to_parquet(path_to_mercury_input+'new_fp_pool.parquet')
 	# new_fp_pool.to_csv(path_to_mercury_input+'new_fp_pool.csv')
@@ -83,34 +94,46 @@ def recreate_output_folder(folder_path: Path):
 
     folder_path.mkdir(parents=True, exist_ok=True)
 
-experiment = 'processed_cs10.pp20.nd02.so10.01'
+experiment = 'processed_cs10.pp20.nd02.so00.00'
 path_to_data = '../../../data/CS10/v=0.16/output/'+experiment+'/paths_itineraries/'
 path_to_mercury_input = path_to_data+'../mercury_input/'
 recreate_output_folder(Path(path_to_mercury_input))
 
-pax = pd.read_csv(path_to_data+'pax_assigned_tactical_1.csv')
+pax = pd.read_csv(path_to_data+'pax_assigned_tactical_0.csv')
 if 'leg3' not in pax.columns:
 	pax['leg3'] = np.nan
 	#print(pax[['leg1','leg2']])
 pax['gtfs_pre'] = 'gtfs_es_UIC_v2.3.zip'
 pax['gtfs_post'] = 'gtfs_es_UIC_v2.3.zip'
+#modify GTFS to change the times from local to UTC
+tz = 2
+stop_times = pd.read_csv('/home/michal/Documents/westminster/multimodx/data/strategic/data/CS10/v=0.16/gtfs_es_UIC_v2.3/stop_times.txt', parse_dates=['arrival_time','departure_time'],dtype={'stop_id':str})
+# stop_times['arrival_time_'] = stop_times['arrival_time'] - pd.Timedelta(2, unit='h')
+date_rail = pd.to_datetime('20190906', format='%Y%m%d')
+stop_times['arrival_time'] = stop_times['arrival_time'].apply(lambda x: add_date_and_handle_overflow(x, date_rail))
+stop_times['arrival_time'] = stop_times['arrival_time'].dt.tz_localize(tz='Europe/Madrid').dt.tz_convert('Etc/UTC').dt.strftime("%H:%M:%S")
+stop_times['departure_time'] = stop_times['departure_time'].apply(lambda x: add_date_and_handle_overflow(x, date_rail))
+stop_times['departure_time'] = stop_times['departure_time'].dt.tz_localize(tz='Europe/Madrid').dt.tz_convert('Etc/UTC').dt.strftime("%H:%M:%S")
+print('stop_times',stop_times,stop_times.dtypes)
+stop_times.to_csv('/home/michal/Documents/westminster/multimodx/data/strategic/data/CS10/v=0.16/gtfs_es_UIC_v2.3/stop_times_utc.txt')
+
 pax['rail_pre'] = pax['rail_pre'].apply(lambda x: x.split('_')[0] if '_' in str(x) else x)
 pax['rail_post'] = pax['rail_post'].apply(lambda x: x.split('_')[0] if '_' in str(x) else x)
 pax = pax.rename(columns={'nid_x':'nid'})
-pax.to_parquet(path_to_mercury_input+'pax_assigned_tactical_1.parquet')
-pax.to_csv(path_to_mercury_input+'pax_assigned_tactical_1.csv')
+pax.to_parquet(path_to_mercury_input+'pax_assigned_tactical_0.parquet')
+pax.to_csv(path_to_mercury_input+'pax_assigned_tactical_0.csv')
 
 
 
 
-filename = 'flight_schedules_tactical_1'
+filename = 'flight_schedules_tactical_0'
 f = pd.read_csv(path_to_data+filename+'.csv', parse_dates=['sobt','sibt'])
 f_filtered = f[(f['nid'].isin(pax['leg1'])) | (f['nid'].isin(pax['leg2'])) | (f['nid'].isin(pax['leg3']))]
 #f_filtered.to_parquet(path_to_mercury_input+filename+'_intra.parquet')
 #f_filtered.to_csv(path_to_data+filename+'_filtered.csv')
 f_filtered['domestic'] = f_filtered.apply(lambda row: ((row['origin'][:2] in ['GC','LE']) or (row['origin']=='GEML')) and ((row['destination'][:2] in ['GC','LE']) or (row['origin']=='GEML')), axis=1)
 intra = f_filtered[f_filtered['domestic']==True]
-#print('flight_schedules_tactical_1',f_filtered,f_filtered.dtypes)
+#print('flight_schedules_tactical_0',f_filtered,f_filtered.dtypes)
 #print(intra)
 
 route_pool = pd.read_parquet('/home/michal/Documents/westminster/multimodx/input/scenario=1/data/flight_plans/routes/route_pool_new.parquet')
@@ -140,10 +163,11 @@ find_similar_fp(fp_pool,fp_pool_point_m,missing,f_filtered,path_to_mercury_input
 connecting_times = pd.read_csv(path_to_data+'../processed/transition_layer_connecting_times.csv')
 
 a_to_b = pd.DataFrame()
+avg_travel_std = 5
 a_to_b['origin'] = connecting_times['origin']
 a_to_b['destination'] = connecting_times['destination']
-a_to_b['mean'] = connecting_times['avg_travel_time']+connecting_times['extra_avg_travel_time']
-a_to_b['std'] = 5
+a_to_b['mean'] = connecting_times['avg_travel_time'] - 2*avg_travel_std#+connecting_times['extra_avg_travel_time'] removed to account for reasonable times, not mct
+a_to_b['std'] = avg_travel_std
 a_to_b['pax_type'] = ''
 a_to_b['estimation_scale'] = 0
 ct=a_to_b.copy()

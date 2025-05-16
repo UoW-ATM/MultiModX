@@ -1,7 +1,8 @@
 [input]
     path_to_strategic_output = "../../data/CS10/v=0.16/output/"
 	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/"
-	tactical_output_name = "3.1_1_2"
+	tactical_output_name = "3.1_1_0"
+	parameter_name = ""#"ground_mobility__delay_mean_30"
 	iterations = 10
 	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
 	nuts_data_path = "/home/michal/Documents/westminster/multimodx/data/demand/data/NUTS_RG_01M_2021_4326_shp.shp"
@@ -39,6 +40,7 @@
 			variant = "by_nuts"
 		[[indicators.strategic.buffer_in_itineraries]]
 			variant = "avg"
+			plot = true
 		[[indicators.strategic.catchment_area]]
 			variant = "hubs"
 			plot = true
@@ -67,9 +69,7 @@
 		[[indicators.tactical.ratio_stranded_pax]]
 			variant = "total"
 		[[indicators.tactical.missed_connections]]
-			variant = "total"
-		[[indicators.tactical.missed_connections]]
-			variant = "abs"
+			variant = "all"
 		[[indicators.tactical.total_journey_time]]
 			variant = "total"
 		[[indicators.tactical.flight_arrival_delay]]
