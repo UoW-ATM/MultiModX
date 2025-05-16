@@ -4,12 +4,14 @@ import plotly.express as px
 import plotly.io as pio
 pio.kaleido.scope.mathjax = None
 from pathlib import Path
+
 import seaborn as sns
 import matplotlib.pyplot as plt
 import geopandas as gpd
 from matplotlib.ticker import MaxNLocator
 import ast
 from shapely.geometry import Point
+
 
 
 def add_nuts(df):
@@ -979,10 +981,10 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 
 
 def buffer_in_itineraries(data,config,pi_config,variant='sum'):
-
+	print('buffer_in_itineraries')
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
-	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered[['nservices']]],axis=1)
+	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered[['nservices','nmodes']]],axis=1)
 
 	#only options that have pax assigned and buffer is existing (buffer is 0 for one leg itineraries)
 	df = df[(df['pax']>0) & (df['nservices']>1)].copy()
@@ -991,6 +993,34 @@ def buffer_in_itineraries(data,config,pi_config,variant='sum'):
 	df['weigthed_total_waiting_time'] = df['total_waiting_time']*df['pax']
 	kpi = df['weigthed_total_waiting_time'].sum()
 	print(kpi)
+	if pi_config['plot'] == True:
+		plt.hist(df[df['nmodes']>1]['total_waiting_time'], weights=df[df['nmodes']>1]['pax'],bins=[0,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
+		plt.title("Histogram of buffers (multimodal pax)")
+		plt.xlabel("Buffer (min.)")
+		plt.ylabel("Number of passengers")
+		plt.show()
+		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist.png')
+		plt.close()
+
+		plt.hist(df[df['type']=='flight_rail']['total_waiting_time'], weights=df[df['type']=='flight_rail']['pax'],bins=[0,1,2,3,4,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
+		plt.title("Histogram of buffers (flight rail pax)")
+		plt.show()
+		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist_fr.png')
+		plt.close()
+
+		plt.hist(df[df['type']=='rail_flight']['total_waiting_time'], weights=df[df['type']=='rail_flight']['pax'],bins=[0,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
+		plt.title("Histogram of buffers (rail flight pax)")
+		plt.show()
+		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist_rf.png')
+		plt.close()
+
+		plt.hist(df[df['type']=='flight_flight']['total_waiting_time'], weights=df[df['type']=='flight_flight']['pax'],bins=[0,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
+		plt.title("Histogram of buffers (flight flight pax)")
+		plt.show()
+		plt.savefig(Path(config['output']['path_to_output']) / 'buffers_hist_ff.png')
+		plt.close()
+
+
 	if variant == 'sum':
 		return kpi
 	if variant == 'avg':

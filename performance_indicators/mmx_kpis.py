@@ -36,11 +36,11 @@ def read_strategic_output(path_to_strategic_output,preprocessed_version):
 
 	return data
 
-def read_tactical_data(path_to_tactical_output,tactical_output_name,iteration,path_to_tactical_input):
+def read_tactical_data(path_to_tactical_output,tactical_output_name,iteration,parameter_name,path_to_tactical_input):
 
-	postprocessing_pax = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'postprocessing_pax.csv',index_col=0,low_memory=False)
-	pax_not_supported = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'pax_not_supported.csv',index_col=0,low_memory=False)
-	df_flights = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)) / 'output_flights.csv.gz',index_col=0,low_memory=False)
+	postprocessing_pax = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)+parameter_name) / 'postprocessing_pax.csv',index_col=0,low_memory=False)
+	pax_not_supported = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)+parameter_name) / 'pax_not_supported.csv',index_col=0,low_memory=False)
+	df_flights = pd.read_csv(Path(path_to_tactical_output) / (tactical_output_name+'_'+str(iteration)+parameter_name) / 'output_flights.csv.gz',index_col=0,low_memory=False)
 	airport_processes = pd.read_parquet(Path(path_to_tactical_input) / 'data' / 'airports' / 'airport_processes.parquet')
 	#input_pax = pd.read_parquet(Path(path_to_tactical_input) / 'case_studies' / 'case_study=0' / 'data' / 'pax' / 'pax_assigned_tactical_0.parquet')
 	rail_stations_processes = pd.read_parquet(Path(path_to_tactical_input) / 'case_studies' / 'case_study=0' / 'data' / 'ground_mobility' / 'rail_stations_processes_v0.1.parquet')
@@ -49,17 +49,17 @@ def read_tactical_data(path_to_tactical_output,tactical_output_name,iteration,pa
 	return data
 
 def recreate_output_folder(folder_path: Path):
-    """
-    Check if a folder exists, delete it if it does, and recreate it as an empty folder.
+	"""
+	Check if a folder exists, delete it if it does, and recreate it as an empty folder.
 
-    Args:
-        folder_path (Path): The path to the folder.
-    """
-    if folder_path.exists():
+	Args:
+		folder_path (Path): The path to the folder.
+	"""
+	if folder_path.exists():
 
-        shutil.rmtree(folder_path)
+		#shutil.rmtree(folder_path)
 
-    folder_path.mkdir(parents=True, exist_ok=True)
+		folder_path.mkdir(parents=True, exist_ok=True)
 
 
 def read_config(toml_path):
@@ -69,14 +69,18 @@ def read_config(toml_path):
 
 	return toml_config
 
-def save_results(results,filename='indicators.csv'):
+def save_results(results,filename='indicators.csv',parameter_name=""):
 	res_list = []
 	#print(results)
 	for indicator, variants in results.items():
 		for variant in variants:
 			# print(variant, isinstance(variant['val'], pd.DataFrame),isinstance(variant['val'], pd.Series))
 			if isinstance(variant['val'], pd.DataFrame):
-				variant['val'].to_csv(Path(config['output']['path_to_output']) / (indicator+'__'+variant['name']+'.csv'),index=False)
+				variant['val'].to_csv(Path(config['output']['path_to_output']) / (indicator+'__'+variant['name']+parameter_name+'.csv'),index=False)
+			if isinstance(variant['val'], dict):
+				#print('x',variant['val'])
+				for key in variant['val']:
+					res_list.append({'indicator':indicator,'variant':key,'value':variant['val'][key]})
 			if np.isscalar(variant['val']):
 				#print('x',variant['val'])
 				res_list.append({'indicator':indicator,'variant':variant['name'],'value':variant['val']})
@@ -240,9 +244,13 @@ if __name__ == '__main__':
 
 	if 'tactical' in config['indicators']:
 		iterations = config['input']['iterations']
+		if len(config['input']['parameter_name']) > 0:
+			parameter_name = "_"+config['input']['parameter_name']
+		else:
+			parameter_name = ""
 		data_tactical = []
 		for iteration in range(iterations):
-			data_tactical.append(read_tactical_data(config['input']['path_to_tactical_output'],config['input']['tactical_output_name'],iteration,config['input']['path_to_tactical_input']))
+			data_tactical.append(read_tactical_data(config['input']['path_to_tactical_output'],config['input']['tactical_output_name'],iteration,parameter_name,config['input']['path_to_tactical_input']))
 		results = {}
 
 		for indicator, vals in config['indicators']['tactical'].items():
@@ -267,7 +275,7 @@ if __name__ == '__main__':
 				if indicator == 'variability':
 					val = variability(data_tactical,config,variant,variant=variant['variant'])
 				results[indicator].append({'name':variant['name'],'val':val})
-		save_results(results,filename='indicators_tactical.csv')
+		save_results(results,filename='indicators_tactical_'+parameter_name+'.csv')
 
 	if args.compare is not None:
 		print(args.compare)

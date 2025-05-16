@@ -176,7 +176,7 @@ def ratio_stranded_pax(data,config,pi_config,variant="total"):
 		#weigth total_time with pax
 
 		stranded = df[df['final_destination_reached']==False]
-		missed_connection = df[df['modified_itinerary']==True]
+		missed_connection = df[(df['modified_itinerary']==True) | (df['missed_air2rail']==True) | (df['missed_rail2air']==True)]
 
 		kpi = stranded['n_pax'].sum()/missed_connection['n_pax'].sum()
 		print(kpi)
@@ -186,7 +186,7 @@ def ratio_stranded_pax(data,config,pi_config,variant="total"):
 
 def missed_connections(data,config,pi_config,variant="total"):
 	print('missed_connections')
-	results = []
+	results = {'total':[],'abs':[],'abs_missed_air2air':[],'abs_missed_air2rail':[],'abs_missed_rail2air':[],'missed_air2rail':[], 'missed_rail2air':[], 'missed_air2air':[]}
 	for iteration, data_iter in enumerate(data):
 		df_pax0 = data_iter['postprocessing_pax']
 		df_pax1 = data_iter['pax_not_supported']
@@ -194,29 +194,23 @@ def missed_connections(data,config,pi_config,variant="total"):
 		df = df_pax.copy()
 
 
-		missed_connection = df[df['modified_itinerary']==True]
+		missed_connection = df[(df['modified_itinerary']==True) | (df['missed_air2rail']==True) | (df['missed_rail2air']==True)]
+		missed_connection_a2r = df[(df['missed_air2rail']==True)]
+		missed_connection_r2a = df[(df['missed_rail2air']==True)]
+		missed_connection_a2a = df[(df['modified_itinerary']==True) & (df['missed_air2rail']==False) & (df['missed_rail2air']==False)]
 
-		kpi = missed_connection['n_pax'].sum()/df['n_pax'].sum()
-		print(kpi)
-		results.append(kpi)
-	if variant == 'total':
-		return np.mean(results)
-	if variant == 'abs':
-		results = []
-		for iteration, data_iter in enumerate(data):
-			df_pax0 = data_iter['postprocessing_pax']
-			df_pax1 = data_iter['pax_not_supported']
-			df_pax = pd.concat([df_pax0,df_pax1])
-			df = df_pax.copy()
 
-			#weigth total_time with pax
+		results['total'].append(missed_connection['n_pax'].sum()/df['n_pax'].sum())
+		results['missed_air2air'].append(missed_connection_a2a['n_pax'].sum()/df['n_pax'].sum())
+		results['missed_air2rail'].append(missed_connection_a2r['n_pax'].sum()/df['n_pax'].sum())
+		results['missed_rail2air'].append(missed_connection_r2a['n_pax'].sum()/df['n_pax'].sum())
+		results['abs'].append(missed_connection['n_pax'].sum())
+		results['abs_missed_air2air'].append(missed_connection_a2a['n_pax'].sum())
+		results['abs_missed_air2rail'].append(missed_connection_a2r['n_pax'].sum())
+		results['abs_missed_rail2air'].append(missed_connection_r2a['n_pax'].sum())
+	if variant == 'all':
+		return {key:np.mean(results[key]) for key in results}
 
-			missed_connection = df[df['modified_itinerary']==True]
-
-			kpi = missed_connection['n_pax'].sum()
-			print(kpi)
-			results.append(kpi)
-		return np.mean(results)
 
 def total_journey_time(data,config,pi_config,variant="total"):
 	results = []
