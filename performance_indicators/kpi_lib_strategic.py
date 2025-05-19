@@ -629,6 +629,7 @@ def demand_served(data,config,pi_config,variant='total'):
 	demand_nuts = demand.groupby(['origin','destination'])['trips'].sum().reset_index()
 
 	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax']>0]
+	df_orig = df.copy()
 	grouped = df.groupby(['origin','destination'])['pax'].sum().reset_index()
 	grouped = grouped.merge(demand_nuts,how='right',on=['origin','destination'])
 	grouped['pax'] = grouped['pax'].fillna(0)
@@ -676,6 +677,80 @@ def demand_served(data,config,pi_config,variant='total'):
 																						   'sufix_fig') + '.png'))
 
 		return grouped2[['origin_regional_archetype', 'destination_regional_archetype', 'pax', 'trips', 'perc']]
+
+	if variant == 'by_od':
+		df = df_orig.copy()
+		grouped_w_mode = df.groupby(['origin', 'destination', 'type'])['pax'].sum().reset_index()
+		grouped_w_mode = grouped_w_mode.merge(demand_nuts, how='right', on=['origin', 'destination'])
+		grouped_w_mode['pax'] = grouped_w_mode['pax'].fillna(0)
+
+		def classify_mode(t):
+			if pd.isna(t):
+				return 'none'
+			parts = t.split('_')
+			unique_modes = set(parts)
+			if unique_modes == {'rail'}:
+				return 'rail'
+			elif unique_modes == {'flight'}:
+				return 'flight'
+			else:
+				return 'multimodal'
+
+		grouped_w_mode['mode'] = grouped_w_mode['type'].apply(classify_mode)
+
+		od_totals_gwm = grouped_w_mode.groupby(['origin', 'destination'])[['pax']].sum().rename(
+			columns={'pax': 'total_pax'})
+		grouped_w_mode = grouped_w_mode.merge(od_totals_gwm, on=['origin', 'destination'])
+		grouped_w_mode['perc_demand_accross_modes'] = grouped_w_mode['total_pax'] / grouped_w_mode['trips']
+
+		grouped_w_mode['od_pair'] = grouped_w_mode['origin'] + ' → ' + grouped_w_mode['destination']
+
+		# Compute unused pax per OD
+		grouped_w_mode['unserved_pax_total'] = grouped_w_mode['trips'] - grouped_w_mode['total_pax']
+
+		id_od = []
+		for od in pi_config['od']:
+			i_od_demand = grouped_w_mode[(grouped_w_mode.origin==od[0]) & (grouped_w_mode.destination==od[1])].index
+			if len(i_od_demand)>0:
+				id_od.extend(i_od_demand)
+
+		df = grouped_w_mode.loc[id_od].copy()
+		if len(df)>0:
+			# To ensure only one bar per OD, create a plotting dataframe
+			plot_df = df.pivot_table(index='od_pair', columns='mode', values='pax', aggfunc='sum').fillna(0)
+			# Add the "unused" part to reach total pax
+			plot_df['unserved'] = grouped_w_mode.groupby('od_pair')['unserved_pax_total'].first()
+
+			# Add label values
+			labels = df.groupby('od_pair')['perc_demand_accross_modes'].first().apply(lambda x: f"{x * 100:.2f}%")
+
+			# Plot setup
+
+			# Plot
+			fig, ax = plt.subplots(figsize=(10, 6))
+			ax = plot_df.plot(kind='bar', stacked=True, figsize=(10, 6), colormap='tab20c')
+
+			# Y-axis in thousands
+			ax.set_ylabel('Capacity Served (in \'000s of seats)')
+			#ax.set_yticklabels([f'{int(y / 1000)}K' for y in ax.get_yticks()])
+			ax.set_xlabel('Origin → Destination')
+			plt.xticks(rotation=45, ha='right')
+
+			# Add percentage labels on top
+			for idx, (bar_label, total_height) in enumerate(zip(labels, plot_df.sum(axis=1))):
+				ax.text(idx, total_height + 20,  # a bit above bar
+						f"{total_height / 1000:.1f}K\n({bar_label})",
+						ha='center', va='bottom', fontsize=9)
+
+			plt.tight_layout()
+
+			fe = pi_config.get('figure_ending','')
+
+			plt.savefig(Path(config['output']['path_to_output_figs']) / ('demand_served_between_od' + fe +
+																		 config.get(
+																			 'sufix_fig') + '.png'))
+
+		return grouped_w_mode
 
 
 def compute_load_factor(df_pax_per_service, dict_seats_service):
