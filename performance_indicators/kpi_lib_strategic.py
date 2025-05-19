@@ -26,7 +26,7 @@ def add_nuts(df):
 	return df
 
 def strategic_total_journey_time(data,config,pi_config,variant="sum"):
-	print('strategic_total_journey_time')
+	print(' -- Strategic total journey time', pi_config['variant'])
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
@@ -38,18 +38,18 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 	df['weigthed_total_time'] = df['total_time']*df['pax']
 	if variant == 'sum' :
 		kpi = df['weigthed_total_time'].sum()
-		print('sum',kpi)
+		# print('sum',kpi)
 		return kpi
 
 	if variant == 'avg':
 		kpi = df['weigthed_total_time'].sum()/df['pax'].sum()
-		print('avg',kpi)
+		# print('avg',kpi)
 		return kpi
 
 	if variant == 'avg_connecting_itineraries':
 		df = df.dropna(subset=['nid_f2'])
 		kpi = df['weigthed_total_time'].sum()/df['pax'].sum()
-		print('avg_connecting_itineraries',kpi)
+		# print('avg_connecting_itineraries',kpi)
 		return kpi
 
 	if variant == 'avg_by_nuts':
@@ -61,7 +61,7 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		#its = df.merge(possible_itineraries_clustered_pareto_filtered,how='left',left_on=['alternative_id','option'],right_on=['alternative_id','option'])
 		#print(its)
 		#print(its[['origin','destination','weigthed_total_time']])
-		print(df)
+		#print(df)
 		grouped = df.groupby(['origin','destination']).sum().reset_index()
 		grouped['total_journey_time_per_pax'] = grouped['weigthed_total_time']/grouped['pax']
 		grouped_nuts2 = df.groupby(['origin_nuts2', 'destination_nuts2']).sum().reset_index()
@@ -108,6 +108,7 @@ def strategic_total_journey_time(data,config,pi_config,variant="sum"):
 		grouped['total_journey_time_per_pax'] = grouped['weigthed_total_time']/grouped['pax']
 		return grouped[['regional_archetype','total_journey_time_per_pax']]
 
+
 def plot_nuts(its,config,title=''):
 	nuts_data_path = config['input']['nuts_data_path']
 	nuts_data = gpd.read_file(nuts_data_path)
@@ -115,9 +116,9 @@ def plot_nuts(its,config,title=''):
 	es_nuts = nuts_data[(nuts_data['LEVL_CODE']==3) & (nuts_data['CNTR_CODE']=='ES')]
 	df = its[its['origin_nuts2']=='ES51'].groupby(['destination'])['total_journey_time_per_pax'].mean().reset_index()
 	df = df.rename({'destination': 'NUTS_ID'}, axis=1)
-	print(df)
+	#print(df)
 	es_nuts = es_nuts.merge(df,how='left',on='NUTS_ID')
-	print(es_nuts)
+	#print(es_nuts)
 	fig = px.choropleth(es_nuts, geojson=es_nuts.geometry, locations=es_nuts.index, color="total_journey_time_per_pax", range_color=[200,700])
 	fig.update_geos(fitbounds="locations", visible=False)
 
@@ -214,7 +215,7 @@ def plot_top_od_stacked_bars(
 	if od_totals is not None:
 		od_totals["OD"] = od_totals[origin_col] + " → "  + od_totals[destination_col]
 		od_totals = od_totals.groupby("OD")[value_col].sum()
-		print(od_totals)
+		# print(od_totals)
 
 	else:
 		od_totals = df.groupby("OD")[value_col].sum()
@@ -384,6 +385,7 @@ def plot_stops_and_nuts_heatmap(
 
 
 def diversity_of_destinations(data,config,pi_config,variant='nuts'):
+	print(' -- Diversity of destinations', pi_config['variant'])
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 	results = {}
 	if variant == 'nuts':
@@ -424,6 +426,7 @@ def diversity_of_destinations(data,config,pi_config,variant='nuts'):
 		return con_out2
 
 def modal_share(data,config,pi_config,variant='total'):
+	print(' -- Modal share', pi_config['variant'])
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
@@ -432,7 +435,7 @@ def modal_share(data,config,pi_config,variant='total'):
 	df = df[df['pax']>0][['pax','journey_type','origin']]
 	grouped = df.groupby(['journey_type']).sum().reset_index()
 	grouped['percentage'] = grouped['pax']/grouped['pax'].sum()
-	print('grouped',grouped[['journey_type','pax','percentage']])
+	# print('grouped',grouped[['journey_type','pax','percentage']])
 	if variant == 'total':
 		return grouped[['journey_type','pax','percentage']]
 	if variant == 'by_nuts':
@@ -580,13 +583,15 @@ def modal_share(data,config,pi_config,variant='total'):
 		#grouping by nuts
 		df = df.merge(nuts_regional_archetype_info ,how='left',left_on='origin',right_on='origin')
 		total = df.groupby(['regional_archetype'])['pax'].sum().reset_index()
-		print(total)
+		# print(total)
 		grouped = df.groupby(['regional_archetype','journey_type']).sum().reset_index()
 		grouped['percentage'] = grouped.apply(lambda row: row['pax']/total[total['regional_archetype']==row['regional_archetype']]['pax'].iloc[0], axis=1)
-		print(grouped[['regional_archetype','journey_type','pax','percentage']])
+		# print(grouped[['regional_archetype','journey_type','pax','percentage']])
 		return  grouped[['regional_archetype','journey_type','pax','percentage']]
 
+
 def pax_time_efficiency(data,config,pi_config,variant='total'):
+	print(' -- Pax time efficiency', pi_config['variant'])
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 
 	pax_assigned_to_itineraries_options['origin'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
@@ -602,6 +607,7 @@ def pax_time_efficiency(data,config,pi_config,variant='total'):
 
 
 def demand_served(data,config,pi_config,variant='total'):
+	print(' -- Demand served', pi_config['variant'])
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	demand = data['demand']
 	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
@@ -752,6 +758,7 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
 
 	return df_final
 
+
 def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timetable_proc_used_internally,flight_schedules_proc):
 
 	def sum_segments(segment,dist):
@@ -823,7 +830,9 @@ def compute_load_factor_paxkm(df_pax_per_service, dict_seats_service,rail_timeta
 	#print(df)
 	return df
 
+
 def load_factor(data,config,pi_config,variant='total'):
+	print(' -- Load factor', pi_config['variant'])
 
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
@@ -885,7 +894,9 @@ def load_factor(data,config,pi_config,variant='total'):
 	if variant == 'modes':
 		return modes
 
+
 def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
+	print(' -- Resilience alternatives', pi_config['variant'])
 
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered'].copy()
 	nuts_regional_archetype_info = data['nuts_regional_archetype_info'].copy()
@@ -985,7 +996,7 @@ def resilience_alternatives(data,config,pi_config,variant='by_nuts'):
 
 
 def buffer_in_itineraries(data,config,pi_config,variant='sum'):
-	print('buffer_in_itineraries')
+	print(' -- Buffer in itineraries', pi_config['variant'])
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
 	df = pd.concat([pax_assigned_to_itineraries_options,possible_itineraries_clustered_pareto_filtered[['nservices','nmodes']]],axis=1)
@@ -996,7 +1007,7 @@ def buffer_in_itineraries(data,config,pi_config,variant='sum'):
 	#weigth total_waiting_time with pax
 	df['weigthed_total_waiting_time'] = df['total_waiting_time']*df['pax']
 	kpi = df['weigthed_total_waiting_time'].sum()
-	print(kpi)
+	# print(kpi)
 	if pi_config.get('plot', False):
 		fig, ax = plt.subplots(figsize=(10, 10))
 		plt.hist(df[df['nmodes']>1]['total_waiting_time'], weights=df[df['nmodes']>1]['pax'],bins=[0,5,10,15,20,25,30,35,40])  # arguments are passed to np.histogram
@@ -1122,6 +1133,7 @@ def from_to_stops(df, airport, df_stops, nuts3):
 
 
 def catchment_area(data,config,pi_config,variant='hubs'):
+	print(' -- Catchment area', pi_config['variant'])
 
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	pax_assigned_to_itineraries_options = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options.pax>0].copy()
@@ -1461,6 +1473,7 @@ def catchment_area(data,config,pi_config,variant='hubs'):
 
 
 def cost_per_user(data,config,pi_config,variant='avg'):
+	print(' -- Cost per user', pi_config['variant'])
 
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	#only options that have pax assigned
@@ -1469,11 +1482,12 @@ def cost_per_user(data,config,pi_config,variant='avg'):
 	#weigth total_time with pax
 	df['weigthed_cost'] = df['fare']*df['pax']
 	kpi = df['weigthed_cost'].sum()/df['pax'].sum()
-	print(kpi)
+	# print(kpi)
 	if variant == 'avg':
 		return kpi
 
 def co2_emissions(data,config,pi_config,variant='avg'):
+	print(' -- CO2 emissions', pi_config['variant'])
 
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
@@ -1484,11 +1498,12 @@ def co2_emissions(data,config,pi_config,variant='avg'):
 	#weigth co2 with pax
 	its['weigthed_co2'] = its['total_emissions']*its['pax']
 	kpi = its['weigthed_co2'].sum()/its['pax'].sum()
-	print(kpi)
+	# print(kpi)
 	if variant == 'avg':
 		return kpi
 
 def seamless_of_travel(data,config,pi_config,variant='avg'):
+	print(' -- Seamless of travel', pi_config['variant'])
 
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
@@ -1507,7 +1522,9 @@ def seamless_of_travel(data,config,pi_config,variant='avg'):
 		kpi = df['weigthed_tct'].sum()/df['pax'].sum()
 		return kpi
 
+
 def pax_processes_time(data,config,pi_config,variant='avg'):
+	print(' -- Pax process time', pi_config['variant'])
 
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	possible_itineraries_clustered_pareto_filtered = data['possible_itineraries_clustered_pareto_filtered']
@@ -1547,7 +1564,7 @@ def resilience_replanned(data,config,pi_config,variant='total'):
 	#rail_timetable_proc_used_internally0 = rail_timetable_proc_used_internally0.drop_duplicates(subset=['rail_service_id'],keep='first')
 	#rail_timetable_proc_used_internally1 = rail_timetable_proc_used_internally1.drop_duplicates(subset=['rail_service_id'],keep='first')
 
-	print(rail_timetable_proc_used_internally0.dtypes)
+	# print(rail_timetable_proc_used_internally0.dtypes)
 
 	flights = flight_schedules_proc0.merge(flight_schedules_proc1,how='outer',on=['service_id'],indicator='dataframe')
 	new_flights = flights[flights['dataframe']=='right_only']
@@ -1565,7 +1582,7 @@ def resilience_replanned(data,config,pi_config,variant='total'):
 
 	#print(flights,new_flights,cancelled_flights)
 	#print(same_flights.dtypes)
-	print(new_rail)
+	# print(new_rail)
 	rescheduled_rail.to_csv('rescheduled_rail.csv')
 	rows.append({'field':'new_flights','value':len(new_flights)})
 	rows.append({'field':'cancelled_flights','value':len(cancelled_flights)})
@@ -1582,7 +1599,7 @@ def resilience_replanned(data,config,pi_config,variant='total'):
 
 	if variant == 'total':
 		df = pd.DataFrame(rows)
-		print(df)
+		# print(df)
 		return df
 
 def pax_resilience_replanned(data,config,pi_config,variant='total'):
@@ -1623,7 +1640,7 @@ def pax_resilience_replanned(data,config,pi_config,variant='total'):
 		rows.append({'field':'pax_no_capacity','value':pax_assigned_to_itineraries_replanned_stranded[pax_assigned_to_itineraries_replanned_stranded['stranded_type']=='no_capacity']['pax_stranded'].sum()})
 
 		df = pd.DataFrame(rows)
-		print(df)
+		# print(df)
 		return df
 
 
