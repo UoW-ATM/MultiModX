@@ -768,6 +768,37 @@ def demand_served(data,config,pi_config,variant='total'):
 		return grouped_w_mode
 
 
+def demand(data, config, pi_config,variant='all'):
+	print(' -- Demand served', pi_config['variant'])
+	demand = data['demand']
+	total_demand = demand.trips.sum()
+	demand_archetypes = demand.groupby(['archetype'])['trips'].sum().reset_index()
+	demand_od = demand.groupby(['origin', 'destination'])['trips'].sum().reset_index()
+	demand_od.sort_values(by='trips', ascending=False, inplace=True)
+
+	if pi_config.get('plot', False):
+		demand_od['od'] = demand_od['origin'] + ' → ' + demand_od['destination']
+
+		# Select top x rows
+		top_df = demand_od.head(pi_config.get('top_od', 4))
+
+		# Plot
+		plt.figure(figsize=(10, 5))
+		bars = plt.bar(top_df['od'], top_df['trips'], color='skyblue')
+
+		plt.ylabel("Demand (passengers)")
+		plt.xticks(rotation=45, ha="right")
+		plt.tight_layout()
+
+		plt.savefig(Path(config['output']['path_to_output_figs']) / ('demand_od'+config.get('sufix_fig')+'.png'),
+					bbox_inches='tight')
+
+
+	return {'total_demand': total_demand, 'demand_archetype': demand_archetypes, 'demand_od': demand_od}
+
+
+
+
 def compute_load_factor(df_pax_per_service, dict_seats_service):
 	# Divide dataframe between flights and rail services
 	df_pax_per_service_flight = df_pax_per_service[df_pax_per_service.type=='flight'].copy()

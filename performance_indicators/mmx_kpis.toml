@@ -49,6 +49,10 @@
 			plot_top = 20
 		[[indicators.strategic.pax_time_efficiency]]
 			variant = "total"
+		[[indicators.strategic.demand]]
+			variant = "all"
+			plot = true
+			top_od = 20
 		[[indicators.strategic.demand_served]]
 			variant = "total_connecting_itineraries"
 		[[indicators.strategic.demand_served]]
@@ -200,7 +204,6 @@
 										['ES111', 'ES512'],
 										['ES512', 'ES111']]
 			od_capacity_modes_nuts2 = [['ES30', 'ES51']]
-
 	[indicators.replanned]
 		[[indicators.replanned.resilience_replanned]]
 			variant = "total"
