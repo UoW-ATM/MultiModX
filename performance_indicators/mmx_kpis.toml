@@ -63,6 +63,19 @@
 			vmin_matrix = 0.7
 			vmax_matrix = 1
 		    plot = true
+		[[indicators.strategic.demand_served]]
+			variant = "by_od"
+			od = [['ES617', 'ES111'],
+				  ['ES111', 'ES617'],
+				  ['ES111', 'ES512'],
+				  ['ES512', 'ES111']]
+			figure_ending = '0'
+		[[indicators.strategic.demand_served]]
+			variant = "by_od"
+			od = [['ES511', 'ES300'],
+				  ['ES300', 'ES511'],
+				  ]
+			figure_ending = '1'
 		[[indicators.strategic.load_factor]]
 			variant = "modes"
 		[[indicators.strategic.load_factor]]
@@ -180,9 +193,12 @@
 			plot = true
 			vmax_nuts2 = 20000
 			vmax_nuts3 = 3000
-			od_capacity_modes_nuts3 = [['ES511', 'ES300'],
-										['ES5300', 'ES511'],
-								 		['ES111', 'ES424']]
+			od_capacity_modes_nuts3 = [ ['ES511', 'ES300'],
+										['ES300', 'ES511'],
+								 		['ES617', 'ES111'],
+										['ES111', 'ES617'],
+										['ES111', 'ES512'],
+										['ES512', 'ES111']]
 			od_capacity_modes_nuts2 = [['ES30', 'ES51']]
 
 	[indicators.replanned]
