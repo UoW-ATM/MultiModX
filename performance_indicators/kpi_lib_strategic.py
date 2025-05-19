@@ -1805,9 +1805,15 @@ def capacity_available(data,config,pi_config,variant='all'):
 			fig, ax = plt.subplots(figsize=(8, 5))
 			bars = ax.bar(df['journey_type'], df['max_pax'], color='skyblue')
 
-			# Format y-axis in '000s
-			ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}K"))
-			ax.set_ylabel('Capacity Available (\'000 of seats)')
+			divide_by_1000 = False
+			if max(df['max_pax']) > 30000:
+				divide_by_1000 = True
+			if divide_by_1000:
+				# Format y-axis in '000s
+				ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}K"))
+				ax.set_ylabel('Capacity Available (\'000 of seats)')
+			else:
+				ax.set_ylabel('Capacity Available (seats)')
 			ax.set_xlabel('Journey Type')
 
 			# Add custom text on bars
@@ -1815,17 +1821,29 @@ def capacity_available(data,config,pi_config,variant='all'):
 				total_capacity = df['max_pax'].sum()
 				df['percentage'] = (df['max_pax'] / total_capacity) * 100
 
+
 			for bar, val, pct in zip(bars, df['max_pax'], df['percentage']):
 				height = bar.get_height()
-				ax.text(
-					bar.get_x() + bar.get_width() / 2,
-					height,
-					f"{val / 1000:.1f}K\n({pct:.0f}% total capacity available)",
-					ha='center',
-					va='bottom',
-					fontsize=9,
-					linespacing=1.5
-				)
+				if divide_by_1000:
+					ax.text(
+						bar.get_x() + bar.get_width() / 2,
+						height,
+						f"{val / 1000:.1f}K\n({pct:.0f}% total capacity available)",
+						ha='center',
+						va='bottom',
+						fontsize=9,
+						linespacing=1.5
+					)
+				else:
+					ax.text(
+						bar.get_x() + bar.get_width() / 2,
+						height,
+						f"{val:.0f}\n({pct:.0f}% total capacity available)",
+						ha='center',
+						va='bottom',
+						fontsize=9,
+						linespacing=1.5
+					)
 
 			plt.tight_layout()
 			plt.savefig(savefigpath)
