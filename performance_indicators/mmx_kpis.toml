@@ -177,6 +177,13 @@
 			variant = "avg"
 		[[indicators.strategic.capacity_available]]
 			variant = "all"
+			plot = true
+			vmax_nuts2 = 20000
+			vmax_nuts3 = 3000
+			od_capacity_modes_nuts3 = [['ES511', 'ES300'],
+										['ES5300', 'ES511'],
+								 		['ES111', 'ES424']]
+			od_capacity_modes_nuts2 = [['ES30', 'ES51']]
 
 	[indicators.replanned]
 		[[indicators.replanned.resilience_replanned]]

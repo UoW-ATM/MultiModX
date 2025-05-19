@@ -9,6 +9,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import geopandas as gpd
 from matplotlib.ticker import MaxNLocator
+import matplotlib.ticker as ticker
 import ast
 from shapely.geometry import Point
 import sys
@@ -1627,6 +1628,8 @@ def pax_resilience_replanned(data,config,pi_config,variant='total'):
 
 
 def capacity_available(data,config,pi_config,variant='all'):
+	print(' -- Capacity available', pi_config['variant'])
+
 	demand = data['pax_assigned_to_itineraries_options'].copy()
 	dict_services_w_capacity = {
 		mode: dict(group[["nid", "max_seats"]].values)
@@ -1679,11 +1682,95 @@ def capacity_available(data,config,pi_config,variant='all'):
 		'max_pax'].sum().reset_index()
 
 	total_capacity_available = df_seats_available.max_pax.sum()
+	total_cap_availabe_mode = df_seats_available.groupby('journey_type').max_pax.sum().reset_index()
+	total_capacity = total_cap_availabe_mode['max_pax'].sum()
+	total_cap_availabe_mode['percentage'] = (total_cap_availabe_mode['max_pax'] / total_capacity) * 100
+
 	cap_available_nuts2 = df_seats_available.groupby(['origin_nuts2', 'destination_nuts2'])['max_pax'].sum().reset_index()
 	cap_available_nuts3 = df_seats_available.groupby(['origin', 'destination'])['max_pax'].sum().reset_index()
 
+	if pi_config.get('plot', False):
+		# Generate plots
+
+		def plot_bars_values_capacity(df, savefigpath):
+
+			# Plot total capacity available per mode
+			fig, ax = plt.subplots(figsize=(8, 5))
+			bars = ax.bar(df['journey_type'], df['max_pax'], color='skyblue')
+
+			# Format y-axis in '000s
+			ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}K"))
+			ax.set_ylabel('Capacity Available (\'000 of seats)')
+			ax.set_xlabel('Journey Type')
+
+			# Add custom text on bars
+			if 'percentage' not in df.columns:
+				total_capacity = df['max_pax'].sum()
+				df['percentage'] = (df['max_pax'] / total_capacity) * 100
+
+			for bar, val, pct in zip(bars, df['max_pax'], df['percentage']):
+				height = bar.get_height()
+				ax.text(
+					bar.get_x() + bar.get_width() / 2,
+					height,
+					f"{val / 1000:.1f}K\n({pct:.0f}% total capacity available)",
+					ha='center',
+					va='bottom',
+					fontsize=9,
+					linespacing=1.5
+				)
+
+			plt.tight_layout()
+			plt.savefig(savefigpath)
+
+		plot_bars_values_capacity(total_cap_availabe_mode, Path(config['output']['path_to_output_figs']) / ('capacity_available_mode_total' +
+																		   config.get('sufix_fig') + '.png'))
+
+		# Plot matrices
+		plot_heatmap_from_df(
+			cap_available_nuts2,
+			origin_col='origin_nuts2', destination_col='destination_nuts2',
+			value_col="max_pax",
+			vmin=pi_config.get('vmin_nuts2'),
+			vmax=pi_config.get('vmax_nuts2'),
+			save_path=Path(config['output']['path_to_output_figs']) / ('capacity_available_total_nuts2' +
+																	   config.get('sufix_fig') + '.png'))
+
+		plot_heatmap_from_df(
+			cap_available_nuts3,
+			origin_col = 'origin', destination_col = 'destination',
+			value_col = "max_pax",
+			vmin = pi_config.get('vmin_nuts3'),
+			vmax = pi_config.get('vmax_nuts3'),
+			save_path = Path(config['output']['path_to_output_figs']) / ('capacity_available_total_nuts3' +
+																		 config.get('sufix_fig') + '.png'))
+
+		if pi_config.get('od_capacity_modes_nuts2') is not None:
+			# Plot between NUTS2
+			for od in pi_config['od_capacity_modes_nuts2']:
+				capacities = cap_available_nuts2_journey_type[((cap_available_nuts2_journey_type.origin_nuts2==od[0]) &
+												  			  (cap_available_nuts2_journey_type.destination_nuts2 == od[1]))].copy()
+				if len(capacities) > 0:
+					plot_bars_values_capacity(capacities, Path(config['output']['path_to_output_figs']) /
+											  								('capacity_available_mode_'
+																			 +od[0]+'-'+od[1]+
+																			 config.get('sufix_fig') + '.png'))
+
+		if pi_config.get('od_capacity_modes_nuts3') is not None:
+			# Plot between NUTS3
+			for od in pi_config['od_capacity_modes_nuts3']:
+				capacities = cap_available_nuts3_journey_type[((cap_available_nuts3_journey_type.origin==od[0]) &
+												  			  (cap_available_nuts3_journey_type.destination == od[1]))].copy()
+				if len(capacities) > 0:
+					plot_bars_values_capacity(capacities, Path(config['output']['path_to_output_figs']) /
+											  								('capacity_available_mode_'
+																			 +od[0]+'-'+od[1]+
+																			 config.get('sufix_fig') + '.png'))
+
+
 
 	return {'_total': total_capacity_available,
+			'_total_mode': total_cap_availabe_mode,
 			'_nuts2_journey_type': cap_available_nuts2_journey_type,
 			'_nuts3_journey_type': cap_available_nuts3_journey_type,
 			'_nuts2': cap_available_nuts2,
