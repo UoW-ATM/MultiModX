@@ -730,9 +730,24 @@ def demand_served(data,config,pi_config,variant='total'):
 			fig, ax = plt.subplots(figsize=(10, 6))
 			ax = plot_df.plot(kind='bar', stacked=True, figsize=(10, 6), colormap='tab20c')
 
+			columns_sum = []
+			if 'flight' in plot_df.columns:
+				columns_sum += ['flight']
+			if 'multimodal' in plot_df.columns:
+				columns_sum += ['multimodal']
+			if 'rail' in plot_df.columns:
+				columns_sum += ['rail']
+			if 'unserved' in plot_df.columns:
+				columns_sum += ['unserved']
+
+			max_stacked = plot_df[columns_sum].sum(axis=1).max()
 			# Y-axis in thousands
-			ax.set_ylabel('Capacity Served (in \'000s of seats)')
-			#ax.set_yticklabels([f'{int(y / 1000)}K' for y in ax.get_yticks()])
+			if max_stacked > 10000:
+				ax.set_yticklabels([f'{int(y / 1000)}K' for y in ax.get_yticks()])
+				ax.set_ylabel('Capacity Served (in \'000s of seats)')
+			else:
+				ax.set_ylabel('Capacity Served (seats)')
+
 			ax.set_xlabel('Origin → Destination')
 			plt.xticks(rotation=45, ha='right')
 
