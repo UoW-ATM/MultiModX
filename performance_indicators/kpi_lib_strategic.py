@@ -182,6 +182,7 @@ def plot_heatmap_from_df(
 	# Save or show
 	if save_path:
 		plt.savefig(save_path, bbox_inches='tight')
+		plt.close()
 	else:
 		plt.show()
 
@@ -247,6 +248,7 @@ def plot_top_od_stacked_bars(
 
 	if save_path:
 		plt.savefig(save_path, bbox_inches='tight')
+		plt.close()
 	else:
 		plt.show()
 
@@ -504,6 +506,7 @@ def plot_stops_and_nuts_heatmap(
 	plt.tight_layout()
 	if fig_map_name is not None:
 		plt.savefig(fig_map_name, bbox_inches='tight')
+		plt.close()
 	if show_plot:
 		plt.show()
 
@@ -533,6 +536,7 @@ def plot_stops_and_nuts_heatmap(
 	plt.tight_layout()
 	if fig_heat_map_name is not None:
 		plt.savefig(fig_heat_map_name, bbox_inches='tight')
+		plt.close()
 	if show_plot:
 		plt.show()
 
@@ -962,6 +966,7 @@ def demand_served(data,config,pi_config,variant='total'):
 			plt.savefig(Path(config['output']['path_to_output_figs']) / ('demand_served_between_od' + fe +
 																		 config.get(
 																			 'sufix_fig') + '.png'))
+			plt.close()
 
 		return grouped_w_mode
 
@@ -990,6 +995,7 @@ def demand(data, config, pi_config,variant='all'):
 
 		plt.savefig(Path(config['output']['path_to_output_figs']) / ('demand_od'+config.get('sufix_fig')+'.png'),
 					bbox_inches='tight')
+		plt.close()
 
 
 	return {'total_demand': total_demand, 'demand_archetype': demand_archetypes, 'demand_od': demand_od}
@@ -2223,6 +2229,7 @@ def capacity_available(data,config,pi_config,variant='all'):
 
 			plt.tight_layout()
 			plt.savefig(savefigpath)
+			plt.close()
 
 		plot_bars_values_capacity(total_cap_availabe_mode, Path(config['output']['path_to_output_figs']) / ('capacity_available_mode_total' +
 																		   config.get('sufix_fig') + '.png'))
