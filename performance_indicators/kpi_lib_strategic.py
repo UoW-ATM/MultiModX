@@ -812,9 +812,10 @@ def demand_served(data,config,pi_config,variant='total'):
 	pax_assigned_to_itineraries_options['origin'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
 	pax_assigned_to_itineraries_options['destination'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
 
-	total = pax_assigned_to_itineraries_options['pax'].sum()/demand['trips'].sum()
+	total_perc = pax_assigned_to_itineraries_options['pax'].sum()/demand['trips'].sum()
+	total_served = pax_assigned_to_itineraries_options['pax'].sum()
 	if variant == 'total':
-		return total
+		return {'_total_demand':demand['trips'].sum(), '_total_served': total_served, '_percentage_served': total_perc}
 
 	if variant == 'total_connecting_itineraries':
 		df = pax_assigned_to_itineraries_options.dropna(subset=['nid_f2']).copy()
