@@ -9,7 +9,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import geopandas as gpd
 from matplotlib.ticker import MaxNLocator
+from matplotlib.patches import Wedge
 import matplotlib.ticker as ticker
+from matplotlib.patches import Patch
+from matplotlib.patches import Circle
+
 import ast
 from shapely.geometry import Point
 import sys
@@ -247,6 +251,157 @@ def plot_top_od_stacked_bars(
 		plt.show()
 
 
+def plot_nuts_connecting_infrastructure(nuts3, data, topleft=None, bottomright=None, exclude_nuts=None,save_path=None):
+	# Filter to Spain
+	nuts3_spain = nuts3[nuts3['CNTR_CODE'] == 'ES'].copy()
+
+	# Exclude selected NUTS3 if any
+	if exclude_nuts:
+		nuts3_spain = nuts3_spain[~nuts3_spain['NUTS_ID'].isin(exclude_nuts)]
+
+	# Plot
+	fig, ax = plt.subplots(figsize=(12, 12))
+
+	# First plot NUTS without data (in light grey)
+	nuts3_spain.plot(
+		ax=ax, color="#eeeeee", edgecolor="grey", linewidth=0.5
+	)
+
+	plotted_positions = []
+	min_dist = 0.1  # ~0.1 degrees, adjust as needed
+
+	# Normalize size for pie chart radius
+	min_radius = 0.2  # desired minimum radius
+	max_radius = 0.4  # desired maximum radius (adjust as needed)
+
+	max_total = data['connecting_total'].max()
+	min_total = data['connecting_total'].min()
+
+	# Plot each infrastructure
+	for _, row in data.iterrows():
+		x, y = row['lon'], row['lat']
+		name = row['name']
+		values = [row['connecting_same_mode'], row['connecting_from_other_mode'], row['connecting_to_other_mode']]
+		total = row['connecting_total']
+
+		# Skip if no connections
+		if total == 0 or np.isnan(total) or np.isnan(x) or np.isnan(y):
+			continue
+
+		# Apply jitter if too close to existing points
+		original_point = Point(x, y)
+		attempts = 0
+		angle = 0
+		radius_jitter = 1
+		while any(original_point.distance(Point(px, py)) < min_dist for px, py in plotted_positions):
+			angle += np.pi / 6
+			x += radius_jitter * np.cos(angle)
+			y += radius_jitter * np.sin(angle)
+			original_point = Point(x, y)
+			attempts += 1
+			if attempts > 30:
+				break  # Avoid infinite loops in crowded areas
+
+		plotted_positions.append((x, y))
+
+		# Pie radius based on connecting_total
+		radius = min_radius + max_radius * (total / data['connecting_total'].max())
+		#radius = 0.1 + 0.3 * (total / data['connecting_total'].max())
+
+		# Compute pie radius with normalized scaling
+		#if max_total == min_total:
+		#	radius = max_radius
+		#else:
+		#	radius = ((total - min_total) / (max_total - min_total)) * (max_radius - min_radius) + min_radius
+
+
+		# Cross mark
+		ax.plot(x, y, marker='+', color='black', markersize=10, mew=2)
+
+		# Label
+		ax.text(x, y - 0.07, name, ha='center', va='top', fontsize=8)
+
+		# Pie slices
+		fracs = np.array(values) / total
+		labels = [f'{int(round(f * 100))}%' for f in fracs]
+		colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+		theta = 0
+		for frac, color in zip(fracs, colors):
+			if frac == 0:
+				continue
+			wedge = Wedge((x, y), radius, theta, theta + frac * 360, facecolor=color, edgecolor='k')
+			ax.add_patch(wedge)
+			theta += frac * 360
+
+		# Percent labels inside pie
+		theta = 0
+		for frac, label in zip(fracs, labels):
+			if frac == 0:
+				continue
+			angle_rad = np.deg2rad(theta + frac * 180)
+			ax.text(x + 0.4 * radius * np.cos(angle_rad),
+					y + 0.4 * radius * np.sin(angle_rad),
+					label, ha='center', va='center', fontsize=6, color='white')
+			theta += frac * 360
+
+	# Final layout
+
+
+	# Set zoom if coordinates provided
+	if topleft and bottomright:
+		# top-left: (lat1, lon1), bottom-right: (lat2, lon2)
+		lat1, lon1 = (topleft[0], topleft[1])
+		lat2, lon2 = (bottomright[0], bottomright[1])
+		ax.set_xlim(lon1, lon2)
+		ax.set_ylim(lat2, lat1)
+	else:
+		ax.set_xlim(nuts3_spain.total_bounds[[0, 2]])
+		ax.set_ylim(nuts3_spain.total_bounds[[1, 3]])
+
+	ax.set_aspect('equal')
+
+	# Legend for pie chart slice types
+	legend_elements = [
+		Patch(facecolor='#1f77b4', edgecolor='k', label='Same mode'),
+		Patch(facecolor='#ff7f0e', edgecolor='k', label='From other mode'),
+		Patch(facecolor='#2ca02c', edgecolor='k', label='To other mode')
+	]
+	ax.legend(handles=legend_elements, title='Connecting types', loc='lower left', fontsize=8, title_fontsize=9)
+
+	# Position for size legend
+	legend_x, legend_y = ax.get_xlim()[1] - 3, ax.get_ylim()[0] + 0.5  # adjust position if needed
+	spacing = 0.15
+
+	# Reference values for legend
+	ref_vals = [500, 1500, 5000]
+	for i, val in enumerate(ref_vals):
+		# Use same radius formula as in the main plot
+		radius = min_radius + (max_radius * val / max_total)
+
+		# Draw circle (same as pie size)
+		circle = Circle((legend_x, legend_y + i * spacing), radius, facecolor='gray', alpha=0.5, edgecolor='k')
+		ax.add_patch(circle)
+
+		# Add text label next to it
+		ax.text(legend_x + 0.05, legend_y + i * spacing + radius, f"{val:,} connections", va='center', fontsize=8)
+
+	# Ensure everything respects the axis bounds
+	for artist in ax.get_children():
+		if hasattr(artist, 'set_clip_on'):
+			artist.set_clip_on(True)
+
+	plt.axis('off')
+	plt.tight_layout()
+
+	if save_path is not None:
+		plt.savefig(save_path, bbox_inches='tight')
+		plt.close()
+	else:
+		plt.show()
+
+	plt.close()
+
+
 def plot_stops_and_nuts_heatmap(
 		nuts3,
 		grouped_nuts,
@@ -382,6 +537,48 @@ def plot_stops_and_nuts_heatmap(
 		plt.show()
 
 	plt.close()
+
+
+def plot_infrastructure_usage_bars(df, mode_filter, top_n, save_path=None):
+	df_filtered = df[df['mode'] == mode_filter].nlargest(top_n, 'total_pax').copy()
+
+	# Plotting
+	fig, ax = plt.subplots(figsize=(14, 6))
+	bar_width = 0.35
+	x = range(len(df_filtered))
+
+	# Departing + Arriving
+	ax.bar(x, df_filtered['departing_pax'], width=bar_width, label='Departing Pax', color='skyblue')
+	ax.bar(x, df_filtered['arriving_pax'], bottom=df_filtered['departing_pax'], width=bar_width,
+		   label='Arriving Pax', color='lightgreen')
+
+	# Connecting parts
+	x2 = [i + bar_width + 0.05 for i in x]
+	ax.bar(x2, df_filtered['connecting_same_mode'], width=bar_width, label='Conn. Same Mode', color='orange')
+	ax.bar(x2, df_filtered['connecting_from_other_mode'], bottom=df_filtered['connecting_same_mode'],
+		   width=bar_width, label='Conn. From Other Mode', color='red')
+	ax.bar(x2, df_filtered['connecting_to_other_mode'],
+		   bottom=df_filtered['connecting_same_mode'] + df_filtered['connecting_from_other_mode'],
+		   width=bar_width, label='Conn. To Other Mode', color='purple')
+
+	# Add connecting percentage text
+	for i, val in enumerate(df_filtered['connecting_total']):
+		pct = df_filtered.iloc[i]['connecting_perc']
+		ax.text(x2[i], val + 300, f"{pct:.1f}%", ha='center', va='bottom', fontsize=9)
+
+	# Axis and legend
+	ax.set_xticks([i + bar_width / 2 for i in x])
+	ax.set_xticklabels(df_filtered['name'], rotation=45)
+	ax.set_ylabel("Passengers")
+	ax.set_title(f"Passenger Distribution for Top {top_n} {mode_filter.capitalize()} Infrastructures")
+	ax.legend(loc='upper right')
+
+	plt.tight_layout()
+	if save_path is not None:
+		plt.savefig(save_path)
+		plt.close()
+	else:
+		plt.show()
 
 
 def diversity_of_destinations(data,config,pi_config,variant='nuts'):
@@ -795,6 +992,153 @@ def demand(data, config, pi_config,variant='all'):
 
 
 	return {'total_demand': total_demand, 'demand_archetype': demand_archetypes, 'demand_od': demand_od}
+
+
+def connectivity_infrastructure(data, config, pi_config, variant='all'):
+	print(' -- Connectivity infrastructure', pi_config['variant'])
+	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
+	df = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['pax'] > 0][['pax', 'path']].copy()
+	df['path'] = df['path'].apply(ast.literal_eval)
+	path_df = df['path'].apply(pd.Series)
+	path_df.columns = [f'node{i}' for i in path_df.columns]
+	df = df.drop(columns='path').join(path_df)
+
+	# Melt nodes to long format to simplify processing
+	node_cols = [col for col in df.columns if col.startswith('node')]
+
+	# Determine the mode of each infra
+	def infer_mode(code):
+		return 'air' if isinstance(code, str) and len(code) == 4 and code.isalpha() else 'rail'
+
+
+	# Initialize counters
+	from collections import defaultdict
+
+	stats = defaultdict(lambda: {
+		'mode': None,
+		'total_pax': 0,
+		'departing_pax': 0,
+		'arriving_pax': 0,
+		'connecting_total': 0,
+		'connecting_same_mode': 0,
+		'connecting_from_other_mode': 0,
+		'connecting_to_other_mode': 0
+	})
+
+	# Compute metrics
+	for i, row in df.iterrows():
+		pax = row['pax']
+		path = [row[col] for col in node_cols if pd.notnull(row[col])]
+		modes = [infer_mode(n) for n in path]
+
+		if not path:
+			continue
+
+		# Mode
+		stats[path[0]]['mode'] = modes[0]
+
+		# Departing
+		stats[path[0]]['departing_pax'] += pax
+		stats[path[0]]['total_pax'] += pax
+		# Arriving
+		stats[path[-1]]['arriving_pax'] += pax
+		stats[path[-1]]['total_pax'] += pax
+
+		# Connecting
+		for j in range(1, len(path) - 1):
+			prev_mode = modes[j - 1]
+			curr_mode = modes[j]
+			next_mode = modes[j + 1]
+
+			stats[path[j]]['connecting_total'] += pax
+			stats[path[j]]['total_pax'] += pax
+			if curr_mode == prev_mode == next_mode:
+				stats[path[j]]['connecting_same_mode'] += pax
+			if curr_mode != prev_mode:
+				stats[path[j]]['connecting_from_other_mode'] += pax
+			if curr_mode != next_mode:
+				stats[path[j]]['connecting_to_other_mode'] += pax
+
+
+	# Convert to DataFrame
+	infra_stats_df = pd.DataFrame.from_dict(stats, orient='index')
+	infra_stats_df.index.name = 'infrastructure'
+	infra_stats_df.reset_index(inplace=True)
+
+	infra_stats_df.sort_values(by='departing_pax', ascending=False, inplace=True)
+	infra_stats_df['connecting_perc'] =  (infra_stats_df['connecting_total'] / infra_stats_df['total_pax']) * 100
+
+	infra_stats_df = infra_stats_df.merge(data['df_stops_rail'][['stop_id', 'stop_name',
+																 'stop_lat', 'stop_lon']],
+										  left_on='infrastructure', right_on='stop_id', how='left')
+
+	infra_stats_df = infra_stats_df.merge(data['airport_coords'], left_on='infrastructure', right_on='icao_id',
+										  how='left')
+
+	infra_stats_df['lat'] = infra_stats_df['lat'].combine_first(infra_stats_df['stop_lat'])
+	infra_stats_df['lon'] = infra_stats_df['lon'].combine_first(infra_stats_df['stop_lon'])
+	infra_stats_df['name'] = infra_stats_df['stop_name'].fillna(infra_stats_df['infrastructure'])
+
+	infra_stats_df = infra_stats_df.drop(['icao_id', 'stop_id', 'stop_lat', 'stop_lon', 'stop_name'], axis=1)
+
+
+
+	if pi_config.get('plot', False):
+		# Filter for mode and top N by total_pax
+		top_n = pi_config.get('top_rail')
+		if top_n is not None:
+			# We have rail to do
+			mode_filter = 'rail'
+			plot_infrastructure_usage_bars(infra_stats_df, mode_filter,
+										   top_n, save_path=Path(config['output']['path_to_output_figs'])
+																			 / ('pax_and_connections_' + mode_filter +
+																				config.get('sufix_fig') + '.png'))
+		top_n = pi_config.get('top_air')
+		if top_n is not None:
+			# We have rail to do
+			mode_filter = 'air'
+			plot_infrastructure_usage_bars(infra_stats_df, mode_filter,
+										   top_n,
+										   save_path=Path(config['output']['path_to_output_figs'])
+															/ ('pax_and_connections_' + mode_filter +
+															   config.get('sufix_fig') + '.png'))
+
+	if pi_config.get('plot_map', False):
+		nuts_data_path = config['input']['nuts_data_path']
+		nuts_data = gpd.read_file(nuts_data_path)
+		# Filter to only NUTS level 3
+		nuts3 = nuts_data[nuts_data["LEVL_CODE"] == 3]
+		exclude_nuts = pi_config.get('exclude_nuts')
+
+		top_n = pi_config.get('top_rail_map')
+		if top_n is not None:
+			# We have rail to do
+			mode_filter = 'rail'
+			df_plot = infra_stats_df[infra_stats_df['mode'] == mode_filter].nlargest(top_n, 'connecting_total').copy()
+
+			plot_nuts_connecting_infrastructure(nuts3, df_plot, exclude_nuts=exclude_nuts,
+												topleft=pi_config.get('topleft'),
+												bottomright=pi_config.get('bottomright'),
+											save_path=Path(config['output']['path_to_output_figs'])
+													  / ('pax_and_connections_map' + mode_filter +
+														 config.get('sufix_fig') + '.png'))
+
+		top_n = pi_config.get('top_air_map')
+		if top_n is not None:
+			# We have rail to do
+			mode_filter = 'air'
+			df_plot = infra_stats_df[infra_stats_df['mode'] == mode_filter].nlargest(top_n, 'connecting_total').copy()
+
+			plot_nuts_connecting_infrastructure(nuts3, df_plot, exclude_nuts=exclude_nuts,
+												topleft=pi_config.get('topleft'),
+												bottomright=pi_config.get('bottomright'),
+												save_path=Path(config['output']['path_to_output_figs'])
+														  / ('pax_and_connections_map' + mode_filter +
+															 config.get('sufix_fig') + '.png'))
+
+	return infra_stats_df
+
+
 
 
 
