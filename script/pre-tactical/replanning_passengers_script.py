@@ -560,6 +560,39 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                          pre_processed_version) + '.csv')),
                     index=False)
 
+    # Flight schedules are already in proc form
+    # Read rail
+    # TODO: This might crash if we don't have rail in the network... but for now it works
+    rs_replanned_proc = pd.read_csv(toml_config['general']['pre_processed_input_folder']/
+                                    ('rail_timetable_proc_'+str(pre_processed_version)+'.csv'),
+                                    dtype={'origin':str, 'destination':str})
+    rs_replanned_proc['departure_time'] = pd.to_datetime(rs_replanned_proc['departure_time'])
+    rs_replanned_proc['arrival_time'] = pd.to_datetime(rs_replanned_proc['arrival_time'])
+    rs_planned_proc = pd.read_csv(Path(toml_config['general']['experiment_path']) /
+                                  toml_config['planned_network_info']['planned_network'] /
+                                  toml_config['planned_network_info']['path_processed'] /
+                                  ('rail_timetable_proc_'+str(toml_config['planned_network_info']['precomputed'])+'.csv'),
+                                  dtype={'origin':str, 'destination':str})
+    rs_planned_proc['departure_time'] = pd.to_datetime(rs_planned_proc['departure_time'])
+    rs_planned_proc['arrival_time'] = pd.to_datetime(rs_planned_proc['arrival_time'])
+
+    df_delays = create_df_delays_flights_rail_replanned_schedules(fs_replanned.copy(), fs_planned.copy(),
+                                           rs_replanned_proc, rs_planned_proc)
+
+    df_pax_unnafected, df_pax_kept_affected = process_pax_kept(pax_kept, df_delays)
+
+    df_pax_unnafected.to_csv((output_pax_folder_path /
+                     ('1.1.pax_assigned_kept_unnafected_' + str(
+                         pre_processed_version) + '.csv')),
+                    index=False)
+
+    # Could delayed or replanned doable
+    df_pax_kept_affected.to_csv((output_pax_folder_path /
+                     ('1.2.pax_assigned_kept_affected_delayed_or_connections_kept_' + str(
+                         pre_processed_version) + '.csv')),
+                    index=False)
+
+
     # These are pax itineraries that needed replanning
     pax_need_replannning.to_csv((output_pax_folder_path /
                                ('2.pax_assigned_need_replanning_' + str(
@@ -751,7 +784,61 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
             pax_reassigned['pax_group_id_new'] = None
 
 
+    logger.important_info("SAVING PAX REASSIGNED")
+    # These are the pax itineraries which have been reassigned to other options
+    pax_reassigned.to_csv((output_pax_folder_path /
+                               ('3.pax_reassigned_to_itineraries_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
+
+    # Put together pax reassigned and pax affected as pax affected
+    nid_cols = [col for col in pax_reassigned.columns if col.startswith('nid_f')]
+
+    service_id_cols = ['service_id_' + str(int(col.split('_')[-1].split('f')[-1]) - 1) for col in nid_cols]
+    mode_id_cols = ['mode_' + str(int(col.split('_')[-1].split('f')[-1]) - 1) for col in nid_cols]
+
+
+    if len(df_pax_kept_affected) > 0:
+        df_pax_kept_affected = pd.concat([df_pax_kept_affected[
+                                                   ['origin', 'destination', 'path'] + nid_cols + [
+                                                       'delay_departure_home', 'delay_arrival_home',
+                                                       'delay_total_travel_time',
+                                                       'alliances_match', 'same_path', 'extra_services',
+                                                       'same_initial_node',
+                                                       'same_final_node', 'pax_assigned', 'pax_group_id_new',
+                                                       'pax_status_replanned']],
+                                               pax_reassigned[['origin', 'destination',
+                                                                  'path'] + nid_cols + service_id_cols + mode_id_cols +
+                                                                 ['delay_departure_home', 'delay_arrival_home',
+                                                                  'delay_total_travel_time',
+                                                                  'alliances_match', 'same_path', 'extra_services',
+                                                                  'same_initial_node',
+                                                                  'same_final_node', 'pax_assigned', 'pax_group_id_new',
+                                                                  'pax_status_replanned']]])
+
+    elif len(pax_reassigned) > 0:
+        df_pax_kept_affected = pax_reassigned[
+            ['origin', 'destination', 'path'] + nid_cols + service_id_cols + mode_id_cols +
+            ['delay_departure_home', 'delay_arrival_home', 'delay_total_travel_time',
+             'alliances_match', 'same_path', 'extra_services', 'same_initial_node',
+             'same_final_node', 'pax_assigned', 'pax_group_id_new', 'pax_status_replanned']].copy()
+
+    else:
+        df_pax_kept_affected = pax_reassigned
+
+    df_pax_kept_affected.to_csv((output_pax_folder_path /
+                                 ('3.1.pax_affected_all_'+ str(pre_processed_version) + '.csv')),
+                                index=False)
+
+    # These are pax itineraries which are stranded
+    pax_stranded.to_csv((output_pax_folder_path /
+                               ('4.pax_assigned_to_itineraries_replanned_stranded_' + str(
+                                     pre_processed_version) + '.csv')),
+                                index=False)
+
     # Compute summary of pax needed reassigning and actually assigned
+    logger.important_info("COMPUTING SUMMARY REASSIGNED")
+
     pa = pax_reassigned.groupby(['pax_group_id'])['pax_assigned'].sum().reset_index()
     df_pax_need_replanning_demand = df_pax_need_replanning_demand.merge(pa, how='left', on='pax_group_id')
     df_pax_need_replanning_demand['pax_assigned'] = df_pax_need_replanning_demand['pax_assigned'].fillna(0)
@@ -761,23 +848,6 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                    'demand_to_assign', 'pax_assigned', 'unfulfilled']].to_csv((output_pax_folder_path /
                                           ('5.pax_demand_assigned_summary_' + str(pre_processed_version) + '.csv'
                                           )), index=False)
-
-
-
-
-
-    # These are the pax itineraries which have been reassigned to other options
-    pax_reassigned.to_csv((output_pax_folder_path /
-                               ('3.pax_reassigned_to_itineraries_' + str(
-                                     pre_processed_version) + '.csv')),
-                                index=False)
-
-    # These are pax itineraries which are stranded
-    pax_stranded.to_csv((output_pax_folder_path /
-                               ('4.pax_assigned_to_itineraries_replanned_stranded_' + str(
-                                     pre_processed_version) + '.csv')),
-                                index=False)
-
 
     end_pipeline_time = time.time()
     elapsed_time = end_pipeline_time - start_pipeline_time

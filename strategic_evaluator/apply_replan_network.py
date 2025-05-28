@@ -192,7 +192,7 @@ def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs
 
     fs_planned['status'] = 'planned'
 
-    if fs_cancelled is not None:
+    if (fs_cancelled is not None) and (len(fs_cancelled)>0):
         fs_planned = fs_planned[~fs_planned.service_id.isin(fs_cancelled.service_id)]
         # Remove entries from dict_seats_servie
         # Set to zero instead of removing them so that they are considered
@@ -203,12 +203,12 @@ def replan_flight_schedules(fs_planned, fs_replanned=None, fs_cancelled=None, fs
             dict_seats_service['flight'][s] = 0
             #dict_seats_service['flight'].pop(s, None)
 
-    if fs_replanned is not None:
+    if (fs_replanned is not None) and (len(fs_replanned)>0):
         fs_planned = fs_planned[~fs_planned.service_id.isin(fs_replanned.service_id)]
         fs_replanned['status'] = 'replanned'
         fs_planned = pd.concat([fs_planned, fs_replanned])
 
-    if fs_added is not None:
+    if (fs_added is not None) and (len(fs_added)>0):
         fs_added['status'] = 'added'
         fs_planned = pd.concat([fs_planned, fs_added])
 
@@ -357,6 +357,9 @@ def compute_itineraries_in_replanned_network(toml_config, pc=1, n_paths=15, n_it
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     df_itineraries.to_csv(toml_config['output']['output_folder'] / ofp, index=False)
 
+    '''
+    We won't compute Pareto and filter when reassinging, keep all
+    
     # Filter options that are 'similar' from the df_itineraries
     logger.important_info("Filtering/Clustering itineraries options")
 
@@ -371,8 +374,6 @@ def compute_itineraries_in_replanned_network(toml_config, pc=1, n_paths=15, n_it
     ofp = 'possible_itineraries_clustered_' + str(pre_processed_version) + '.csv'
     df_cluster_options.to_csv(toml_config['output']['output_folder'] / ofp, index=False)
 
-    '''
-    We won't compute Pareto and filter when reassinging, keep all
     # Pareto options from similar options
     logger.important_info("Computing Pareto itineraries options")
 
@@ -665,3 +666,74 @@ def filter_options_pax_it_w_constraints(pax_need_replanning_w_it_options, dict_c
     return pax_need_replanning_w_it_options_kept
 
 
+def create_df_delays_flights_rail_replanned_schedules(fs_replanned, fs_planned, rs_replanned, rs_planned):
+    # Compute delay of pax_kept and divide them by type of pax
+    fs_replanned = fs_replanned.merge(fs_planned[['service_id', 'sobt', 'sibt']], on='service_id',
+                                      suffixes=('', '_orig'))
+    fs_replanned['delay_departure'] = (fs_replanned['sobt'] - fs_replanned[
+        'sobt_orig']).dt.total_seconds() / 60
+    fs_replanned['delay_arrival'] = (fs_replanned['sibt'] - fs_replanned[
+        'sibt_orig']).dt.total_seconds() / 60
+
+    fs_replanned = fs_replanned[['service_id', 'delay_departure', 'delay_arrival']]
+
+    rs_replanned = rs_replanned.merge(rs_planned[['service_id', 'departure_time', 'arrival_time']],
+                                      on='service_id', suffixes=('', '_orig'))
+    rs_replanned['delay_departure'] = (rs_replanned['departure_time'] - rs_replanned[
+        'departure_time_orig']).dt.total_seconds() / 60
+    rs_replanned['delay_arrival'] = (rs_replanned['arrival_time'] - rs_replanned[
+        'arrival_time_orig']).dt.total_seconds() / 60
+    rs_replanned = rs_replanned[['service_id', 'delay_departure', 'delay_arrival']]
+
+    df_s_delay = pd.concat([fs_replanned, rs_replanned])
+    return df_s_delay
+
+
+def process_pax_kept(df_pax_kept, df_delays):
+    # Example: Get all nid_f columns (in case n is variable)
+    nid_cols = [col for col in df_pax_kept.columns if col.startswith('nid_f')]
+
+    # pax_status_replanned != 'unnafected' will be mainly pax that are affected by their itineraries are still possible
+    df_pax_kept_affected = df_pax_kept[df_pax_kept.pax_status_replanned != 'unnafected'].copy()
+    df_pax_unnafected = df_pax_kept[df_pax_kept.pax_status_replanned == 'unnafected'].copy()
+
+    if len(df_pax_kept_affected) > 0:
+        # Step 1: Get last non-null nid for each row
+        df_pax_kept_affected["last_nid"] = df_pax_kept_affected[nid_cols].apply(
+            lambda row: row.dropna().iloc[-1] if row.notna().any() else np.nan, axis=1)
+
+        # Step 2: Merge on 'last_nid' == 'service_id'
+        df_pax_kept_affected = df_pax_kept_affected.merge(
+            df_delays[['service_id', 'delay_arrival']],
+            left_on='last_nid',
+            right_on='service_id',
+            how='left'
+        )
+
+        # Optionally: drop helper columns if not needed
+        df_pax_kept_affected = df_pax_kept_affected.drop(columns=['last_nid', 'service_id'])
+
+        df_pax_kept_affected = df_pax_kept_affected.merge(
+            df_delays[['service_id', 'delay_departure']],
+            left_on='nid_f1',
+            right_on='service_id',
+            how='left'
+        )
+
+        df_pax_kept_affected = df_pax_kept_affected.drop(columns=['service_id'])
+
+        df_pax_kept_affected['alliances_match'] = True
+        df_pax_kept_affected['same_path'] = True
+        df_pax_kept_affected.rename(
+            columns={'delay_departure': 'delay_departure_home', 'delay_arrival': 'delay_arrival_home'},
+            inplace=True)
+        df_pax_kept_affected['delay_total_travel_time'] = df_pax_kept_affected['delay_arrival_home'] - \
+                                                                 df_pax_kept_affected['delay_departure_home']
+        df_pax_kept_affected['extra_services'] = 0
+        df_pax_kept_affected['same_initial_node'] = True
+        df_pax_kept_affected['same_final_node'] = True
+        df_pax_kept_affected['same_modes'] = True
+        df_pax_kept_affected['pax_assigned'] = df_pax_kept_affected['pax']
+        df_pax_kept_affected['pax_group_id_new'] = df_pax_kept_affected['pax_group_id']
+
+    return df_pax_unnafected, df_pax_kept_affected
