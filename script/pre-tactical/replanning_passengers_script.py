@@ -451,7 +451,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     #####################################################################
     # First adjust rail and flight network with modifications replanned #
-    ####################################################################
+    #####################################################################
+    logger.important_info("ADJUSTING RAIL AND FLIGHT NETWORK WITH REPLAN")
 
     if trains_replanned is not None:
         logger.important_info("Replanning rail")
@@ -524,6 +525,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     #####################################
     # Preprocess the replanned network  #
     #####################################
+    logger.important_info("PREPROCESS THE REPLANNED NETWORK")
 
     # Regardless of having to replan_pax preprocess replanned network
     # Add path to  pre-processed input (flight and rail timetable processed)
@@ -535,9 +537,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     ########################################
     #  Then identify pax need reassigning  #
-    #######################################
-    logger.important_info("Identifying status of passengers planned in replanned network")
-
+    ########################################
+    logger.important_info("IDENTIFYING STATUS OF PASSENGERS PLANNED IN REPLANNED NETWORK")
 
     pax_assigned_planned, pax_kept, pax_need_replannning = compute_pax_status_in_replanned_network(pax_assigned_planned,
                                                                                                    fs_replanned,
@@ -545,8 +546,6 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                                                    flights_cancelled, trains_cancelled,
                                                                                                    flights_replanned, trains_replanned_ids,
                                                                                                    dict_mcts)
-
-
 
     # Pax itineraries initial with impact of replanning
     # Save pax_assigned_planned with their status due to replanning
@@ -572,6 +571,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     ########################################
     #  Then identify pax need reassigning  #
     #######################################
+    logger.important_info("IDENTIFYING PAX NEED REASSIGNING")
 
     # Pax assigned final
     pax_assigned_final = pax_assigned_planned.copy()
@@ -588,8 +588,11 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     if len(pax_need_replannning) > 0:
         # Have some pax that need replanning
         # Else we're done
+        logger.important_info("REASSIGNING PASSENGERS")
+        logger.important_info("   "+str(len(pax_need_replannning)) + " itineraries, " +str(pax_need_replannning.pax.sum())+" pax need replanning")
 
         # Compute capacities available in services
+        logger.important_info("   Computing capacity in services")
         #df_stops_considered = pd.read_csv(path_stops_trains_used, dtype=str)
         #rs_replanned_filtered = rs_replanned[rs_replanned.stop_id.isin(df_stops_considered.stop_id)].copy()
 
@@ -602,6 +605,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                      ('services_wo_capacity_'+ str(pre_processed_version)+'.csv')), index=False)
 
         # Compute capacity available overall per service
+        logger.important_info("   Computing capacity available overall per service")
         capacity_available = pd.concat([services_w_capacity, services_wo_capacity])
         capacity_available['capacity'] = capacity_available['max_seats_service'] - capacity_available['max_pax_in_service']
         capacity_available = capacity_available[['service_id', 'type', 'capacity']]
@@ -612,6 +616,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         capacity_available.to_csv((output_paths_folder_path / 'services_capacity_available.csv'), index=False)
 
         # Compute o-d demand that needs to be reassigned so that suitable itineraries can be computed
+        logger.important_info("   Computing o-d demand need to be reassigned")
+
         # Get o-d with total demand that needs reacommodating
         od_demand_need_reaccomodating = pax_need_replannning.groupby(['origin', 'destination'])['pax'].sum().reset_index()
         # Put only one archetype, we only need one example per o-d pair
@@ -630,6 +636,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
         allow_mixed_operators_itineraries = not toml_config['replanning_considerations']['constraints']['new_itineraries_respect_alliances']
 
+        logger.important_info("   Computing itineraries possible in replanned network")
         df_itineraries = compute_itineraries_in_replanned_network(toml_config,
                                                                   pc = pc,
                                                                   n_paths = n_paths,
@@ -641,7 +648,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                                   capacity_available = capacity_available,
                                                                   pre_process_input = False)
 
-
+        logger.important_info("   Computing alternatives per pax itinerary")
         pax_need_replanning_w_it_options = compute_alternatives_possibles_pax_itineraries(pax_need_replannning,
                                                                                           df_itineraries,
                                                                                           fs_planned,
@@ -653,6 +660,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
         pax_need_replanning_w_it_options_kept = pax_need_replanning_w_it_options
         if toml_config['replanning_considerations'].get('constraints') is not None:
+            logger.important_info("   Filtering alternatives with constraints")
             pax_need_replanning_w_it_options_kept = filter_options_pax_it_w_constraints(pax_need_replanning_w_it_options,
                                                                                             toml_config['replanning_considerations']['constraints'])
 
@@ -667,7 +675,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                     ('pax_stranded_' + str(pre_processed_version) + '.csv')), index=False)
 
         if len(pax_need_replanning_w_it_options_kept) > 0:
-            logger.important_info("Computing stranded pax without option")
+            logger.important_info("    Computing stranded pax without option")
             # Check if there're pax without options, those would be stranded
             pax_wo_options = pax_need_replannning.merge(pax_need_replanning_w_it_options_kept[['pax_group_id',
                                                                                                'same_path']],
@@ -684,7 +692,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
             pax_stranded['stranded_type'] = 'no_option'
 
-            logger.important_info("Assigning passengers to services")
+            logger.important_info("    Assigning passengers to services")
 
             nprocs = min(pc, toml_config['replanning_considerations']['optimisation']['nprocs'])
 
@@ -724,7 +732,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
         else:
             # All pax are stranded
-            logger.important_info("Computing stranded pax without option -- None have option")
+            logger.important_info("    Computing stranded pax without option -- None have option")
             # Check if there're pax without options, those would be stranded
             pax_wo_options = pax_need_replannning
             pax_wo_options['pax_stranded'] = pax_wo_options['pax']
