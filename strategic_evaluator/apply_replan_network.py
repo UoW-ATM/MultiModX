@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import logging
 from collections import defaultdict
 from datetime import timedelta
@@ -612,7 +613,7 @@ def compute_alternatives_possibles_pax_itineraries(pax_need_replanning, df_itine
     pax_need_replanning_w_it_options['same_initial_node'] = pax_need_replanning_w_it_options['node_pax_0'] == \
                                                             pax_need_replanning_w_it_options['node_it_0']
     pax_need_replanning_w_it_options['same_final_node'] = pax_need_replanning_w_it_options['node_pax_n'] == \
-                                                          pax_need_replanning_w_it_options['node_it_0']
+                                                          pax_need_replanning_w_it_options['node_it_n']
     pax_need_replanning_w_it_options['same_modes'] = pax_need_replanning_w_it_options.apply(
         lambda row: set(row['modes_pax']) == set(row['modes_it']), axis=1)
 
