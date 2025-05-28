@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import logging
 import time
 import pytz
+import re
 
 import sys
 sys.path.insert(1, '../..')
@@ -13,16 +14,81 @@ sys.path.insert(1, '../..')
 from strategic_evaluator.pax_reassigning_replanned_network import (compute_pax_status_in_replanned_network,
                                                                    compute_capacities_available_services,
                                                                    reassign_passengers_services)
-from strategic_evaluator.apply_replan_network import  (replan_rail_timetable, replan_flight_schedules,
-                                                       compute_itineraries_in_replanned_network,
-                                                       compute_alternatives_possibles_pax_itineraries,
-                                                       filter_options_pax_it_w_constraints,
-                                                       preprocess_network_replanned)
+from strategic_evaluator.apply_replan_network import (replan_rail_timetable, replan_flight_schedules,
+                                                      compute_itineraries_in_replanned_network,
+                                                      compute_alternatives_possibles_pax_itineraries,
+                                                      filter_options_pax_it_w_constraints,
+                                                      preprocess_network_replanned,
+                                                      create_df_delays_flights_rail_replanned_schedules,
+                                                      process_pax_kept)
 
 from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
                                                process_strategic_config_file)
 from libs.time_converstions import  convert_to_utc_vectorized
+
+
+def review_fiels_flight_schedules_SOL3(fs_sol3, fs_orig, replanning=False):
+    """Function to fix the fields from flight schedules provided by SOL3 as some columns are missing, etc"""
+    if replanning:
+        # Only all flights from SOL3 should be in the original (or are not replanning...)
+        fs_sol3 = fs_sol3[fs_sol3.service_id.isin(fs_orig.service_id)].copy()
+        if len(fs_sol3) == 0:
+            return None
+
+    fs_sol3 = fs_sol3.merge(fs_orig[['service_id',
+                                     'dep_terminal',
+                                     'arr_terminal',
+                                     'sobt_tz', 'sibt_tz',
+                                     'sobt_local_tz', 'sibt_local_tz',
+                                     'provider',
+                                     'act_type',
+                                     'gcdistance',
+                                     'cost', 'emissions',
+                                     'alliance']], on='service_id')
+
+    # Keep the alliance from the original schedules
+    fs_sol3.drop(['alliance_x'], axis=1, inplace=True)
+    fs_sol3.rename({'alliance_y': 'alliance'}, axis='columns', inplace=True)
+
+    # Create sobt_local and sibt_local
+    def fix_24_hour_format(time_str):
+        if re.search(r' 24:\d{2}:\d{2}', time_str):
+            date_part = time_str[:10]
+            time_part = time_str[11:]
+            hours, minutes, seconds = map(int, time_part.split(':'))
+            if hours == 24:
+                new_date = (datetime.strptime(date_part, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+                return f"{new_date} 00:{minutes:02d}:{seconds:02d}"
+        return time_str
+
+    # Apply the fix to sobt and sibt before converting
+    fs_sol3['sobt'] = fs_sol3['sobt'].apply(fix_24_hour_format)
+    fs_sol3['sibt'] = fs_sol3['sibt'].apply(fix_24_hour_format)
+
+    # Convert to datetime (assuming UTC)
+    fs_sol3['sobt'] = pd.to_datetime(fs_sol3['sobt'], utc=True)
+    fs_sol3['sibt'] = pd.to_datetime(fs_sol3['sibt'], utc=True)
+
+    # Step 2: Define a function to convert timezone offset string to timedelta
+    def parse_tz_offset(offset_str):
+        sign = 1 if offset_str.startswith('+') else -1
+        hours = int(offset_str[1:3])
+        return timedelta(hours=sign * hours)
+
+    # Step 3: Apply the timezone offset
+    fs_sol3['sobt_local'] = fs_sol3.apply(lambda row: row['sobt'] + parse_tz_offset(row['sobt_local_tz']), axis=1)
+    fs_sol3['sibt_local'] = fs_sol3.apply(lambda row: row['sibt'] + parse_tz_offset(row['sibt_local_tz']), axis=1)
+
+    # Step 4: Convert back to string without timezone info
+    fs_sol3['sobt_local'] = fs_sol3['sobt_local'].dt.strftime('%Y-%m-%d %H:%M:%S')
+    fs_sol3['sibt_local'] = fs_sol3['sibt_local'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    fs_sol3['sobt'] = fs_sol3['sobt'].dt.strftime('%Y-%m-%d %H:%M:%S')
+    fs_sol3['sibt'] = fs_sol3['sibt'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    return fs_sol3
+
 
 
 def parse_time_with_date(time_str, base_date):
@@ -49,6 +115,8 @@ def pre_process_rail_input(rail_time_table, base_date, df_stops=None, df_stops_c
 
     if df_stops is not None:
         rail_time_table = rail_time_table.merge(df_stops[['stop_id', 'stop_lat', 'stop_lon']], on='stop_id')
+        rail_time_table = rail_time_table[~rail_time_table.stop_lat.isna()].copy()
+
         # Arrival time in UTC and Local
         rail_time_table[['departure_time_utc', 'departure_time_utc_tz',
                     'departure_time_local', 'departure_time_local_tz']] = pd.DataFrame(
@@ -94,9 +162,12 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                logger=logger)
 
 
+
     #######################################
     # Read all inputs that will be needed #
-    ######################################
+    #######################################
+    logger.important_info("READING THE INPUTS")
+
     ### Definition all paths ###
 
     # Planned operations
@@ -108,12 +179,14 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     path_planned_flights = (Path(toml_config['general']['experiment_path']) /
                                toml_config['planned_network_info']['planned_network'] /
+                               toml_config['planned_network_info']['path_processed'] /
                                ('flight_schedules_proc_' +
                                 str(toml_config['planned_network_info']['precomputed']) +
                                 '.csv'))
 
     path_planned_trains = (Path(toml_config['general']['experiment_path']) /
                                toml_config['planned_network_info']['planned_network'] /
+                               toml_config['planned_network_info']['path_processed'] /
                                ('rail_timetable_all_gtfs_' +
                                 str(toml_config['planned_network_info']['precomputed']) +
                                 '.csv'))
@@ -131,7 +204,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                      toml_config['general']['replanned_actions_folder'])
 
     path_cancelled_flights = (replanned_actions_folder_path /
-                             ('flights_cancelled_' + str(pre_processed_version) + '.csv'))
+                             ('flight_cancelled_' + str(pre_processed_version) + '.csv'))
     path_cancelled_rail = (replanned_actions_folder_path /
                            ('rail_cancelled_' + str(pre_processed_version) + '.csv'))
     path_flights_replanned = (replanned_actions_folder_path /
@@ -153,6 +226,7 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     path_mct_layers = (Path(toml_config['general']['experiment_path']) /
                        toml_config['planned_network_info']['planned_network'] /
+                       toml_config['planned_network_info']['path_processed'] /
                        'transition_layer_connecting_times.csv')
 
     # Others
@@ -234,6 +308,8 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     flights_cancelled = None
     if path_cancelled_flights.exists():
         flights_cancelled = pd.read_csv(path_cancelled_flights)
+        if len(flights_cancelled) == 0:
+            flights_cancelled = None
 
     trains_cancelled = None
     if path_cancelled_rail.exists():
@@ -249,39 +325,58 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
             else:
                 trains_cancelled[col] = trains_cancelled[col].replace({None: np.nan})
 
+        if len(trains_cancelled)==0:
+            trains_cancelled = None
 
     # Read replanned services
     flights_replanned = None
     if path_flights_replanned.exists():
         flights_replanned = pd.read_csv(path_flights_replanned)
-        flights_replanned['sobt'] = pd.to_datetime(flights_replanned['sobt'] + flights_replanned['sobt_tz'])
-        flights_replanned['sibt'] = pd.to_datetime(flights_replanned['sibt'] + flights_replanned['sibt_tz'])
-        flights_replanned['sobt_local'] = pd.to_datetime(flights_replanned['sobt_local'] + flights_replanned['sobt_local_tz'])
-        flights_replanned['sibt_local'] = pd.to_datetime(flights_replanned['sibt_local'] + flights_replanned['sibt_local_tz'])
+        if toml_config['general'].get('review_fields_from_SOL3', False):
+            # Need to clean the replanned information provided as SOL3 is not
+            # considering things like TZ, seats, ac_type
+            flights_replanned = review_fiels_flight_schedules_SOL3(flights_replanned, fs_planned, replanning=True)
+
+        if len(flights_replanned) > 0:
+            flights_replanned['sobt'] = pd.to_datetime(flights_replanned['sobt'] + flights_replanned['sobt_tz'])
+            flights_replanned['sibt'] = pd.to_datetime(flights_replanned['sibt'] + flights_replanned['sibt_tz'])
+            flights_replanned['sobt_local'] = pd.to_datetime(flights_replanned['sobt_local'] + flights_replanned['sobt_local_tz'])
+            flights_replanned['sibt_local'] = pd.to_datetime(flights_replanned['sibt_local'] + flights_replanned['sibt_local_tz'])
+        else:
+            flights_replanned = None
 
     trains_replanned = None
     trains_replanned_ids = None
     if path_trains_replanned.exists():
         trains_replanned = pd.read_csv(path_trains_replanned,
                                      dtype={'trip_id': 'string', 'stop_id': 'string'})
-        trains_replanned, trains_replanned_ids = pre_process_rail_input(trains_replanned, base_date, df_stops)
+        if len(trains_replanned)==0:
+            trains_replanned = None
+        else:
+            trains_replanned, trains_replanned_ids = pre_process_rail_input(trains_replanned, base_date, df_stops)
 
     # Read additional services
     flights_added = None
     additonal_seats = None
     if path_flights_additional.exists():
         flights_added = pd.read_csv(path_flights_additional)
-        flights_added['sobt'] = pd.to_datetime(flights_added['sobt'] + flights_added['sobt_tz'])
-        flights_added['sibt'] = pd.to_datetime(flights_added['sibt'] + flights_added['sibt_tz'])
-        flights_added['sobt_local'] = pd.to_datetime(flights_added['sobt_local'] + flights_added['sobt_local_tz'])
-        flights_added['sibt_local'] = pd.to_datetime(flights_added['sibt_local'] + flights_added['sibt_local_tz'])
-        additonal_seats = flights_added[['service_id', 'seats']].copy().rename(columns={'seats': 'capacity'})
-        additonal_seats['type'] = 'flight'
+        if len(flights_added) == 0:
+            flights_added = None
+        else:
+            flights_added['sobt'] = pd.to_datetime(flights_added['sobt'] + flights_added['sobt_tz'])
+            flights_added['sibt'] = pd.to_datetime(flights_added['sibt'] + flights_added['sibt_tz'])
+            flights_added['sobt_local'] = pd.to_datetime(flights_added['sobt_local'] + flights_added['sobt_local_tz'])
+            flights_added['sibt_local'] = pd.to_datetime(flights_added['sibt_local'] + flights_added['sibt_local_tz'])
+            additonal_seats = flights_added[['service_id', 'seats']].copy().rename(columns={'seats': 'capacity'})
+            additonal_seats['type'] = 'flight'
 
     trains_added = None
     if path_trains_additional.exists():
         trains_added = pd.read_csv(path_trains_additional, dtype={'trip_id': 'string', 'stop_id': 'string'})
-        trains_added, trains_added_ids = pre_process_rail_input(trains_added, base_date, df_stops)
+        if len(trains_added) > 0:
+            trains_added, trains_added_ids = pre_process_rail_input(trains_added, base_date, df_stops)
+        else:
+            trains_added = None
 
     # Read MCTs
     mct_default_rail = mct_default_rail
@@ -289,7 +384,6 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     mct_default_air = mct_default_air
     dict_mct_air = pd.read_csv(path_mct_air).set_index('icao_id').to_dict(orient='index')
-
 
     df_mct_layers = pd.read_csv(path_mct_layers)
     df_mct_layers['od'] = df_mct_layers['origin'] + '_' + df_mct_layers['destination']
