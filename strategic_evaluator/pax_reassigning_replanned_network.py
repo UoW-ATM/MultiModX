@@ -438,7 +438,7 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         df_flights.rename(columns={'pax': 'max_pax_in_service'}, inplace=True)
         df_flights['max_pax_in_service'] = df_flights['max_pax_in_service'].fillna(0)
 
-        index_flights_no_service = ((df_flights.max_seats_service == 0) | (df_flights.max_pax_in_service == 0))
+        index_flights_no_service = ((df_flights.max_seats_service == 0)) #Not sure why that was there --> | (df_flights.max_pax_in_service == 0))
         df_flights.loc[index_flights_no_service, 'load_factor'] = 1.0  # There's no room if the're are no seats
 
         df_flights.loc[~index_flights_no_service, 'load_factor'] = df_flights['max_pax_in_service'] / \
@@ -497,8 +497,17 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
         capacity_services_consecutive_segments = pd.json_normalize(capacity_services_consecutive_segments[0])
 
         # Now for each rail service (railservice_stoporig_stopdest) compute load factor and seats used/available
-        def get_max_pax_in_segment(service_id, cap_serv_cnsive_segments):
+        def get_max_pax_in_segment(service_id, cap_serv_cnsive_segments, dict_sum_pax_accross_all=None):
+            if dict_sum_pax_accross_all is None:
+                dict_sum_pax_accross_all = {}
+
             rail_service = service_id.split('_')[0]
+            if dict_sum_pax_accross_all.get(rail_service,-1)==0:
+                #-1 as default as if rail_service not in dictionary then don't enter here
+                # if we enter here, that means that for that rail_service there are no pax so nothing
+                # to compute
+                return 0
+
             stop_orig = int(service_id.split('_')[1])
             stop_dest = int(service_id.split('_')[2])
             x = cap_serv_cnsive_segments[((cap_serv_cnsive_segments['rail_service'] == rail_service) &
@@ -506,10 +515,13 @@ def compute_load_factor(df_pax_per_service, dict_seats_service):
                                             (cap_serv_cnsive_segments['stop_orig'] >= stop_dest)))]
             return max(x['total_pax_in_service'])
 
+        # First calculate services withou passengers (either cancelled or new) to speed up process
+        dict_sum_pax_accross_all = df_rail.groupby(['rail_service_id'])['pax'].sum().to_dict()
         df_rail['max_pax_in_service'] = df_rail['service_id'].apply(lambda x: get_max_pax_in_segment(x,
-                                                                                                     capacity_services_consecutive_segments))
+                                                                                                     capacity_services_consecutive_segments,
+                                                                                                     dict_sum_pax_accross_all))
 
-        index_trains_no_service = ((df_rail.max_seats_service==0) | (df_rail.max_pax_in_service==0))
+        index_trains_no_service = ((df_rail.max_seats_service==0)) #Not sure why that was there -->| (df_rail.max_pax_in_service==0))
         df_rail.loc[index_trains_no_service, 'load_factor'] = 1.0 # There's no room if there are no seats
         df_rail.loc[index_trains_no_service, 'max_pax_in_service'] = 0 # There are no pax if there are no seats avaliable
                                                                         # Even if overlaps with other sergments, e.g.
