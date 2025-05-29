@@ -806,19 +806,19 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
                                                        'same_final_node', 'pax_assigned', 'pax_group_id_new',
                                                        'pax_status_replanned']]
     if len(pax_reassigned) > 0:
-        pax_reassigned = pax_reassigned[['origin', 'destination',
+        pax_reassigned_kept = pax_reassigned[['origin', 'destination',
                                                                   'path'] + nid_cols + service_id_cols + mode_id_cols +
                                                                  ['delay_departure_home', 'delay_arrival_home',
                                                                   'delay_total_travel_time',
                                                                   'alliances_match', 'same_path', 'extra_services',
                                                                   'same_initial_node',
                                                                   'same_final_node', 'pax_assigned', 'pax_group_id_new',
-                                                                  'pax_status_replanned']]
+                                                                  'pax_status_replanned']].copy()
 
         if len(df_pax_kept_affected) > 0:
-            df_pax_kept_affected = pd.concat([df_pax_kept_affected, pax_reassigned])
+            df_pax_kept_affected = pd.concat([df_pax_kept_affected, pax_reassigned_kept])
         else:
-            df_pax_kept_affected = pax_reassigned
+            df_pax_kept_affected = pax_reassigned_kept
 
     df_pax_kept_affected.to_csv((output_pax_folder_path /
                                  ('3.1.pax_affected_all_'+ str(pre_processed_version) + '.csv')),
