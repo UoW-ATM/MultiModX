@@ -797,34 +797,28 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
     service_id_cols = ['service_id_' + str(int(col.split('_')[-1].split('f')[-1]) - 1) for col in nid_cols]
     mode_id_cols = ['mode_' + str(int(col.split('_')[-1].split('f')[-1]) - 1) for col in nid_cols]
 
-
     if len(df_pax_kept_affected) > 0:
-        df_pax_kept_affected = pd.concat([df_pax_kept_affected[
-                                                   ['origin', 'destination', 'path'] + nid_cols + [
+        df_pax_kept_affected = df_pax_kept_affected[['origin', 'destination', 'path'] + nid_cols + [
                                                        'delay_departure_home', 'delay_arrival_home',
                                                        'delay_total_travel_time',
                                                        'alliances_match', 'same_path', 'extra_services',
                                                        'same_initial_node',
                                                        'same_final_node', 'pax_assigned', 'pax_group_id_new',
-                                                       'pax_status_replanned']],
-                                               pax_reassigned[['origin', 'destination',
+                                                       'pax_status_replanned']]
+    if len(pax_reassigned) > 0:
+        pax_reassigned = pax_reassigned[['origin', 'destination',
                                                                   'path'] + nid_cols + service_id_cols + mode_id_cols +
                                                                  ['delay_departure_home', 'delay_arrival_home',
                                                                   'delay_total_travel_time',
                                                                   'alliances_match', 'same_path', 'extra_services',
                                                                   'same_initial_node',
                                                                   'same_final_node', 'pax_assigned', 'pax_group_id_new',
-                                                                  'pax_status_replanned']]])
+                                                                  'pax_status_replanned']]
 
-    elif len(pax_reassigned) > 0:
-        df_pax_kept_affected = pax_reassigned[
-            ['origin', 'destination', 'path'] + nid_cols + service_id_cols + mode_id_cols +
-            ['delay_departure_home', 'delay_arrival_home', 'delay_total_travel_time',
-             'alliances_match', 'same_path', 'extra_services', 'same_initial_node',
-             'same_final_node', 'pax_assigned', 'pax_group_id_new', 'pax_status_replanned']].copy()
-
-    else:
-        df_pax_kept_affected = pax_reassigned
+        if len(df_pax_kept_affected) > 0:
+            df_pax_kept_affected = pd.concat([df_pax_kept_affected, pax_reassigned])
+        else:
+            df_pax_kept_affected = pax_reassigned
 
     df_pax_kept_affected.to_csv((output_pax_folder_path /
                                  ('3.1.pax_affected_all_'+ str(pre_processed_version) + '.csv')),
