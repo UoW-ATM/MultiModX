@@ -25,9 +25,13 @@ __pycache__/
 
 *.pickle
 
+*.log
+
 script/strategic/test_loggin.log
 
 notebooks/CS10/new.ipynb
 notebooks/CS10/indicators_analysis.ipynb
+notebooks/CS11/co2_emission_calculation.ipynb
 strategic_evaluator/CS10.PP10.SO00.toml
 strategic_evaluator/CS10.PP20.SO00.toml
+performance_indicators/mmx_kpis_Lucia.toml
