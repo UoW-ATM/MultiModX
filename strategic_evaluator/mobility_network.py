@@ -122,21 +122,25 @@ class NetworkLayer:
 
     def get_access_time(self, node, origin):
         # Dictionary form region to station to add in the travel time the access to the station (if origin is a region)
-        dict_access_time = self.dict_mode_access.get((node, origin), {})
-        return timedelta(minutes=dict_access_time.get('all', 0)['total_time'])
+        #if origin not a region returns 0
+        dict_access_time = self.dict_mode_access.get((node, origin), {'all': {'total_time': 0}})
+        return timedelta(minutes=dict_access_time.get('all', {'total_time': 0})['total_time'])
 
     def get_egress_time(self, node, destination):
-        dict_egress_time = self.dict_mode_egress.get((node, destination), {})
-        return timedelta(minutes=dict_egress_time.get('all', 0)['total_time'])
+        #if origin not a region returns 0
+        dict_egress_time = self.dict_mode_egress.get((node, destination), {'all': {'total_time': 0}})
+        return timedelta(minutes=dict_egress_time.get('all', {'total_time': 0})['total_time'])
 
     def get_d2i_time(self, node, origin):
         # Dictionary form region to station to add in the travel time the access to the station (if origin is a region)
-        dict_access_time = self.dict_mode_access.get((node, origin), {})
-        return timedelta(minutes=dict_access_time.get('all', 0)['avg_time'])
+        #if origin not a region returns 0
+        dict_access_time = self.dict_mode_access.get((node, origin), {'all': {'avg_time': 0}})
+        return timedelta(minutes=dict_access_time.get('all', {'total_time': 0})['avg_time'])
 
     def get_i2d_time(self, node, destination):
-        dict_egress_time = self.dict_mode_egress.get((node, destination), {})
-        return timedelta(minutes=dict_egress_time.get('all', 0)['avg_time'])
+        #if origin not a region returns 0
+        dict_egress_time = self.dict_mode_egress.get((node, destination), {'all': {'avg_time': 0}})
+        return timedelta(minutes=dict_egress_time.get('all', {'total_time': 0})['avg_time'])
 
     def get_services_from(self, node):
         return self.dict_s_departing.get(node, set())
