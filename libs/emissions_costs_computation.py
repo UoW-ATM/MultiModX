@@ -17,7 +17,7 @@ def compute_emissions_pax_short_mid_flights(distance, seats):
         kco2_seat = gco2_seat_ask * distance / 1000
         return round(kco2_seat, 2)
     if distance >2500: #BHL formula
-        kco2_seat=1.8453*distance**(-0.401)*1.9
+        kco2_seat=1.8453*distance**(-0.401)*1.9*distance
         return round(kco2_seat,2)
     else:
         return None
