@@ -1,6 +1,8 @@
 import pandas as pd
 import re
 import numpy as np
+import ast
+import math
 
 
 def remove_useless_columns(trips: pd.DataFrame):
@@ -878,3 +880,316 @@ def process_node_sequence_MMX(trips: pd.DataFrame, train_stations_MMX: list, IAT
     )
     # trips.loc[:,"node_sequence_MMX"]=trips.loc[:,"node_sequence_MMX"].astype(str)
     return trips    
+
+def drop_archetypes(trips: pd.DataFrame):
+    """removes the archetypes columns for the dataframe
+    Args:
+        trips: dataframe
+    
+    Returns:
+        trips: dataframe without archetypes
+    
+    """
+    columns=list(trips.columns)
+    columns_to_remove=[column for column in columns if column.startswith("archetype")]
+    trips=trips.drop(columns_to_remove,axis=1)
+    return trips
+
+def format_trips_leaving(trips: pd.DataFrame):
+    #trips=drop_archetypes(trips)
+    trips["trips_from_exit_point"]=trips.groupby("exit_point")["trips"].transform("sum")
+    columns_to_keep=["origin","origin_name","exit_point","trips_from_exit_point","node_sequence_MMX","trips",]
+    columns=list(trips.columns)
+    columns_to_drop=[column for column in columns if column not in columns_to_keep]
+    trips=trips.drop(columns_to_drop,axis=1)
+    trips=trips.groupby(["origin","origin_name","exit_point","trips_from_exit_point","node_sequence_MMX"])["trips"].sum().reset_index()
+    trips=trips.rename(columns={"node_sequence_MMX":"node_sequence_spain"})
+    return trips
+
+def format_trips_arriving(trips: pd.DataFrame):
+    #trips=drop_archetypes(trips)
+    trips["trips_from_entry_point"]=trips.groupby("entry_point")["trips"].transform("sum")
+    columns_to_keep=["destination","destination_name","entry_point","trips_from_entry_point","node_sequence_MMX","trips",]
+    columns=list(trips.columns)
+    columns_to_drop=[column for column in columns if column not in columns_to_keep]
+    trips=trips.drop(columns_to_drop,axis=1)
+    trips=trips.groupby(["destination","destination_name","entry_point","trips_from_entry_point","node_sequence_MMX"])["trips"].sum().reset_index()
+    trips=trips.rename(columns={"node_sequence_MMX":"node_sequence_spain"})
+    return trips
+
+def generate_probabilities(selected_paths: pd.DataFrame):
+    """hello"""
+    paths_options=selected_paths["path"].values
+    probs= selected_paths["perc"].values
+    probs= probs/probs.sum() #normalises probabilities
+    return paths_options, probs
+
+def generate_path_leaving(selected_trips: pd.DataFrame,paths_options,probs):
+    """write description"""
+    new_rows=[]
+    for idx, row in selected_trips.iterrows():
+        trips_raw=row["trips"]
+        trips_count = math.ceil(trips_raw) if trips_raw < 1 else round(trips_raw) # Number of trips to generate
+
+        international_paths_chosen = np.random.choice(
+            paths_options, 
+            size=trips_count,  # Generate all needed samples in one call
+            p=probs
+        )
+
+        # Count occurrences of each path
+        unique_paths, counts = np.unique(international_paths_chosen, return_counts=True)
+
+        # Append aggregated results
+        for path, count in zip(unique_paths, counts):
+            new_rows.append([
+                row["origin"],
+                row["origin_name"],
+                row["node_sequence_spain"],
+                path,
+                row["exit_point"],
+                float(count)  # Store actual trip count
+            ])
+
+    return new_rows
+
+def assign_international_path_leaving(trips: pd.DataFrame, paths: pd.DataFrame):
+    """Assigns an international paths to trips leaving spain that already have a national
+    path.
+    Args:
+        trips: dataframe containing information about origin, destination, path 
+        in spain and number of people who travelled. 
+        Columns required: ["origin", "origin_name", "node_sequence_spain", "node_sequence_international", "exit_point", "trips"]
+        paths: dataframe with information about the international path
+        Column requireed: ["exit", "path", "perc"]
+    
+    Returns: 
+        trips_w_international_paths: dataframe with the complete path
+    """
+    # list of all possible exit points and initialises variables
+    trips_w_international_paths = pd.DataFrame(
+        columns=[
+            "origin", "origin_name", "node_sequence_spain", 
+            "node_sequence_international", "exit_point", "trips"
+        ]
+    )
+    exit_points_list=list(set(trips["exit_point"]))
+    trips_not_assigned=0
+    paths["path_list"]=paths["path"].apply(ast.literal_eval)
+    # trips["path_spain_list"]=trips["node_sequence_spain"].apply(ast.literal_eval)
+    
+    # iterates over exit points
+    for exit_point in exit_points_list:
+        pre_selected_trips=trips[trips["exit_point"]==exit_point]
+        possible_paths=set(list(pre_selected_trips["node_sequence_spain"]))
+        # iterates over possible paths for that exit point
+        for path in possible_paths:
+            selected_trips=pre_selected_trips[pre_selected_trips["node_sequence_spain"]==path]
+            nodes =ast.literal_eval(path)
+            new_data = pd.DataFrame(columns=["origin", "origin_name", "node_sequence_spain", 
+                                   "node_sequence_international", "exit_point", "trips"])
+            # first check if there is only one node (airport) in the path
+            if len(nodes)==1 and nodes[0]==exit_point:
+                selected_paths=paths[(paths["exit"]==exit_point)&(paths["path_list"].str[0]==exit_point)]
+                # print(f"for exit point {exit_point} the selected paths are:")
+                # print(selected_paths)
+
+                # if there is no match it doesn't assign these trips
+                if selected_paths.empty:
+                    print(f"No paths with exit point {exit_point} and path {nodes}")
+                    print(f"{selected_trips["trips"].sum()} were removed")
+                    trips_not_assigned+=selected_trips["trips"].sum()
+
+                # if there is a match it calculates the probabilities and add these rows to trips_w_international paths
+                else:
+                    paths_options, probs=generate_probabilities(selected_paths)
+                    new_rows=generate_path_leaving(selected_trips,paths_options, probs)
+                    new_data = pd.DataFrame(
+                        new_rows,
+                        columns=[
+                            "origin", "origin_name", "node_sequence_spain", 
+                            "node_sequence_international", "exit_point", "trips"
+                        ]
+                    )
+                if not new_data.empty:
+                    trips_w_international_paths=pd.concat([trips_w_international_paths,new_data],ignore_index=True)
+
+            # in case exit point doesn't match airport 
+            elif len(nodes)==1 and nodes[0]!=exit_point:
+                print(f"problem for path {path}, node does not match exit point {exit_point}")
+                trips_not_assigned+=selected_trips["trips"].sum()
+
+            # if there are several nodes
+            elif len(nodes)>1:
+                # select the airports that form part of the final sequence (hence the final order)
+                other_airports=[]
+                for node in reversed(nodes):
+                    if bool(re.fullmatch(r"^[A-Z]{4}$",node)):
+                        other_airports.append(node)
+                    else:
+                        break
+                other_airports = other_airports[::-1] # re-selects the original order
+
+                # selects paths with matching sequence of airports
+                selected_paths=paths[(paths["exit"]==exit_point)&(paths["path_list"].apply( lambda x: x[:len(other_airports)]==other_airports))]
+                if selected_paths.empty:
+                    print(f"No paths with exit point {exit_point} and spanish airports {other_airports}")
+                    print(f"{selected_trips["trips"].sum()} were removed")
+                    trips_not_assigned+=selected_trips["trips"].sum()
+                else:
+                    paths_options, probs=generate_probabilities(selected_paths)
+                    new_rows=generate_path_leaving(selected_trips,paths_options, probs)
+                    new_data = pd.DataFrame(
+                        new_rows,
+                        columns=[
+                            "origin", "origin_name", "node_sequence_spain", 
+                            "node_sequence_international", "exit_point", "trips"
+                        ]
+                    )
+                if not new_data.empty:
+                    trips_w_international_paths=pd.concat([trips_w_international_paths,new_data],ignore_index=True)
+
+    # final groupby to group all trips with same origin, node_sequences and exit point
+    trips_w_international_paths = trips_w_international_paths.groupby([
+        "origin", "origin_name", "node_sequence_spain", 
+        "node_sequence_international", "exit_point"
+    ])["trips"].sum().reset_index()
+
+              
+    print(f"Total trips not assigned: {trips_not_assigned}")
+    return trips_w_international_paths
+
+def generate_path_arriving(selected_trips: pd.DataFrame,paths_options,probs):
+    """write description"""
+    new_rows=[]
+    for idx, row in selected_trips.iterrows():
+        trips_raw=row["trips"]
+        trips_count = math.ceil(trips_raw) if trips_raw < 1 else round(trips_raw) # Number of trips to generate
+
+        international_paths_chosen = np.random.choice(
+            paths_options, 
+            size=trips_count,  # Generate all needed samples in one call
+            p=probs
+        )
+
+        # Count occurrences of each path
+        unique_paths, counts = np.unique(international_paths_chosen, return_counts=True)
+
+        # Append aggregated results
+        for path, count in zip(unique_paths, counts):
+            new_rows.append([
+                row["destination"],
+                row["destination_name"],
+                row["node_sequence_spain"],
+                path,
+                row["entry_point"],
+                float(count)  # Store actual trip count
+            ])
+
+    return new_rows
+
+def assign_international_path_arriving(trips: pd.DataFrame, paths: pd.DataFrame):
+    """Assigns an international paths to trips arriving to spain that already have a national
+    path.
+    Args:
+        trips: dataframe containing information about origin, destination, path 
+        in spain and number of people who travelled. 
+        Columns required: ["destination", "destination_name", "node_sequence_spain", "node_sequence_international", "exit_point", "trips"]
+        paths: dataframe with information about the international path
+        Column requireed: ["exit", "path", "perc"]
+    
+    Returns: 
+        trips_w_international_paths: dataframe with the complete path
+    """
+    # list of all possible exit points and initialises variables
+    trips_w_international_paths = pd.DataFrame(
+        columns=[
+            "destination", "destination_name", "node_sequence_spain", 
+            "node_sequence_international", "entry_point", "trips"
+        ]
+    )
+    entry_points_list=list(set(trips["entry_point"]))
+    trips_not_assigned=0
+    paths["path_list"]=paths["path"].apply(ast.literal_eval)
+    # trips["path_spain_list"]=trips["node_sequence_spain"].apply(ast.literal_eval)
+    
+    # iterates over exit points
+    for entry_point in entry_points_list:
+        pre_selected_trips=trips[trips["entry_point"]==entry_point]
+        possible_paths=set(list(pre_selected_trips["node_sequence_spain"]))
+        # iterates over possible paths for that exit point
+        for path in possible_paths:
+            selected_trips=pre_selected_trips[pre_selected_trips["node_sequence_spain"]==path]
+            nodes =ast.literal_eval(path)
+            new_data = pd.DataFrame(columns=["destination", "destination_name", "node_sequence_spain", 
+                                   "node_sequence_international", "entry_point", "trips"])
+            # first check if there is only one node (airport) in the path
+            if len(nodes)==1 and nodes[0]==entry_point:
+                selected_paths=paths[(paths["entry"]==entry_point)&(paths["path_list"].str[-1]==entry_point)]
+                # print(f"for exit point {exit_point} the selected paths are:")
+                # print(selected_paths)
+
+                # if there is no match it doesn't assign these trips
+                if selected_paths.empty:
+                    print(f"No paths with entry point {entry_point} and path {nodes}")
+                    print(f"{selected_trips["trips"].sum()} were removed")
+                    trips_not_assigned+=selected_trips["trips"].sum()
+
+                # if there is a match it calculates the probabilities and add these rows to trips_w_international paths
+                else:
+                    paths_options, probs=generate_probabilities(selected_paths)
+                    new_rows=generate_path_arriving(selected_trips,paths_options, probs)
+                    new_data = pd.DataFrame(
+                        new_rows,
+                        columns=[
+                            "destination", "destination_name", "node_sequence_spain", 
+                            "node_sequence_international", "entry_point", "trips"
+                        ]
+                    )
+                if not new_data.empty:
+                    trips_w_international_paths=pd.concat([trips_w_international_paths,new_data],ignore_index=True)
+
+            # in case exit point doesn't match airport 
+            elif len(nodes)==1 and nodes[0]!=entry_point:
+                print(f"problem for path {path}, node does not match exit point {entry_point}")
+                trips_not_assigned+=selected_trips["trips"].sum()
+
+            # if there are several nodes
+            elif len(nodes)>1:
+                # select the airports that form part of the final sequence (hence the final order)
+                other_airports=[]
+                for node in nodes:
+                    if bool(re.fullmatch(r"^[A-Z]{4}$",node)):
+                        other_airports.append(node)
+                    else:
+                        break
+
+                # selects paths with matching sequence of airports
+                selected_paths=paths[(paths["entry"]==entry_point)&(paths["path_list"].apply( lambda x: x[-len(other_airports):]==other_airports))]
+                if selected_paths.empty:
+                    print(f"No paths with entry point {entry_point} and spanish airports {other_airports}")
+                    print(f"{selected_trips["trips"].sum()} were removed")
+                    trips_not_assigned+=selected_trips["trips"].sum()
+                else:
+                    paths_options, probs=generate_probabilities(selected_paths)
+                    new_rows=generate_path_arriving(selected_trips,paths_options, probs)
+                    new_data = pd.DataFrame(
+                        new_rows,
+                        columns=[
+                            "destination", "destination_name", "node_sequence_spain", 
+                            "node_sequence_international", "entry_point", "trips"
+                        ]
+                    )
+                if not new_data.empty:
+                    trips_w_international_paths=pd.concat([trips_w_international_paths,new_data],ignore_index=True)
+
+    # final groupby to group all trips with same origin, node_sequences and exit point
+    trips_w_international_paths = trips_w_international_paths.groupby([
+        "destination", "destination_name", "node_sequence_spain", 
+        "node_sequence_international", "entry_point"
+    ])["trips"].sum().reset_index()
+
+              
+    print(f"Total trips not assigned: {trips_not_assigned}")
+    return trips_w_international_paths
+
