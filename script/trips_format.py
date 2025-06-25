@@ -881,22 +881,14 @@ def process_node_sequence_MMX(trips: pd.DataFrame, train_stations_MMX: list, IAT
     # trips.loc[:,"node_sequence_MMX"]=trips.loc[:,"node_sequence_MMX"].astype(str)
     return trips    
 
-def drop_archetypes(trips: pd.DataFrame):
-    """removes the archetypes columns for the dataframe
+def format_trips_leaving(trips: pd.DataFrame):
+    """formats trips arriving to be ready for path assignment
     Args:
-        trips: dataframe
+        trips: Dataframe
     
     Returns:
-        trips: dataframe without archetypes
-    
+        trips: Dataframe formated
     """
-    columns=list(trips.columns)
-    columns_to_remove=[column for column in columns if column.startswith("archetype")]
-    trips=trips.drop(columns_to_remove,axis=1)
-    return trips
-
-def format_trips_leaving(trips: pd.DataFrame):
-    #trips=drop_archetypes(trips)
     trips["trips_from_exit_point"]=trips.groupby("exit_point")["trips"].transform("sum")
     columns_to_keep=["origin","origin_name","exit_point","trips_from_exit_point","node_sequence_MMX","trips",]
     columns=list(trips.columns)
@@ -907,7 +899,13 @@ def format_trips_leaving(trips: pd.DataFrame):
     return trips
 
 def format_trips_arriving(trips: pd.DataFrame):
-    #trips=drop_archetypes(trips)
+    """formats trips arriving to be ready for path assignment
+    Args:
+        trips: Dataframe
+    
+    Returns:
+        trips: Dataframe formated
+    """
     trips["trips_from_entry_point"]=trips.groupby("entry_point")["trips"].transform("sum")
     columns_to_keep=["destination","destination_name","entry_point","trips_from_entry_point","node_sequence_MMX","trips",]
     columns=list(trips.columns)
@@ -918,14 +916,14 @@ def format_trips_arriving(trips: pd.DataFrame):
     return trips
 
 def generate_probabilities(selected_paths: pd.DataFrame):
-    """hello"""
+    """given a set a options, selects and normalises the probabilities"""
     paths_options=selected_paths["path"].values
     probs= selected_paths["perc"].values
     probs= probs/probs.sum() #normalises probabilities
     return paths_options, probs
 
 def generate_path_leaving(selected_trips: pd.DataFrame,paths_options,probs):
-    """write description"""
+    """given selected trips, generates the international path using the probabilities of path_options_probs"""
     new_rows=[]
     for idx, row in selected_trips.iterrows():
         trips_raw=row["trips"]
@@ -1060,7 +1058,7 @@ def assign_international_path_leaving(trips: pd.DataFrame, paths: pd.DataFrame):
     return trips_w_international_paths
 
 def generate_path_arriving(selected_trips: pd.DataFrame,paths_options,probs):
-    """write description"""
+    """given selected trips, generates the international path using the probabilities of path_options_probs"""
     new_rows=[]
     for idx, row in selected_trips.iterrows():
         trips_raw=row["trips"]
