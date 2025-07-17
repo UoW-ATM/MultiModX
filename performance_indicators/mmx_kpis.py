@@ -15,10 +15,13 @@ from kpi_lib_tactical import (flight_arrival_delay, kerb2gate_time, total_journe
 							  total_arrival_delay, stranded_pax, ratio_stranded_pax, missed_connections)
 
 
-def read_strategic_output(path_to_strategic_output,preprocessed_version):
+def read_strategic_output(config):
+	path_to_strategic_output = config['input']['path_to_strategic_output']
+	preprocessed_version = config['input']['preprocessed_version']
+
 	pax_assigned_to_itineraries_options = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_to_itineraries_options_'+preprocessed_version+'.csv'))
 	possible_itineraries_clustered_pareto_filtered = pd.read_csv(Path(path_to_strategic_output) / ('possible_itineraries_clustered_pareto_filtered_'+preprocessed_version+'.csv'))
-	demand = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / '..' / 'demand'/'demand_ES_MD_intra_v0.4.csv')
+	demand = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / '..' / 'demand'/(config['input']['demand']+'.csv'))
 	airport_coords = pd.read_csv(Path(path_to_strategic_output) / '..' / '..' / '..' / 'infrastructure'/ 'airports_info' / 'airports_coordinates_v1.1.csv')
 	pax_assigned_seats_max_target = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_seats_max_target_'+preprocessed_version+'.csv'))
 	pax_assigned_tactical = pd.read_csv(Path(path_to_strategic_output) / ('pax_assigned_tactical_'+preprocessed_version+'.csv'))
@@ -197,14 +200,14 @@ if __name__ == '__main__':
 	if args.experiment is not None:
 		recreate_output_folder(Path(config['output']['path_to_output']))
 		recreate_output_folder(config['output']['path_to_output_figs'])
-		data_strategic = read_strategic_output(config['input']['path_to_strategic_output'],
-											   config['input']['preprocessed_version'])
+		data_strategic = read_strategic_output(config)
 
 
 
 		results = {}
 
 		for indicator, vals in config['indicators']['strategic'].items():
+			print(indicator)
 			results[indicator] = []
 			for variant in vals:
 				if variant['variant'] is False:
@@ -316,5 +319,3 @@ if __name__ == '__main__':
 	#kerb2gate_time(data['pax'],data['airport_processes'])
 	#total_journey_time(data2['pax'],data2['airport_processes'],data['pax_assigned_tactical'])
 	#variability(data2['pax'])
-
-

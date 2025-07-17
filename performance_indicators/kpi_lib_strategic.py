@@ -811,15 +811,20 @@ def demand_served(data,config,pi_config,variant='total'):
 	print(' -- Demand served', pi_config['variant'])
 	pax_assigned_to_itineraries_options = data['pax_assigned_to_itineraries_options']
 	demand = data['demand']
+	if 'domestic' not in demand.columns:
+		demand['domestic'] = 1
 	nuts_regional_archetype_info = data['nuts_regional_archetype_info']
 
 	pax_assigned_to_itineraries_options['origin'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[0], axis=1)
 	pax_assigned_to_itineraries_options['destination'] = pax_assigned_to_itineraries_options.apply(lambda row: row['alternative_id'].split('_')[1], axis=1)
+	pax_assigned_to_itineraries_options = pax_assigned_to_itineraries_options.merge(demand[['origin','destination','domestic']].drop_duplicates(subset=['origin','destination']),how='left',on=['origin','destination'])
+	print(pax_assigned_to_itineraries_options)
 
 	total_perc = pax_assigned_to_itineraries_options['pax'].sum()/demand['trips'].sum()
 	total_served = pax_assigned_to_itineraries_options['pax'].sum()
+	domestic_served = pax_assigned_to_itineraries_options[pax_assigned_to_itineraries_options['domestic']==1]['pax'].sum()
 	if variant == 'total':
-		return {'_total_demand':demand['trips'].sum(), '_total_served': total_served, '_percentage_served': total_perc}
+		return {'_total_demand':demand['trips'].sum(), '_domestic_demand':demand[demand['domestic']==1]['trips'].sum(), '_total_served': total_served, '_percentage_served': total_perc, '_domestic_served': domestic_served}
 
 	if variant == 'total_connecting_itineraries':
 		df = pax_assigned_to_itineraries_options.dropna(subset=['nid_f2']).copy()
