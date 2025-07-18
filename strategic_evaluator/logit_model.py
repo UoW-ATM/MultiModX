@@ -30,8 +30,8 @@ def utility_function(database, n_alternatives: int, fixed_params: dict = None):
     """
 
     # Parameters to be estimated
-    ASC_TRAIN = Beta('ASC_TRAIN', 0, None, None, 0)
-    ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0)
+    ASC_TRAIN = Beta('ASC_TRAIN', 0, None, None, 0) # 1 means you do not estimate it
+    ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
     ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1)
 
     # Retrieve fixed values for B_COST and B_TIME, or estimate them if not provided
@@ -41,7 +41,7 @@ def utility_function(database, n_alternatives: int, fixed_params: dict = None):
                   1 if fixed_params and 'B_COST' in fixed_params else 0)
 
     # B_CO2 is estimated only if B_TIME and B_COST are fixed
-    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 0)
+    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 1)
 
     # Define the utility function for each alternative
     V = {}
@@ -152,24 +152,35 @@ def calibrate_main(database_path: str, n_archetypes: int, n_alternatives: int, f
     database_test = db.Database("test", od_matrix_test)
 
     test_results_archetypes={}
-    for k in range(n_archetypes):
-        weight_column = f'archetype_{k}'
-        archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
+    if n_archetypes>1:
+        for k in range(n_archetypes):
+            weight_column = f'archetype_{k}'
+            archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
 
-        V = utility_function(database_train, n_alternatives,archetype_fixed_params)
+            V = utility_function(database_train, n_alternatives,archetype_fixed_params)
+            av = alternative_availability(database_train, n_alternatives)
+
+            the_biogeme, results = logit_model(
+                database_train, V, av, weight_column)
+            beta_values=results.get_beta_values()
+            # beta_values.update(archetype_fixed_params)
+            test_results=test_data_analysis(database_test, V, av, n_alternatives, weight_column, beta_values)
+            # test_results=pd.merge(test_results,o_d_info_archetype,left_index=True,right_index=True,how="inner") #gets the origin and destination information
+            # for i in range(1,n_alternatives+1):
+            #     trips_i=f"trips_{i}"
+            #     prob_i=f"prob_{i}"
+            #     test_results[trips_i]=test_results[f"trips_per_od_pair_arch_{k}"]*test_results[prob_i]
+            test_results_archetypes[f"test_results_archetype_{k}"]=test_results
+    elif n_archetypes==1:
+        weight_column="trips"
+        # no need to specify fixed parameter since the default is none
+        V = utility_function(database=database_train, n_alternatives=n_alternatives)
         av = alternative_availability(database_train, n_alternatives)
-
         the_biogeme, results = logit_model(
             database_train, V, av, weight_column)
         beta_values=results.get_beta_values()
-        # beta_values.update(archetype_fixed_params)
         test_results=test_data_analysis(database_test, V, av, n_alternatives, weight_column, beta_values)
-        # test_results=pd.merge(test_results,o_d_info_archetype,left_index=True,right_index=True,how="inner") #gets the origin and destination information
-        # for i in range(1,n_alternatives+1):
-        #     trips_i=f"trips_{i}"
-        #     prob_i=f"prob_{i}"
-        #     test_results[trips_i]=test_results[f"trips_per_od_pair_arch_{k}"]*test_results[prob_i]
-        test_results_archetypes[f"test_results_archetype_{k}"]=test_results
+        test_results_archetypes[f"test_results"]=test_results
 
         print("Training results:")
         print(results.short_summary())
@@ -547,22 +558,37 @@ def test_logit(test: dict, trips_logit: pd.DataFrame, n_alternatives=5):
         trips_logit: dataframe that contains the information for logit calibration
         n_alternatives: the max number of alternatives. Default set to 5"""
     final_test={}
+    if n_alternatives>1:
+        for i in range(n_alternatives+1):
+            #initialise strings
+            archetype=f"archetype_{i}"
+            test_results=f"test_results_archetype_{i}"
+            test_archetype=test[test_results]
 
-    for i in range(n_alternatives+1):
+            #define the dataframe that will contain the final comparison
+            final_test[archetype]=pd.DataFrame(columns=["location","prob_predicted","prob_observed"])
+            final_test[archetype]["location"]=test_archetype.index
+
+            #iterate over the index and row to fetch the probabilites
+            for idx, row in final_test[archetype].iterrows():
+                num=trips_logit.iloc[row["location"]]["noption"]
+                final_test[archetype].loc[idx,"prob_predicted"]=test_archetype.loc[row["location"],f"prob_{num}"]
+                final_test[archetype].loc[idx,"prob_observed"]=trips_logit.iloc[row["location"]][f"prob_per_od_pair_arch_{archetype[-1]}"]
+    elif n_alternatives==1:
         #initialise strings
-        archetype=f"archetype_{i}"
-        test_results=f"test_results_archetype_{i}"
-        test_archetype=test[test_results]
+        archetype="archetype_0"
+        test_archetype=test["test_results"]
 
         #define the dataframe that will contain the final comparison
         final_test[archetype]=pd.DataFrame(columns=["location","prob_predicted","prob_observed"])
         final_test[archetype]["location"]=test_archetype.index
 
-        #iterate over the index and row to fetch the probabilites
         for idx, row in final_test[archetype].iterrows():
+            # FINISH LINE, I DONT HAVE THE COLUMN WITH THE PROBS IN TRIPS LOGIT
             num=trips_logit.iloc[row["location"]]["noption"]
             final_test[archetype].loc[idx,"prob_predicted"]=test_archetype.loc[row["location"],f"prob_{num}"]
-            final_test[archetype].loc[idx,"prob_observed"]=trips_logit.iloc[row["location"]]["prob_per_od_pair_arch_0"]
+            final_test[archetype].loc[idx,"prob_observed"]=trips_logit.iloc[row["location"]][f"prob_per_od_pair_arch_0"]
+            #print("in the making")
     return final_test
 
 def evaluate_model(test_data, model_name):
