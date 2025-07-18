@@ -8,3 +8,6 @@
 [submodule "libs/passenger_assigner"]
  	path = libs/passenger_assigner
  	url = https://github.com/UoW-ATM/passenger_assigner.git
+[submodule "libs/efe"]
+	path = libs/efe
+	url = https://github.com/luis-uow/emissions_fuel_estimation
