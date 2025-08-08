@@ -340,8 +340,10 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
         if len(flights_replanned) > 0:
             flights_replanned['sobt'] = pd.to_datetime(flights_replanned['sobt'] + flights_replanned['sobt_tz'])
             flights_replanned['sibt'] = pd.to_datetime(flights_replanned['sibt'] + flights_replanned['sibt_tz'])
-            flights_replanned['sobt_local'] = pd.to_datetime(flights_replanned['sobt_local'] + flights_replanned['sobt_local_tz'])
-            flights_replanned['sibt_local'] = pd.to_datetime(flights_replanned['sibt_local'] + flights_replanned['sibt_local_tz'])
+            flights_replanned['sobt_local'] = pd.to_datetime(flights_replanned['sobt_local'] +
+                                                             flights_replanned['sobt_local_tz'],utc=False)
+            flights_replanned['sibt_local'] = pd.to_datetime(flights_replanned['sibt_local'] +
+                                                             flights_replanned['sibt_local_tz'],utc=False)
         else:
             flights_replanned = None
 
@@ -796,24 +798,55 @@ def run_reassigning_pax_replanning_pipeline(toml_config, pc=1, n_paths=15, n_iti
 
     service_id_cols = ['service_id_' + str(int(col.split('_')[-1].split('f')[-1]) - 1) for col in nid_cols]
     mode_id_cols = ['mode_' + str(int(col.split('_')[-1].split('f')[-1]) - 1) for col in nid_cols]
+    # Add type modes replanned
+
+    def classify_modes(row, mode_cols):
+        modes = row[mode_cols].dropna().unique()
+        if len(modes) == 1:
+            return modes[0]
+        elif len(modes) > 1:
+            return 'multimodal'
+        else:
+            return np.nan  # in case all values are NaN
+
+    def classify_type(value):
+        modes = set(value.split('_'))
+        if modes == {'flight'}:
+            return 'air'
+        elif modes == {'rail'}:
+            return 'rail'
+        else:
+            return 'multimodal'
+
+    pax_reassigned['mode_combined_replanned'] = pax_reassigned.apply(classify_modes, axis=1, mode_cols=mode_id_cols)
+    pax_reassigned['mode_combined_orig'] = pax_reassigned['type'].apply(classify_type)
+    df_pax_kept_affected['mode_combined_orig'] = df_pax_kept_affected['type'].apply(classify_type)
 
     if len(df_pax_kept_affected) > 0:
-        df_pax_kept_affected = df_pax_kept_affected[['origin', 'destination', 'path'] + nid_cols + [
-                                                       'delay_departure_home', 'delay_arrival_home',
-                                                       'delay_total_travel_time',
-                                                       'alliances_match', 'same_path', 'extra_services',
-                                                       'same_initial_node',
-                                                       'same_final_node', 'pax_assigned', 'pax_group_id_new',
-                                                       'pax_status_replanned']]
+        df_pax_kept_affected = df_pax_kept_affected.copy()
+        '''
+        [['origin', 'destination', 'path'] + nid_cols + [
+       'mode_combined_orig',
+       'delay_departure_home', 'delay_arrival_home',
+       'delay_total_travel_time',
+       'alliances_match', 'same_path', 'extra_services',
+       'same_initial_node',
+       'same_final_node', 'pax_assigned', 'pax_group_id_new',
+       'pax_status_replanned']]
+       '''
     if len(pax_reassigned) > 0:
-        pax_reassigned_kept = pax_reassigned[['origin', 'destination',
-                                                                  'path'] + nid_cols + service_id_cols + mode_id_cols +
-                                                                 ['delay_departure_home', 'delay_arrival_home',
-                                                                  'delay_total_travel_time',
-                                                                  'alliances_match', 'same_path', 'extra_services',
-                                                                  'same_initial_node',
-                                                                  'same_final_node', 'pax_assigned', 'pax_group_id_new',
-                                                                  'pax_status_replanned']].copy()
+        pax_reassigned_kept = pax_reassigned.copy()
+        '''
+        [['origin', 'destination',
+              'path'] + nid_cols + service_id_cols + mode_id_cols +
+             ['mode_combined_orig', 'mode_combined_replanned',
+               'delay_departure_home', 'delay_arrival_home',
+              'delay_total_travel_time',
+              'alliances_match', 'same_path', 'extra_services',
+              'same_initial_node',
+              'same_final_node', 'pax_assigned', 'pax_group_id_new',
+              'pax_status_replanned']].copy()
+        '''
 
         if len(df_pax_kept_affected) > 0:
             df_pax_kept_affected = pd.concat([df_pax_kept_affected, pax_reassigned_kept])

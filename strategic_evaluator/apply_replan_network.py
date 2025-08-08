@@ -614,8 +614,21 @@ def compute_alternatives_possibles_pax_itineraries(pax_need_replanning, df_itine
                                                             pax_need_replanning_w_it_options['node_it_0']
     pax_need_replanning_w_it_options['same_final_node'] = pax_need_replanning_w_it_options['node_pax_n'] == \
                                                           pax_need_replanning_w_it_options['node_it_n']
+
+    # journey_type is for the itienrary and can be multimodal, air or rail
+    # type_pax is for the pax itineary and is a succession of flight _ rail
+    def classify_type(value):
+        modes = set(value.split('_'))
+        if modes == {'flight'}:
+            return 'air'
+        elif modes == {'rail'}:
+            return 'rail'
+        else:
+            return 'multimodal'
+
+    pax_need_replanning_w_it_options['journey_type_pax'] =pax_need_replanning_w_it_options['type_pax'].apply(classify_type)
     pax_need_replanning_w_it_options['same_modes'] = pax_need_replanning_w_it_options.apply(
-        lambda row: set(row['modes_pax']) == set(row['modes_it']), axis=1)
+        lambda row: set(row['journey_type_pax']) == set(row['journey_type']), axis=1)
 
     return pax_need_replanning_w_it_options
 
