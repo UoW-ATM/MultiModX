@@ -309,7 +309,7 @@ def rescale_trips(trips_abroad:pd.DataFrame,coeffs_incoming: pd.DataFrame,coeffs
     Returns:
         trips_abroad dataframe
     """
-    #creata a copy of the original dataframe
+    #create a copy of the original dataframe
     trips_abroad_final=trips_abroad.copy()
     
     #initialisation columns
@@ -334,6 +334,15 @@ def rescale_trips(trips_abroad:pd.DataFrame,coeffs_incoming: pd.DataFrame,coeffs
         if destination in set(coeffs_outgoing["destination"]):
             for col in cols:
                 trips_abroad_final.at[idx,col]=row[col]*coeffs_outgoing_right_index["real_vs_predicted_coeff"].loc[destination]
+
+    #we have slightly different countries in coeffs_incoming and coeffs_outgoing
+    countries_incoming=set(coeffs_incoming["origin"])
+
+    countries_outgoing=set(coeffs_outgoing["destination"])
+
+    countries_selected=set.union(countries_outgoing,countries_incoming)-(countries_outgoing-countries_incoming)-(countries_incoming-countries_outgoing)
+
+    trips_abroad_final=trips_abroad_final[(trips_abroad_final["origin"].isin(countries_selected))|(trips_abroad_final["destination"].isin(countries_selected))]
 
     return trips_abroad_final
 
@@ -568,7 +577,7 @@ def trips_format_to_pipeline(trips):
     return combined_df
 
 
-def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_paths=False):
+def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_paths=False,n_archetypes=6):
     """Function to format the trips used for logit calibration. The trips have to be
     imported as a csv from the notebook new_trips_to_paths. It is able to filter paths with only one option
     
@@ -603,15 +612,20 @@ def trips_logit_format(trips_logit: pd.DataFrame,max_num_options=3,drop_single_p
 
     trips_logit_formatted["trips_per_od_pair"]=trips_logit_formatted.groupby(["origin","destination"])["trips"].transform("sum")
     
-    for i in range(6):
-        archetype=f"archetype_{i}"
-        name=f"trips_per_od_pair_arch_{i}"
-        if name not in list(trips_logit_formatted.columns):
-            trips_logit_formatted[name]=trips_logit_formatted.groupby(["origin","destination"])[archetype].transform("sum")
-            name_prob=f"prob_per_od_pair_arch_{i}"
-            trips_logit_formatted[name_prob]=trips_logit_formatted[archetype]/trips_logit_formatted[name]
-        else:
-            print(f"no need to calculate probabilities for {archetype}")
+    # if more than one archetype, calculates the probabilities per archetype
+    if n_archetypes>1:
+        for i in range(n_archetypes):
+            archetype=f"archetype_{i}"
+            name=f"trips_per_od_pair_arch_{i}"
+            if name not in list(trips_logit_formatted.columns):
+                trips_logit_formatted[name]=trips_logit_formatted.groupby(["origin","destination"])[archetype].transform("sum")
+                name_prob=f"prob_per_od_pair_arch_{i}"
+                trips_logit_formatted[name_prob]=trips_logit_formatted[archetype]/trips_logit_formatted[name]
+            else:
+                print(f"no need to calculate probabilities for {archetype}")
+    elif n_archetypes==1:
+        trips_logit_formatted["prob_per_od_pair_arch_0"]=trips_logit_formatted["trips"]/trips_logit_formatted["trips_per_od_pair"]
+
     return trips_logit_formatted
 
 
