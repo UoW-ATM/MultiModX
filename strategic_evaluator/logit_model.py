@@ -18,41 +18,57 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)
 
 
-def utility_function(database, n_alternatives: int, fixed_params: dict = None):
+def utility_function(database, n_alternatives: int, fixed_params: dict = None, logit_type: str ="spanish"):
     """This function defines the parameters to be estimated and the utility function of each alternative
 
     Args:
         database (biogeme.database): biogeme database with the information of alternatives
         n_alternatives (int): number of alternatives between OD pairs
-
+        fixed_params (dict): dictionary with variables that have already been calibrated in a previous iteration
+        logit_type (str): variable that determines the type of logit model. "spanish" for the national case and "international" for the international one
     Returns:
         dict: dictionary with the utility function of each alternative
     """
+    if logit_type=="spanish": # base case for international logit
+        #it would be good to add a configuration file or something like that 
+        # Parameters to be estimated
+        ASC_TRAIN = Beta('ASC_TRAIN', 0, None, None, 0) # 1 means you do not estimate it
+        ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
+        ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1)
 
-    # Parameters to be estimated
-    ASC_TRAIN = Beta('ASC_TRAIN', 0, None, None, 0) # 1 means you do not estimate it
-    ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
-    ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1)
+        # Retrieve fixed values for B_COST and B_TIME, or estimate them if not provided
+        B_TIME = Beta('B_TIME', fixed_params['B_TIME'] if fixed_params and 'B_TIME' in fixed_params else 0, None, None, 
+                    1 if fixed_params and 'B_TIME' in fixed_params else 0)
+        B_COST = Beta('B_COST', fixed_params['B_COST'] if fixed_params and 'B_COST' in fixed_params else 0, None, None, 
+                    1 if fixed_params and 'B_COST' in fixed_params else 0)
 
-    # Retrieve fixed values for B_COST and B_TIME, or estimate them if not provided
-    B_TIME = Beta('B_TIME', fixed_params['B_TIME'] if fixed_params and 'B_TIME' in fixed_params else 0, None, None, 
-                  1 if fixed_params and 'B_TIME' in fixed_params else 0)
-    B_COST = Beta('B_COST', fixed_params['B_COST'] if fixed_params and 'B_COST' in fixed_params else 0, None, None, 
-                  1 if fixed_params and 'B_COST' in fixed_params else 0)
+        # B_CO2 is estimated only if B_TIME and B_COST are fixed
+        B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 1)
 
-    # B_CO2 is estimated only if B_TIME and B_COST are fixed
-    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 1)
-
-    # Define the utility function for each alternative
-    V = {}
-    for i in range(1, n_alternatives + 1):
-        V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + 
-                ASC_PLANE * database.variables[f'plane_{i}'] + 
-                ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
-                B_TIME * database.variables[f'travel_time_{i}'] +
-                B_COST * database.variables[f'cost_{i}'] +
-                B_CO2 * database.variables[f'emissions_{i}'])
-
+        # Define the utility function for each alternative
+        V = {}
+        for i in range(1, n_alternatives + 1):
+            V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + 
+                    ASC_PLANE * database.variables[f'plane_{i}'] + 
+                    ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
+                    B_TIME * database.variables[f'travel_time_{i}'] +
+                    B_COST * database.variables[f'cost_{i}'] +
+                    B_CO2 * database.variables[f'emissions_{i}'])
+    
+    if logit_type == "international":
+        #the following lines are only relevant for calibration purposes
+        ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
+        ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1) #1 means you do not estimate it
+        B_COST= Beta("B_COST",None, None, 0)
+        B_TIME=Beta("B_TIME",None, None, 0)
+        # Define the utility function
+        V={}
+        for i in range(1,n_alternatives+1):
+            V[i]=   (ASC_PLANE * database.variables[f'plane_{i}'] + 
+                    ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
+                    B_TIME * database.variables[f'travel_time_{i}'] +
+                    B_COST * database.variables[f'cost_{i}'])
+        
     return V
 
 
@@ -584,7 +600,6 @@ def test_logit(test: dict, trips_logit: pd.DataFrame, n_alternatives=5):
         final_test[archetype]["location"]=test_archetype.index
 
         for idx, row in final_test[archetype].iterrows():
-            # FINISH LINE, I DONT HAVE THE COLUMN WITH THE PROBS IN TRIPS LOGIT
             num=trips_logit.iloc[row["location"]]["noption"]
             final_test[archetype].loc[idx,"prob_predicted"]=test_archetype.loc[row["location"],f"prob_{num}"]
             final_test[archetype].loc[idx,"prob_observed"]=trips_logit.iloc[row["location"]][f"prob_per_od_pair_arch_0"]
