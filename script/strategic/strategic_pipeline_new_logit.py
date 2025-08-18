@@ -168,11 +168,17 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # Assign passengers to paths clusters
     logger.important_info("Assigning passengers to Path Clustered")
 
+    #define the parameters
     n_alternatives = pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
+    logit_type=toml_config["other_param"]["sensitivities_logit"]["logit_type"]
+    n_archetypes=toml_config["other_param"]["sensitivities_logit"]["n_archetypes"]
+
     logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
     df_pax_demand_paths, df_paths_final = assign_demand_to_paths(pareto_df, 
                                                                  n_alternatives=n_alternatives, 
                                                                  max_connections= max_connections, 
+                                                                 n_archetypes=n_archetypes,
+                                                                 logit_type=logit_type,
                                                                  network_paths_config=toml_config) #this is where I have to look at
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 

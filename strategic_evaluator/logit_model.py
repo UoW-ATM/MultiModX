@@ -59,8 +59,8 @@ def utility_function(database, n_alternatives: int, fixed_params: dict = None, l
         #the following lines are only relevant for calibration purposes
         ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
         ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1) #1 means you do not estimate it
-        B_COST= Beta("B_COST",None, None, 0)
-        B_TIME=Beta("B_TIME",None, None, 0)
+        B_COST= Beta("B_COST",0,None, None, 0)
+        B_TIME=Beta("B_TIME",0,None, None, 0)
         # Define the utility function
         V={}
         for i in range(1,n_alternatives+1):
@@ -237,7 +237,7 @@ def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weig
     return probabilities
 
 
-def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str, fixed_params: dict = None):
+def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str, fixed_params: dict = None, logit_type: str="spanish"):
     """_summary_
 
     Args:
@@ -280,7 +280,12 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
         ).getBetaValues()
         # beta_values.update(archetype_fixed_params)
 
-        V = utility_function(database, n_alternatives, archetype_fixed_params)
+        V = utility_function(database=database, 
+                             n_alternatives=n_alternatives, 
+                             fixed_params=archetype_fixed_params,
+                             logit_type=logit_type
+                             )
+
         av = alternative_availability(database, n_alternatives)
 
         probabilities = predict_probabilities(
@@ -473,8 +478,12 @@ def assign_path_id_columns(df: pd.DataFrame):
 
 
 def assign_demand_to_paths(
-    paths: pd.DataFrame, n_alternatives: int,
-    max_connections: int, network_paths_config: str
+    paths: pd.DataFrame, 
+    n_alternatives: int,
+    n_archetypes: int,
+    max_connections: int, 
+    network_paths_config: str,
+    logit_type: str="spanish"
 ):
     logger.important_info("Predict demand on paths")
 
@@ -486,7 +495,9 @@ def assign_demand_to_paths(
 
     paths_probabilities = predict_main(
         paths_final, n_archetypes=n_archetypes,
-        n_alternatives=n_alternatives, sensitivities=network_paths_config['other_param']['sensitivities_logit']
+        n_alternatives=n_alternatives, 
+        logit_type=logit_type,
+        sensitivities=network_paths_config['other_param']['sensitivities_logit']
     )
 
     pax_demand_paths = assign_passengers_main(
