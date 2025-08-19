@@ -46,10 +46,17 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     # Read demand
     logger.info("Reading demand")
-    demand_matrix = read_origin_demand_matrix(toml_config['demand']['demand'])
+    demand_matrices={}
+    for demand in toml_config["demand"]:
+        logit_type=demand["sensitivities_logit"]["logit_type"]
+        demand_matrices[logit_type]=read_origin_demand_matrix(demand["demand"])
 
     # Compute possible itineraries based on demand
-    o_d = demand_matrix[['origin', 'destination']].drop_duplicates()
+    o_d=pd.DataFrame(columns=["origin","destination"])
+    o_d_per_logit_dict={}
+    for logit_type in demand_matrices.keys():
+        o_d_per_logit_dict[logit_type]=demand_matrices[logit_type][["origin","destination"]].drop_duplicates() #dictionary with o_d_pairs per logit
+        o_d=pd.concat([o_d,demand_matrices[logit_type][["origin","destination"]]]).drop_duplicates()
 
     network_definition = toml_config['network_definition']
 
@@ -169,17 +176,38 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     logger.important_info("Assigning passengers to Path Clustered")
 
     #define the parameters
-    n_alternatives = pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
-    logit_type=toml_config["other_param"]["sensitivities_logit"]["logit_type"]
-    n_archetypes=toml_config["other_param"]["sensitivities_logit"]["n_archetypes"]
 
-    logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
-    df_pax_demand_paths, df_paths_final = assign_demand_to_paths(pareto_df, 
-                                                                 n_alternatives=n_alternatives, 
-                                                                 max_connections= max_connections, 
-                                                                 n_archetypes=n_archetypes,
-                                                                 logit_type=logit_type,
-                                                                 network_paths_config=toml_config) #this is where I have to look at
+    #separate pareto_df for each logit model
+    pareto_df_per_logit={}
+    pareto_df_per_logit={logit_type: pareto_df.merge(
+        o_d_per_logit_dict[logit_type],
+        on=["origin","destination"],how="inner") 
+        for logit_type in o_d_per_logit_dict}
+
+
+    df_pax_demand_paths_list=[]
+    df_paths_final_list=[]
+    
+    print(toml_config)
+    print(pareto_df_per_logit)
+
+    for logit_type, subset_pareto_df in pareto_df_per_logit.items():
+        n_alternatives = subset_pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
+        logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
+        df_pax_demand_paths, df_paths_final = assign_demand_to_paths(subset_pareto_df, 
+                                                                    max_connections= max_connections,
+                                                                    logit_type=logit_type,
+                                                                    n_alternatives=n_alternatives,
+                                                                    network_paths_config=toml_config) #this is where I have to look at
+        df_pax_demand_paths["logit_type"]=logit_type #tag logit model
+        df_paths_final["logit_type"]=logit_type 
+
+        df_pax_demand_paths_list.append(df_pax_demand_paths) #append new entry to the list
+        df_paths_final_list.append(df_paths_final)
+
+    df_pax_demand_paths=pd.concat(df_pax_demand_paths_list,ignore_index=True) #concat the list
+    df_paths_final=pd.concat(df_paths_final_list, ignore_index=True)
+
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 
     # Add demand per cluster
@@ -219,6 +247,8 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     else:
         ds = None
 
+    print(df_cluster_pax.columns)
+    print(df_itineraries_filtered.columns)
     df_pax_assigment, d_seats_max, df_options_w_pax = assing_pax_to_services(ds, df_cluster_pax.copy(),
                                                                     df_itineraries_filtered.copy(),
                                                                     paras=toml_config['other_param']['pax_assigner'])

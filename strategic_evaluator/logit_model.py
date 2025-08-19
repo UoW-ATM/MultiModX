@@ -8,7 +8,7 @@ import biogeme.biogeme as bio
 import pandas as pd
 import re
 import logging
-from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
+#from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
 from sklearn.model_selection import train_test_split
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_squared_error, mean_absolute_error
@@ -276,7 +276,7 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
         archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
         beta_values = res.bioResults(
             pickleFile=(
-                Path(sensitivities["sensitivities"]) / f"{weight_column}.pickle")
+                sensitivities / f"{weight_column}.pickle")
         ).getBetaValues()
         # beta_values.update(archetype_fixed_params)
 
@@ -479,16 +479,31 @@ def assign_path_id_columns(df: pd.DataFrame):
 
 def assign_demand_to_paths(
     paths: pd.DataFrame, 
-    n_alternatives: int,
-    n_archetypes: int,
     max_connections: int, 
+    logit_type:str,
+    n_alternatives: int,
     network_paths_config: str,
-    logit_type: str="spanish"
 ):
     logger.important_info("Predict demand on paths")
 
     # Selecting paths if necessary (too many options)
     # paths = paths.pipe(select_paths, n_alternatives_max)
+    # n archetypes have to be read from the configuration file
+
+    experiment_path = Path(network_paths_config["general"]["experiment_path"])
+
+
+    for demand in network_paths_config["demand"]:
+        sensitivities = demand["sensitivities_logit"]
+        if sensitivities["logit_type"].strip().lower() == logit_type.strip().lower():
+            n_archetypes=sensitivities["n_archetypes"]
+            demand_path = Path(demand["demand"])
+            sensitivities_path=experiment_path / Path(sensitivities["sensitivities"])
+            break
+    else:
+        raise ValueError(f"logit type: {logit_type} not found in config")
+    
+
     paths_final = paths.pipe(
         format_paths_for_predict, n_alternatives, max_connections, network_paths_config
     )
@@ -497,13 +512,12 @@ def assign_demand_to_paths(
         paths_final, n_archetypes=n_archetypes,
         n_alternatives=n_alternatives, 
         logit_type=logit_type,
-        sensitivities=network_paths_config['other_param']['sensitivities_logit']
+        sensitivities=sensitivities_path
     )
 
     pax_demand_paths = assign_passengers_main(
-        paths_probabilities, n_alternatives, Path(
-            network_paths_config['demand']['demand'])
-    )
+        paths_probabilities, n_alternatives, demand_path)
+    
 
     # Get a list of all columns that end with '_prob'
     prob_columns = [col for col in pax_demand_paths.columns if '_prob' in col]
