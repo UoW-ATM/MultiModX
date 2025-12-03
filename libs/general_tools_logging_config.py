@@ -120,7 +120,8 @@ def process_strategic_config_file(toml_file, end_output_folder=None):
                                                   'paths_itineraries')
 
     if 'demand' in toml_config.keys():
-        toml_config['demand']['demand'] = toml_config['general']['experiment_path'] + toml_config['demand']['demand']
+        for demand_entry in toml_config["demand"]:
+            demand_entry["demand"]=toml_config['general']['experiment_path'] + demand_entry['demand']
     else:
         # We don't have demand, probably a replanning so demand will be generated based on
         # pax impacted by replanning.
