@@ -12,6 +12,8 @@ from libs.uow_tool_belt.general_tools import recreate_output_folder
 from libs.general_tools_logging_config import (save_information_config_used, important_info, setup_logging, IMPORTANT_INFO,
                                                process_strategic_config_file)
 
+from strategic_evaluator.logit_model import format_path_clusters
+
 
 def read_origin_demand_matrix(path_demand):
     df_demand = pd.read_csv(Path(path_demand), keep_default_na=False)
@@ -52,11 +54,13 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
         demand_matrices[logit_type]=read_origin_demand_matrix(demand["demand"])
 
     # Compute possible itineraries based on demand
-    o_d=pd.DataFrame(columns=["origin","destination"])
+    o_d=[]#pd.DataFrame(columns=["origin","destination"])
     o_d_per_logit_dict={}
     for logit_type in demand_matrices.keys():
         o_d_per_logit_dict[logit_type]=demand_matrices[logit_type][["origin","destination"]].drop_duplicates() #dictionary with o_d_pairs per logit
-        o_d=pd.concat([o_d,demand_matrices[logit_type][["origin","destination"]]]).drop_duplicates()
+        o_d += [demand_matrices[logit_type][["origin","destination"]]]
+
+    o_d = pd.concat(o_d).drop_duplicates()
 
     network_definition = toml_config['network_definition']
 
@@ -178,7 +182,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     #define the parameters
 
     #separate pareto_df for each logit model
-    pareto_df_per_logit={}
+    #pareto_df_per_logit={}
     pareto_df_per_logit={logit_type: pareto_df.merge(
         o_d_per_logit_dict[logit_type],
         on=["origin","destination"],how="inner") 
@@ -187,13 +191,11 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     df_pax_demand_paths_list=[]
     df_paths_final_list=[]
-    
-    print(toml_config)
-    print(pareto_df_per_logit)
 
     for logit_type, subset_pareto_df in pareto_df_per_logit.items():
         n_alternatives = subset_pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
         logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
+        # TODO: subset_pareto now have train, plan, multimodal and option_nubmer columns. We could remerge these into pareto_df
         df_pax_demand_paths, df_paths_final = assign_demand_to_paths(subset_pareto_df, 
                                                                     max_connections= max_connections,
                                                                     logit_type=logit_type,
@@ -207,6 +209,19 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     df_pax_demand_paths=pd.concat(df_pax_demand_paths_list,ignore_index=True) #concat the list
     df_paths_final=pd.concat(df_paths_final_list, ignore_index=True)
+
+    if 'option_number' not in pareto_df.columns:
+        # In the normal version (no a logit per demand)
+        # the assign_demand_to_paths modify the pareto_df
+        # adding train, plane, multimodal and option_number
+        # in the sub_df version this is done in the sub_dfs
+        # so we need to read that now here.
+        pareto_df = format_path_clusters(pareto_df)
+
+    # Commented, saved for debugging the option_number column that was missing from pareto_df
+    # df_paths_final.to_csv('./input_function/df_paths_final.csv', index=False)
+    # df_pax_demand_paths.to_csv('./input_function/df_pax_demand_paths.csv', index=False)
+    # pareto_df.to_csv('./input_function/pareto_df.csv', index=False)
 
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 

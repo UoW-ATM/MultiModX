@@ -368,6 +368,18 @@ def select_paths(paths: pd.DataFrame, n_alternatives_max: int):
     ).apply(lambda x: x.iloc[:n_alternatives_max]).reset_index(level=0, drop=True)
     return paths_filtered
 
+def format_path_clusters(df_clusters: pd.DataFrame):
+    # Added to compute columns when missing
+    df_clusters["train"] = df_clusters["journey_type"] == "rail"
+    df_clusters["plane"] = df_clusters["journey_type"] == "air"
+    df_clusters["multimodal"] = df_clusters["journey_type"] == "multimodal"
+
+    df_clusters["option_number"] = df_clusters.groupby(["origin", "destination"])["alternative_id"].transform(
+            lambda df: range(1, len(df) + 1)
+    ).astype(str)
+
+    return df_clusters
+
 
 def format_paths_for_predict(
     paths: pd.DataFrame, n_alternatives: int,
