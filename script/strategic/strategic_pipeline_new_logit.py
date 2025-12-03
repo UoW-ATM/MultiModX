@@ -262,8 +262,7 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     else:
         ds = None
 
-    print(df_cluster_pax.columns)
-    print(df_itineraries_filtered.columns)
+
     df_pax_assigment, d_seats_max, df_options_w_pax = assing_pax_to_services(ds, df_cluster_pax.copy(),
                                                                     df_itineraries_filtered.copy(),
                                                                     paras=toml_config['other_param']['pax_assigner'])
