@@ -2,6 +2,7 @@
 Repository for MultiModX project
 
 - Multimodal Strategic and Tactical Evaluation of air-rail mobility networks
+- Technical Summary of Multimodal Performance Framework and Multimodal Evaluators available in documentation: [Technical_Summary_Open_Multimodal_Performance_Framework_and_Evaluation_tools.pdf](documentation/Technical_Summary_Open_Multimodal_Performance_Framework_and_Evaluation_tools.pdf)  
 
 
 ## MultiModX information web links
