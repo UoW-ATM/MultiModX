@@ -46,19 +46,22 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                      pre_processed_version=pre_processed_version,
                      policy_package=toml_config.get('policy_package'))
 
-    # Read demand
-    logger.info("Reading demand")
-    demand_matrices={}
+    # Read demand and logit models
+    logger.info("Reading demand and logit models")
+    demand_matrices = {}
+    logit_models = {}
     for demand in toml_config["demand"]:
-        logit_type=demand["sensitivities_logit"]["logit_type"]
-        demand_matrices[logit_type]=read_origin_demand_matrix(demand["demand"])
+        logit_id=demand["sensitivities_logit"]["logit_id"]
+        demand_matrices[logit_id]=read_origin_demand_matrix(demand["demand"])
+        logit_models[logit_id] = {'sensitivities': demand["sensitivities_logit"]["sensitivities"],
+                                  'n_archetypes': demand["sensitivities_logit"].get("n_archetypes")}
 
     # Compute possible itineraries based on demand
-    o_d=[]#pd.DataFrame(columns=["origin","destination"])
+    o_d=[] #pd.DataFrame(columns=["origin","destination"])
     o_d_per_logit_dict={}
-    for logit_type in demand_matrices.keys():
-        o_d_per_logit_dict[logit_type]=demand_matrices[logit_type][["origin","destination"]].drop_duplicates() #dictionary with o_d_pairs per logit
-        o_d += [demand_matrices[logit_type][["origin","destination"]]]
+    for logit_id in demand_matrices.keys():
+        o_d_per_logit_dict[logit_id]=demand_matrices[logit_id][["origin","destination"]].drop_duplicates() #dictionary with o_d_pairs per logit
+        o_d += [demand_matrices[logit_id][["origin","destination"]]]
 
     o_d = pd.concat(o_d).drop_duplicates()
 
@@ -183,26 +186,27 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     #separate pareto_df for each logit model
     #pareto_df_per_logit={}
-    pareto_df_per_logit={logit_type: pareto_df.merge(
-        o_d_per_logit_dict[logit_type],
+    pareto_df_per_logit={logit_id: pareto_df.merge(
+        o_d_per_logit_dict[logit_id],
         on=["origin","destination"],how="inner") 
-        for logit_type in o_d_per_logit_dict}
+        for logit_id in o_d_per_logit_dict}
 
 
     df_pax_demand_paths_list=[]
     df_paths_final_list=[]
 
-    for logit_type, subset_pareto_df in pareto_df_per_logit.items():
+    for logit_id, subset_pareto_df in pareto_df_per_logit.items():
         n_alternatives = subset_pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
         logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
-        # TODO: subset_pareto now have train, plan, multimodal and option_nubmer columns. We could remerge these into pareto_df
+        # TODO: subset_pareto now have train, plan, multimodal and option_number columns. We could remerge these into pareto_df
         df_pax_demand_paths, df_paths_final = assign_demand_to_paths(subset_pareto_df, 
                                                                     max_connections= max_connections,
-                                                                    logit_type=logit_type,
+                                                                    logit_model=logit_models[logit_id],
+                                                                    df_demand=demand_matrices[logit_id].copy(),
                                                                     n_alternatives=n_alternatives,
                                                                     network_paths_config=toml_config) #this is where I have to look at
-        df_pax_demand_paths["logit_type"]=logit_type #tag logit model
-        df_paths_final["logit_type"]=logit_type 
+        df_pax_demand_paths["logit_id"]=logit_id #tag logit model
+        df_paths_final["logit_id"]=logit_id
 
         df_pax_demand_paths_list.append(df_pax_demand_paths) #append new entry to the list
         df_paths_final_list.append(df_paths_final)
