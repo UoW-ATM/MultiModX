@@ -25,19 +25,10 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                 max_connections=1, pre_processed_version=0,
                                 allow_mixed_operators_itineraries=False,
                                 use_heuristics_precomputed=False,
-                                recreate_output_fld=True):
+                                save_all_output=True):
 
     start_pipeline_time = time.time()
 
-    if recreate_output_fld:
-        # Check if output folder exists, if not create it
-        recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
-                               toml_config['network_definition']['processed_folder'],
-                               delete_previous=True,
-                               logger=logger)
-        recreate_output_folder(Path(toml_config['output']['output_folder']),
-                               delete_previous=True,
-                               logger=logger)
 
 
     # Preprocess input
@@ -330,19 +321,17 @@ if __name__ == '__main__':
                         required=False, default=0)
     parser.add_argument('-np', '--num_paths', help='Number of paths to compute if computing potential paths',
                         required=False, default=30)
-    parser.add_argument('-v', '--verbose', action='count', default=0, help="increase output verbosity")
-
-    parser.add_argument('-lf', '--log_file', help='Path to log file', required=False)
-
     parser.add_argument('-pc', '--n_proc', help='Number of processors', required=False)
-
     parser.add_argument('-df', '--demand_file', help='Pax demand file instead of the one in the toml_file',
                         required=False)
-
     parser.add_argument('-amo', '--allow_mixed_operators', help='Allow mix operators',
                         required=False, action='store_true')
-
-
+    parser.add_argument('-v', '--verbose', action='count', default=0, help="increase output verbosity")
+    parser.add_argument('-lf', '--log_file', help='Path to log file', required=False)
+    parser.add_argument('-mo', '--minimum_output', help='Save only minimum files instead of all of them',
+                        action='store_true', required=False)
+    parser.add_argument('-rof', '--recreate_output_folder', help='Save only minimum files instead of all of them',
+                        action='store_true', required=False)
     parser.add_argument('-eo', '--end_output_folder', help='Ending to be added to output folder',
                         required=False)
 
@@ -383,10 +372,10 @@ if __name__ == '__main__':
     # Check if output folder exists, if not create it
     recreate_output_folder(Path(toml_config['network_definition']['network_path']) /
                            toml_config['network_definition']['processed_folder'],
-                           delete_previous=False,
+                           delete_previous=args.recreate_output_folder,
                            logger=logger)
     recreate_output_folder(Path(toml_config['output']['output_folder']),
-                           delete_previous=False,
+                           delete_previous=args.recreate_output_folder,
                            logger=logger)
 
     save_information_config_used(toml_config, args)
@@ -401,7 +390,4 @@ if __name__ == '__main__':
                                 pre_processed_version=int(args.preprocessed_version),
                                 allow_mixed_operators_itineraries=args.allow_mixed_operators,
                                 use_heuristics_precomputed=args.use_heuristics_precomputed,
-                                recreate_output_fld=False)
-
-    # Improvements
-    # TODO: day in rail
+                                save_all_output=not args.minimum_output)
