@@ -1990,8 +1990,11 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
 
     # If pc > 1, use parallel computing, otherwise proceed sequentially
     if pc > 1:
-        results = Parallel(n_jobs=pc, backend='multiprocessing')(
+        #with Parallel(n_jobs=pc, backend='loky') as parallel:
+        #    results = parallel(delayed(process_group_clustering)(name, group, kpis, thresholds) for name, group in grouped_data)
+        results = Parallel(n_jobs=pc, backend='loky')(
             delayed(process_group_clustering)(name, group, kpis, thresholds) for name, group in grouped_data)
+        gc.collect()
     else:
         results = [process_group_clustering(name, group, kpis, thresholds) for name, group in grouped_data]
 
@@ -2050,6 +2053,7 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
 
     clusters_df['cluster_id'] = clusters_df['clusters'].apply(lambda x: list(x.keys()))
     clusters_df['options_in_cluster'] = clusters_df['clusters'].apply(lambda x: list(x.values()))
+    clusters_df.drop(columns=['clusters'], inplace=True)
 
     # Expand cluster_id and options_in_cluster into separate rows
     clusters_df = clusters_df.explode(['cluster_id', 'options_in_cluster'])
@@ -2057,9 +2061,15 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     # Flatten options list
     clusters_df = clusters_df.explode('options_in_cluster')
 
+    #print("THEREI", len(clusters_df), len(df_itineraries))
+    #print((df_itineraries.memory_usage(deep=True) / (1024 * 1024)).astype(float).round(5).astype(str) + ' MB')
+    #print((clusters_df.memory_usage(deep=True) / (1024 * 1024)).astype(float).round(5).astype(str) + ' MB')
+
     # Merge with df_itineraries once instead of filtering in a loop
     merged_df = clusters_df.merge(df_itineraries, left_on=['options_in_cluster', 'origin', 'destination'],
                                   right_on=['option', 'origin', 'destination'], how='left')
+
+    #print("THEREJ", len(merged_df))
 
     # Group by cluster, origin, destination
     grouped = merged_df.groupby(['origin', 'destination', 'cluster_id'])
@@ -2074,7 +2084,6 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
 
     # Rename column
     final_df.rename(columns={'options_in_cluster': 'options_in_cluster'}, inplace=True)
-
 
     for k in kpis:
         final_df[k] = final_df[k].apply(lambda x: round(x, 2))
