@@ -8,7 +8,7 @@ import biogeme.biogeme as bio
 import pandas as pd
 import re
 import logging
-from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
+#from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
 from sklearn.model_selection import train_test_split
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_squared_error, mean_absolute_error
@@ -18,41 +18,107 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)
 
 
-def utility_function(database, n_alternatives: int, fixed_params: dict = None):
+def utility_function_pred(database, n_alternatives: int, beta_types, fixed_params: dict = None):
     """This function defines the parameters to be estimated and the utility function of each alternative
 
     Args:
         database (biogeme.database): biogeme database with the information of alternatives
         n_alternatives (int): number of alternatives between OD pairs
-
+        beta_types (str): variable that determines the type of logit model. "spanish" for the national case and "international" for the international one
     Returns:
         dict: dictionary with the utility function of each alternative
     """
 
-    # Parameters to be estimated
-    ASC_TRAIN = Beta('ASC_TRAIN', 0, None, None, 0) # 1 means you do not estimate it
-    ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
-    ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1)
+    # --- 1. Define all possible Beta parameters ---
+    betas = {
+        'ASC_TRAIN': Beta('ASC_TRAIN', 0, None, None, 0),
+        'ASC_PLANE': Beta('ASC_PLANE', 0, None, None, 0),
+        'ASC_MULTIMODAL': Beta('ASC_MULTIMODAL', 0, None, None, 1),
+        'B_TIME': Beta('B_TIME', 0, None, None, 0),
+        'B_COST': Beta('B_COST', 0, None, None, 0),
+        'B_CO2': Beta('B_CO2', 0, None, None, 0),
+    }
 
-    # Retrieve fixed values for B_COST and B_TIME, or estimate them if not provided
-    B_TIME = Beta('B_TIME', fixed_params['B_TIME'] if fixed_params and 'B_TIME' in fixed_params else 0, None, None, 
-                  1 if fixed_params and 'B_TIME' in fixed_params else 0)
-    B_COST = Beta('B_COST', fixed_params['B_COST'] if fixed_params and 'B_COST' in fixed_params else 0, None, None, 
-                  1 if fixed_params and 'B_COST' in fixed_params else 0)
+    # --- 2. Map betas to database variable name patterns ---
+    variable_map = {
+        'ASC_TRAIN': 'train_{}',
+        'ASC_PLANE': 'plane_{}',
+        'ASC_MULTIMODAL': 'multimodal_{}',
+        'B_TIME': 'travel_time_{}',
+        'B_COST': 'cost_{}',
+        'B_CO2': 'emissions_{}',
+    }
 
-    # B_CO2 is estimated only if B_TIME and B_COST are fixed
-    B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 1)
-
-    # Define the utility function for each alternative
+    # --- 3. Build utility functions dynamically ---
     V = {}
     for i in range(1, n_alternatives + 1):
-        V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + 
-                ASC_PLANE * database.variables[f'plane_{i}'] + 
-                ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
-                B_TIME * database.variables[f'travel_time_{i}'] +
-                B_COST * database.variables[f'cost_{i}'] +
-                B_CO2 * database.variables[f'emissions_{i}'])
+        V[i] = 0
+        for beta_name in beta_types:
+            V[i] += (
+                    betas[beta_name]
+                    * database.variables[variable_map[beta_name].format(i)]
+            )
 
+    return V
+
+
+
+
+
+def utility_function(database, n_alternatives: int, fixed_params: dict = None, logit_type: str ="spanish"):
+    """This function defines the parameters to be estimated and the utility function of each alternative
+    This function is used for calibration of the logit models as the beta keys don't exist yet.
+    It could be replaced by utility_function_pred if you pass the beta_key parameters instead of logit_type
+    which is hardcoded here.
+
+    Args:
+        database (biogeme.database): biogeme database with the information of alternatives
+        n_alternatives (int): number of alternatives between OD pairs
+        fixed_params (dict): dictionary with variables that have already been calibrated in a previous iteration
+        logit_type (str): variable that determines the type of logit model. "spanish" for the national case and "international" for the international one
+    Returns:
+        dict: dictionary with the utility function of each alternative
+    """
+    if logit_type=="spanish": # base case for international logit
+        #it would be good to add a configuration file or something like that 
+        # Parameters to be estimated
+        ASC_TRAIN = Beta('ASC_TRAIN', 0, None, None, 0) # 1 means you do not estimate it
+        ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
+        ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1)
+
+        # Retrieve fixed values for B_COST and B_TIME, or estimate them if not provided
+        B_TIME = Beta('B_TIME', fixed_params['B_TIME'] if fixed_params and 'B_TIME' in fixed_params else 0, None, None, 
+                    1 if fixed_params and 'B_TIME' in fixed_params else 0)
+        B_COST = Beta('B_COST', fixed_params['B_COST'] if fixed_params and 'B_COST' in fixed_params else 0, None, None, 
+                    1 if fixed_params and 'B_COST' in fixed_params else 0)
+
+        # B_CO2 is estimated only if B_TIME and B_COST are fixed
+        B_CO2 = Beta('B_CO2', 0, None, None, 0) if (fixed_params and 'B_TIME' in fixed_params and 'B_COST' in fixed_params) else Beta('B_CO2', 0, None, None, 1)
+
+        # Define the utility function for each alternative
+        V = {}
+        for i in range(1, n_alternatives + 1):
+            V[i] = (ASC_TRAIN * database.variables[f'train_{i}'] + 
+                    ASC_PLANE * database.variables[f'plane_{i}'] + 
+                    ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
+                    B_TIME * database.variables[f'travel_time_{i}'] +
+                    B_COST * database.variables[f'cost_{i}'] +
+                    B_CO2 * database.variables[f'emissions_{i}'])
+    
+    if logit_type == "international":
+        #the following lines are only relevant for calibration purposes
+        ASC_PLANE = Beta('ASC_PLANE', 0, None, None, 0) # 0 means you estimate it
+        ASC_MULTIMODAL = Beta('ASC_MULTIMODAL', 0, None, None, 1) #1 means you do not estimate it
+        B_COST= Beta("B_COST",0,None, None, 0)
+        B_TIME=Beta("B_TIME",0,None, None, 0)
+        # Define the utility function
+        V={}
+        for i in range(1,n_alternatives+1):
+            V[i]=   (ASC_PLANE * database.variables[f'plane_{i}'] + 
+                    ASC_MULTIMODAL * database.variables[f'multimodal_{i}'] +
+                    B_TIME * database.variables[f'travel_time_{i}'] +
+                    B_COST * database.variables[f'cost_{i}'])
+        
     return V
 
 
@@ -221,12 +287,13 @@ def predict_probabilities(database, V: dict, av: dict, n_alternatives: int, weig
     return probabilities
 
 
-def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, sensitivities: str, fixed_params: dict = None):
+def predict_main(paths: pd.DataFrame, n_alternatives: int, sensitivities: str, n_archetypes: int = None, fixed_params: dict = None):
     """_summary_
 
     Args:
         paths_file (str): path to the csv file with the information of alternatives between each OD pair
-        n_archetypes (int): number of archetypes
+        n_archetypes (int): number of archetypes, optional, if not passed then it will extract it
+                            from the folder directly
         n_alternatives (int): number of alternatives between OD pairs
 
     Returns:
@@ -252,19 +319,58 @@ def predict_main(paths: pd.DataFrame, n_archetypes: int, n_alternatives: int, se
     if fixed_params is None:
         fixed_params = {} #set default value in the case there are no fixed parameters
 
-    for k in range(n_archetypes):
+    archetypes = {}
+
+    if n_archetypes is None:
+        # --- Mode 1: discover archetypes from folder ---
+        # Get the archetypes directly form the sensitivities folder
+        sens_path = Path(sensitivities)
+        pattern = re.compile(r'archetype_(\d+)\.pickle$')
+
+        for f in sens_path.iterdir():
+            match = pattern.match(f.name)
+            if match:
+                k = int(match.group(1))
+                archetypes[f'archetype_{k}'] = f
+
+        # check if contigous indices
+        indices = sorted(int(k.split('_')[1]) for k in archetypes)
+        expected = list(range(max(indices) + 1))
+        if indices != expected:
+            raise ValueError(f"Non-contiguous archetypes: {indices}")
+
+
+    else:
+        # --- Mode 2: create archetypes from explicit number ---
+        for k in range(n_archetypes):
+            archetypes[f'archetype_{k}'] = Path(sensitivities) / f'archetype_{k}.pickle'
+
+        # check if some archetypes are missing
+        missing = [k for k, p in archetypes.items() if not p.exists()]
+        if missing:
+            raise FileNotFoundError(f"Missing archetype files: {missing}")
+
+
+    #for k in range(n_archetypes):
+    for weight_column, sensitivity_path in archetypes.items():
         # logger.important_info(
             # f"Predicting number of passenger on each path for archetype {k}."
         # )
-        weight_column = f'archetype_{k}'
+        #weight_column = f'archetype_{k}'
         archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
         beta_values = res.bioResults(
-            pickleFile=(
-                Path(sensitivities["sensitivities"]) / f"{weight_column}.pickle")
+            pickleFile=(sensitivity_path)
+                #sensitivities / f"{weight_column}.pickle")
         ).getBetaValues()
         # beta_values.update(archetype_fixed_params)
 
-        V = utility_function(database, n_alternatives, archetype_fixed_params)
+
+        V = utility_function_pred(database=database,
+                                  n_alternatives=n_alternatives,
+                                  beta_types=list(beta_values.keys()),
+                                  fixed_params=archetype_fixed_params
+                                  )
+
         av = alternative_availability(database, n_alternatives)
 
         probabilities = predict_probabilities(
@@ -316,19 +422,20 @@ def get_probability_path_archetype(row, paths_prob_dict: dict, alternative_i: in
 
 
 
-def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, pax_demand_path: str):
+def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, df_demand: pd.DataFrame):
     """Main function to assign trips to paths
 
     Args:
         paths_prob (pd.DataFrame): probability of each alternative for each archetype and OD pair
         n_alternatives (int): number of alternatives between OD pairs
-        pax_demand_path (str): path to the pax_demand file
+        df_demand (pd.DataFrame): dataframe with demand
 
     Returns:
         pd.DataFrame: df with the trips assigned to each alternative
     """
 
-    pax_demand = pd.read_csv(pax_demand_path)
+    pax_demand = df_demand
+
     paths_prob_dict = paths_prob.set_index(
         ['origin', 'destination']).to_dict("index")
 
@@ -346,6 +453,18 @@ def select_paths(paths: pd.DataFrame, n_alternatives_max: int):
         ["origin", "destination"], as_index=False
     ).apply(lambda x: x.iloc[:n_alternatives_max]).reset_index(level=0, drop=True)
     return paths_filtered
+
+def format_path_clusters(df_clusters: pd.DataFrame):
+    # Added to compute columns when missing
+    df_clusters["train"] = df_clusters["journey_type"] == "rail"
+    df_clusters["plane"] = df_clusters["journey_type"] == "air"
+    df_clusters["multimodal"] = df_clusters["journey_type"] == "multimodal"
+
+    df_clusters["option_number"] = df_clusters.groupby(["origin", "destination"])["alternative_id"].transform(
+            lambda df: range(1, len(df) + 1)
+    ).astype(str)
+
+    return df_clusters
 
 
 def format_paths_for_predict(
@@ -456,7 +575,8 @@ def assign_path_id_columns(df: pd.DataFrame):
     return df
 
 
-def assign_demand_to_paths(
+
+def assign_demand_to_paths_prev(
     paths: pd.DataFrame, n_alternatives: int,
     max_connections: int, network_paths_config: str
 ):
@@ -468,15 +588,71 @@ def assign_demand_to_paths(
         format_paths_for_predict, n_alternatives, max_connections, network_paths_config
     )
 
+    n_archetypes = int(network_paths_config['other_param']['sensitivities_logit']['n_archetypes'])
+
     paths_probabilities = predict_main(
         paths_final, n_archetypes=n_archetypes,
-        n_alternatives=n_alternatives, sensitivities=network_paths_config['other_param']['sensitivities_logit']
+        n_alternatives=n_alternatives, sensitivities=network_paths_config['other_param']['sensitivities_logit']['sensitivities']
     )
 
     pax_demand_paths = assign_passengers_main(
-        paths_probabilities, n_alternatives, Path(
-            network_paths_config['demand']['demand'])
+        paths_probabilities, n_alternatives, pd.read_csv(Path(
+            network_paths_config['demand']['demand']))
     )
+
+    # Get a list of all columns that end with '_prob'
+    prob_columns = [col for col in pax_demand_paths.columns if '_prob' in col]
+
+    # Get the list of remaining columns
+    remaining_columns = [col for col in pax_demand_paths.columns if col not in prob_columns]
+
+    # Create the new order of columns
+    new_column_order = remaining_columns + prob_columns
+
+    # Reorder the DataFrame
+    pax_demand_paths = pax_demand_paths[new_column_order]
+
+    # Round alternatives
+
+    alternative_columns = [col for col in pax_demand_paths.columns if re.match(r'alternative_\d+$', col)]
+
+    # Round probabilites
+    pax_demand_paths[prob_columns] = pax_demand_paths[prob_columns].round(3)
+
+    # Round pax
+    pax_demand_paths[alternative_columns] = pax_demand_paths[alternative_columns].round(2)
+
+    return pax_demand_paths, paths_final
+
+
+def assign_demand_to_paths(
+    paths: pd.DataFrame, 
+    max_connections: int, 
+    logit_model:dict,
+    df_demand: pd.DataFrame,
+    n_alternatives: int,
+    network_paths_config: str,
+):
+    logger.important_info("Predict demand on paths")
+
+    experiment_path = Path(network_paths_config["general"]["experiment_path"])
+    n_archetypes = logit_model.get('n_archetypes')
+    sensitivities_path = experiment_path / Path(logit_model["sensitivities"])
+
+    paths_final = paths.pipe(
+        format_paths_for_predict, n_alternatives, max_connections, network_paths_config
+    )
+
+    paths_probabilities = predict_main(
+        paths_final,
+        n_alternatives=n_alternatives,
+        sensitivities=sensitivities_path,
+        n_archetypes=n_archetypes
+    )
+
+    pax_demand_paths = assign_passengers_main(
+        paths_probabilities, n_alternatives, df_demand)
+    
 
     # Get a list of all columns that end with '_prob'
     prob_columns = [col for col in pax_demand_paths.columns if '_prob' in col]
@@ -584,7 +760,6 @@ def test_logit(test: dict, trips_logit: pd.DataFrame, n_alternatives=5):
         final_test[archetype]["location"]=test_archetype.index
 
         for idx, row in final_test[archetype].iterrows():
-            # FINISH LINE, I DONT HAVE THE COLUMN WITH THE PROBS IN TRIPS LOGIT
             num=trips_logit.iloc[row["location"]]["noption"]
             final_test[archetype].loc[idx,"prob_predicted"]=test_archetype.loc[row["location"],f"prob_{num}"]
             final_test[archetype].loc[idx,"prob_observed"]=trips_logit.iloc[row["location"]][f"prob_per_od_pair_arch_0"]
