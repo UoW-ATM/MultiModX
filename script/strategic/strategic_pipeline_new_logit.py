@@ -29,8 +29,6 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     start_pipeline_time = time.time()
 
-
-
     # Preprocess input
     logger.info("Pre-processing input")
     preprocess_input(toml_config['network_definition'],
@@ -84,8 +82,9 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # Remove paths without mode of transport
     df_potential_paths = df_potential_paths[df_potential_paths.nmodes>=1].copy().reset_index(drop=True)
 
-    ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
-    df_potential_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    if save_all_output:
+        ofp = 'potential_paths_' + str(pre_processed_version) + '.csv'
+        df_potential_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Then compute itineraries based on potential paths
     # Create potential routes dictionary
@@ -124,14 +123,16 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # Remove paths without mode of transport
     df_itineraries = df_itineraries[df_itineraries.nservices >= 1].copy().reset_index(drop=True)
 
+    # Saved always, as part of minimum output
     ofp = 'possible_itineraries_' + str(pre_processed_version) + '.csv'
     df_itineraries.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Compute average paths from possible itineraries
     logger.info("Compute average path for possible itineraries")
     df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries)
-    ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
-    df_avg_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    if save_all_output:
+        ofp = 'possible_paths_avg_' + str(pre_processed_version) + '.csv'
+        df_avg_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Filter options that are 'similar' from the df_itineraries
     logger.important_info("Filtering/Clustering itineraries options")
@@ -144,8 +145,9 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     df_cluster_options = cluster_options_itineraries(df_itineraries, kpis=kpis_to_cluster, thresholds=kpis_thresholds,
                                                      pc=pc)
 
-    ofp = 'possible_itineraries_clustered_' + str(pre_processed_version) + '.csv'
-    df_cluster_options.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    if save_all_output:
+        ofp = 'possible_itineraries_clustered_' + str(pre_processed_version) + '.csv'
+        df_cluster_options.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     # Pareto options from similar options
     logger.important_info("Computing Pareto itineraries options")
@@ -155,19 +157,24 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # Apply the Pareto filtering
     pareto_df = keep_pareto_equivalent_solutions(df_cluster_options, thresholds_pareto_dominance)
 
-    ofp = 'possible_itineraries_clustered_pareto_' + str(pre_processed_version) + '.csv'
-    pareto_df.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    if save_all_output:
+        ofp = 'possible_itineraries_clustered_pareto_' + str(pre_processed_version) + '.csv'
+        pareto_df.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
     df_itineraries_filtered = keep_itineraries_options(df_itineraries, pareto_df)
 
+    # Saved always as part of minimum output
     ofp = 'possible_itineraries_clustered_pareto_filtered_' + str(pre_processed_version) + '.csv'
     df_itineraries_filtered.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
 
     # Compute average paths from itineraries filtered
     logger.info("Compute average path for filtered itineraries")
     df_avg_paths = compute_avg_paths_from_itineraries(df_itineraries_filtered)
-    ofp = 'possible_paths_avg_from_filtered_it_' + str(pre_processed_version) + '.csv'
-    df_avg_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+    if save_all_output:
+        ofp = 'possible_paths_avg_from_filtered_it_' + str(pre_processed_version) + '.csv'
+        df_avg_paths.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
 
     # Assign passengers to paths clusters
@@ -218,11 +225,13 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # df_pax_demand_paths.to_csv('./input_function/df_pax_demand_paths.csv', index=False)
     # pareto_df.to_csv('./input_function/pareto_df.csv', index=False)
 
+    # Saved always as minimum output
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 
     # Add demand per cluster
     df_cluster_pax = obtain_demand_per_cluster_itineraries(pareto_df, df_pax_demand_paths, df_paths_final)
 
+    # Saved always as minimum output
     ofp = 'possible_itineraries_clustered_pareto_w_demand_' + str(pre_processed_version) + '.csv'
     df_cluster_pax.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
 
@@ -264,8 +273,11 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     # ofp = 'pax_assigned_from_flow_' + str(pre_processed_version) + '.csv'
     # df_pax_assigment.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
-    ofp = 'pax_assigned_seats_max_target_' + str(pre_processed_version) + '.csv'
-    d_seats_max.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    if save_all_output:
+        ofp = 'pax_assigned_seats_max_target_' + str(pre_processed_version) + '.csv'
+        d_seats_max.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+
+    # Saved always as minimum output
     ofp = 'pax_assigned_to_itineraries_options_' + str(pre_processed_version) + '.csv'
     df_options_w_pax_save = df_options_w_pax.copy().drop(columns=['generated_info','avg_fare'])
     df_options_w_pax_save.rename(columns={'volume': 'total_volume_pax_cluster',
@@ -277,11 +289,13 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     # Transform passenger assigned into tactical input
     df_pax_tactical, df_pax_tactical_not_supported = transform_pax_assigment_to_tactical_input(df_options_w_pax)
 
+    # Saved always as minimum output
     ofp = 'pax_assigned_tactical_' + str(pre_processed_version) + '.csv'
-    df_pax_tactical.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    df_pax_tactical.to_csv(Path(toml_config['output']['tactical_output_folder']) / ofp, index=False)
 
+    # Saved always as minimum output
     ofp = 'pax_assigned_tactical_not_supported_' + str(pre_processed_version) + '.csv'
-    df_pax_tactical_not_supported.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    df_pax_tactical_not_supported.to_csv(Path(toml_config['output']['tactical_output_folder']) / ofp, index=False)
 
 
     # Transform flight schedules into tactical input
@@ -292,8 +306,9 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                              pre_processed_version
                                              )
 
+    # Saved always as minimum output
     ofp = 'flight_schedules_tactical_' + str(pre_processed_version) + '.csv'
-    df_flights_tactical.to_csv(Path(toml_config['output']['output_folder']) / ofp, index=False)
+    df_flights_tactical.to_csv(Path(toml_config['output']['tactical_output_folder']) / ofp, index=False)
 
     end_pipeline_time = time.time()
     elapsed_time = end_pipeline_time - start_pipeline_time
@@ -375,6 +390,9 @@ if __name__ == '__main__':
                            delete_previous=args.recreate_output_folder,
                            logger=logger)
     recreate_output_folder(Path(toml_config['output']['output_folder']),
+                           delete_previous=args.recreate_output_folder,
+                           logger=logger)
+    recreate_output_folder(Path(toml_config['output']['tactical_output_folder']),
                            delete_previous=args.recreate_output_folder,
                            logger=logger)
 
