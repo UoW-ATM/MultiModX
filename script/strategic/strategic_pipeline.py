@@ -170,7 +170,10 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
 
     n_alternatives = pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
     logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
-    df_pax_demand_paths, df_paths_final = assign_demand_to_paths(pareto_df, n_alternatives, max_connections, toml_config)
+    df_pax_demand_paths, df_paths_final = assign_demand_to_paths_prev(pareto_df,
+                                                                 n_alternatives=n_alternatives,
+                                                                 max_connections=max_connections,
+                                                                 network_paths_config=toml_config)
     df_pax_demand_paths.to_csv(Path(toml_config['output']['output_folder']) / "pax_demand_paths.csv", index=False)
 
     # Add demand per cluster
@@ -311,7 +314,7 @@ if __name__ == '__main__':
         transform_fight_schedules_tactical_input
     )
     from strategic_evaluator.logit_model import (
-        assign_demand_to_paths
+        assign_demand_to_paths_prev
     )
 
     toml_config = process_strategic_config_file(args.toml_file, args.end_output_folder)

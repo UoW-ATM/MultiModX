@@ -575,6 +575,56 @@ def assign_path_id_columns(df: pd.DataFrame):
     return df
 
 
+
+def assign_demand_to_paths_prev(
+    paths: pd.DataFrame, n_alternatives: int,
+    max_connections: int, network_paths_config: str
+):
+    logger.important_info("Predict demand on paths")
+
+    # Selecting paths if necessary (too many options)
+    # paths = paths.pipe(select_paths, n_alternatives_max)
+    paths_final = paths.pipe(
+        format_paths_for_predict, n_alternatives, max_connections, network_paths_config
+    )
+
+    n_archetypes = int(network_paths_config['other_param']['sensitivities_logit']['n_archetypes'])
+
+    paths_probabilities = predict_main(
+        paths_final, n_archetypes=n_archetypes,
+        n_alternatives=n_alternatives, sensitivities=network_paths_config['other_param']['sensitivities_logit']['sensitivities']
+    )
+
+    pax_demand_paths = assign_passengers_main(
+        paths_probabilities, n_alternatives, pd.read_csv(Path(
+            network_paths_config['demand']['demand']))
+    )
+
+    # Get a list of all columns that end with '_prob'
+    prob_columns = [col for col in pax_demand_paths.columns if '_prob' in col]
+
+    # Get the list of remaining columns
+    remaining_columns = [col for col in pax_demand_paths.columns if col not in prob_columns]
+
+    # Create the new order of columns
+    new_column_order = remaining_columns + prob_columns
+
+    # Reorder the DataFrame
+    pax_demand_paths = pax_demand_paths[new_column_order]
+
+    # Round alternatives
+
+    alternative_columns = [col for col in pax_demand_paths.columns if re.match(r'alternative_\d+$', col)]
+
+    # Round probabilites
+    pax_demand_paths[prob_columns] = pax_demand_paths[prob_columns].round(3)
+
+    # Round pax
+    pax_demand_paths[alternative_columns] = pax_demand_paths[alternative_columns].round(2)
+
+    return pax_demand_paths, paths_final
+
+
 def assign_demand_to_paths(
     paths: pd.DataFrame, 
     max_connections: int, 
