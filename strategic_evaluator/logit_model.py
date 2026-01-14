@@ -8,14 +8,28 @@ import biogeme.biogeme as bio
 import pandas as pd
 import re
 import logging
-#from script.strategic.launch_parameters import n_alternatives_max, n_archetypes
 from sklearn.model_selection import train_test_split
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
-
+import warnings
 
 logger = logging.getLogger(__name__)
+
+# Create own Warning
+class LogitWarning(UserWarning):
+    pass
+
+_original_showwarning = warnings.showwarning
+
+def selective_showwarning(message, category, filename, lineno, file=None, line=None):
+    if issubclass(category, LogitWarning):
+        print(f"{filename}:{lineno}: {category.__name__}: {message}")
+    else:
+        _original_showwarning(message, category, filename, lineno, file, line)
+
+warnings.showwarning = selective_showwarning
+
 
 
 def utility_function_pred(database, n_alternatives: int, beta_types, fixed_params: dict = None):
@@ -357,7 +371,7 @@ def predict_main(paths: pd.DataFrame, n_alternatives: int, sensitivities: str, n
             # f"Predicting number of passenger on each path for archetype {k}."
         # )
         #weight_column = f'archetype_{k}'
-        archetype_fixed_params = fixed_params.get(f"archetype_{k}", {})
+        archetype_fixed_params = fixed_params.get(weight_column, {})
         beta_values = res.bioResults(
             pickleFile=(sensitivity_path)
                 #sensitivities / f"{weight_column}.pickle")
@@ -402,24 +416,63 @@ def assign_passengers2path(row, paths_prob_dict: dict, alternative_i: int):
 
     name = f'{arc}_prob_{alternative_i}'
     if (O, D) in paths_prob_dict.keys():
-        return trips * paths_prob_dict[(O, D)][name]
+        if name in paths_prob_dict[(O, D)].keys():
+            # Check if the archetype and probability (name) exist for that O-D pair
+            return trips * paths_prob_dict[(O, D)][name]
+        else:
+            # In this case there is path between the OD pair but the archetype for the demand
+            # doesn't seem to exist in the logit model.
+            # In this case, the code will ignore these passenger, i.e., do not assign any of them
+            # to any option,even if the options are possible. That's why a warning is raised so
+            # that the user is aware.
+            warning_message = (f"No probability logit model for {arc} archetype for {name} for OD pair {O, D}."
+                               f"The model will ignore these passengers and not assign them to any option.")
+            warnings.warn(warning_message,
+                      category=LogitWarning,
+                      stacklevel=2)
+            logger.warning(warning_message)
+            return None
     else:
-        pass
-        # logger.important_info(f"No paths on OD pair {O, D}")
+        # In this case, this is not really a warning as it's not something 'bad'. It just means that for that
+        # OD pair there are no options in the mobility network.
+        # That's why the default would be to put in the logger that there are no paths. Using logger.info
+        # instead of important_info to avoid it being printed in the console (as it can be quite a few prints
+        # otherwise). If you want the info to appear in console replace warning for important_info.
+        logger.warning(f"No paths on OD pair {O, D}")
+        return None
+
 
 def get_probability_path_archetype(row, paths_prob_dict: dict, alternative_i: int):
     O = row['origin']
     D = row['destination']
     arc = row['archetype']
-    trips = row['trips']
 
     name = f'{arc}_prob_{alternative_i}'
     if (O, D) in paths_prob_dict.keys():
-        return paths_prob_dict[(O, D)][name]
+        if name in paths_prob_dict[(O, D)].keys():
+            # Check if the archetype and probability (name) exist for that O-D pair
+            return paths_prob_dict[(O, D)].get(name,0)
+        else:
+            # In this case there is path between the OD pair but the archetype for the demand
+            # doesn't seem to exist in the logit model.
+            # In this case, the code will ignore these passenger, i.e., do not assign any of them
+            # to any option,even if the options are possible. That's why a warning is raised so
+            # that the user is aware.
+            warning_message = (f"No probability logit model for {arc} archetype for {name} for OD pair {O, D}. "
+                               f"The model will ignore these passengers and not assign them to any option.")
+            warnings.warn(warning_message,
+                      category=LogitWarning,
+                      stacklevel=2)
+            logger.warning(warning_message)
+            return None
     else:
-        pass
-        # logger.important_info(f"No paths on OD pair {O, D}")
-
+        # In this case, this is not really a warning as it's not something 'bad'. It just means that for that
+        # OD pair there are no options in the mobility network.
+        # That's why the default would be to put in the logger that there are no paths. Using logger.info
+        # instead of important_info to avoid it being printed in the console (as it can be quite a few prints
+        # otherwise). If you want the info to appear in console replace warning for important_info.
+        logger.warning(f"No paths on OD pair {O, D}")
+        return None
 
 
 def assign_passengers_main(paths_prob: pd.DataFrame, n_alternatives: int, df_demand: pd.DataFrame):
@@ -652,7 +705,7 @@ def assign_demand_to_paths(
 
     pax_demand_paths = assign_passengers_main(
         paths_probabilities, n_alternatives, df_demand)
-    
+
 
     # Get a list of all columns that end with '_prob'
     prob_columns = [col for col in pax_demand_paths.columns if '_prob' in col]

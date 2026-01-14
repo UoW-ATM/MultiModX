@@ -1,0 +1,27 @@
+# TOML file to configure how to compute the heuristics for the strategic_pipeline with
+# script/strategic/compute_air_rail_heuristics.py
+
+# Input files format documented in files documentation
+
+# Parameters for air_heuristic
+[air_heuristic]
+    network_path = "data/es_full_AW/" # Path to network data from air_heuristic computation / schedules
+    flight_schedules = "flight_schedules_oag_es.csv" # csv with flight schedules to consider
+    airports_static = "infrastructure/airports_info/aiports_coordinates_v1.1.csv" # csv with airport static information
+    dist_range = '[(0, 150, None), (150, 2000, 100), (2000, 99999, 500)]' # How to group flights for sampling in
+                                                                          # heuristic (min_dist, max_dist, step)
+
+# Parameters for rail_heuristic
+[rail_heuristic]
+    gtfs_path = "data/es_full_AW/gtfs_es_20220708" # Path to GTFS file
+    # Rail stations considered either as rail_stations_considered or rail_stations_considered_nuts
+    # Depending on format input file
+    #rail_stations_considered = 'data/example_strategic/es/rail_stations_considered.csv'
+    rail_stations_considered_nuts = 'output/data_analysis/nuts3_ES_filtered.csv'
+    country = 'ES' # Country of rail to add to rail_stop_id, can be none, i.e. not provide value
+    date = '20220923' # Date to filter rail
+    interval_range = 50 # Interval for sampling of heuristic
+
+# Output folder to save results (and plots)
+[output]
+	output_folder = "data/es_full_AW/processed/heuristics_computed/"

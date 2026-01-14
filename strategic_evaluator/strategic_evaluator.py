@@ -542,7 +542,7 @@ def preprocess_air_layer(path_network, air_networks, processed_folder, pre_proce
         if 'cost' not in df_fs.columns:
             df_fs['cost'] = None
         if 'seats' not in df_fs.columns:
-            df_fs['seats'] = 180  # TODO hard coded number of seats
+            df_fs['seats'] = air_network.get('n_seats_default', 180)
         if 'emissions' not in df_fs.columns:
             df_fs['emissions'] = None
 
@@ -624,7 +624,8 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
         df_stop_timess += [df_stop_times]
 
         # Keep processing to translate GTFS form to 'Services' form
-        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_to_set_rail, df_stops)
+        df_rs = pre_process_rail_gtfs_to_services(df_stop_times, date_to_set_rail, df_stops,
+                                                  n_seats=rail_network.get('n_seats_default'))
 
         df_rss += [df_rs]
 
@@ -646,7 +647,7 @@ def pre_process_rail_layer(path_network, rail_networks, processed_folder, pre_pr
     df_stop_times.to_csv(Path(path_network) / processed_folder / frail, index=False)
 
 
-def pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops=None):
+def pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops=None, n_seats=295):
     n_stops_trip = df_stop_times.groupby('trip_id').count().reset_index()
 
     # Keep trips with at least two stops of interest in the trip
@@ -664,7 +665,7 @@ def pre_process_rail_gtfs_to_services(df_stop_times, date_rail, df_stops=None):
 
     grouped = df_sorted.groupby('trip_id')
     rail_cost = None
-    rail_seats = 295  # TODO hard coded number of seats now (average Spain)
+    rail_seats = n_seats # TODO: Now all trains same number of seats, use different values per rail_id
     rail_emissions = None
 
     for trip_id, group_df in grouped:

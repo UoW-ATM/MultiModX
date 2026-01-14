@@ -1,0 +1,248 @@
+########################################################################################
+# Example of toml config file used to define experiment to run with strategic pipeline #
+########################################################################################
+# python strategic_pipeline.py -tf ../toml_examples/strategic_pipeline.toml -ni 50 -np 100 -mc 2 -hpc -pc 10
+# -eo _sp -lf ./strategic_pipeline.log -v -ppv 0
+# ni number of itineraries
+# np number of paths
+# mc max number of connections
+# pc number of process
+# eo ending to add
+# ppv processed version
+
+
+
+# For each category an explanation is given followed by an example
+# Input files format documented in files documentation
+
+# General path information to experiments to run
+[general]
+    experiment_path = "../../data/CS11/v=0.25/" # path to the experiment
+	output_folder = "output/processed_cs11" # path to the output folder where resulst will be stored.
+                                            # This folder will be inside the experiment_path
+    
+# Can provide policy packages to apply. See policy_package.toml example
+[policy_package]
+    policy_package = 'policies/PP00.toml'
+
+# Demand is provided as a list of demands with the logit model to use for each demand
+# it can be one or several demand, but all as list [[]]
+[[demand]]
+    # Path to demand file (csv)
+    demand = "demand/demand_1arch_regions.csv"
+    # Within this demand the information on the logit to use (sensitivities)
+    [demand.sensitivities_logit]
+        logit_id = "international" # id of logit model. Can be anything, but distinct to others. Used as key internally.
+                                   # if another demand uses same logit_id then this one will be replaced by the last
+                                   # definition.
+        sensitivities = "logit/sensitivities_int_v0.1" # path within experiment_path with the sensitivity files for the
+                                                       # logit model (archetype_#.pickle)
+        n_archetypes = 1 # This is an optinal parameter (see example below where not provided).
+                         # If not provided number of archetypes directly taken from the sensitiviy files names
+[[demand]]
+    # Example of another demand
+    demand = "demand/demand_ES_MD_intra_v0.4.csv"
+    [demand.sensitivities_logit]
+        # In this sensitivities_logit example the n_archetypes are not provided. They'll be automatically taken from
+        # the sensitivity_logit archetype_#.pickle files names
+        logit_id = "spanish"
+        sensitivities = "logit/sensitivities_v0.5"
+
+# This section defines the mobility network (there is only one composed of several layers), which is composed of:
+# - n air networks (based on flight schedules)
+# - m rail networks (based on rail timetables)
+# - p processing times (processing time (e.g. k2g, k2p, g2k, mct) for pax in infrastructure nodes)
+# - q transition layers between mobility networks
+# - r regions access with access and egress times to infrastructure nodes
+[network_definition]
+    # List of air networks (usually one but could be several)
+    [[network_definition.air_network]]
+        flight_schedules = "flights_schedules/flight_schedules_oag_es_v0.3.csv" # Path to flight schedules (csv)
+        alliances = "flights_schedules/air_alliances_v0.1.csv" # Path to file defining alliances to enable
+                                                               # connections (csv)
+        airports_static = "infrastructure/airports_info/airports_coordinates_v1.1.csv" # Path to file with airports
+                                                                                       # coordinates (csv)
+        mct_air = "infrastructure/mct/mct_air_v0.2.csv" # Path to file with MCT between flight at airports (csv)
+        mct_default = 30 # Default MCT in minutes to be used if airport/connection not in mct_air
+        n_seats_default = 180 # Default number of seats to be used if seats not provided in flight_schedules
+
+    # List of all rail networks (usually one but could be several) (Current version only allows one throught
+    # adding more layers is in future features to be developed (see preprocess_input in strategic_evaluator.py
+    # but still need to be defined as [[]]).
+    [[network_definition.rail_network]]
+        gtfs = "gtfs_es_UIC_v2.3" # Path to folder with GTFS rail timetable insde (GTFS formats)
+        date_rail = "20230920" # Date to use to filter GTFS
+        date_to_set_rail = "20190906" # Date from flights to make rail and flights 'compatible'.
+                                      # The train timetable will be 'shifted' to this date so that trains and flights
+                                      # operate on the same day enabling multimodal connections.
+        rail_stations_considered = "infrastructure/rail_info/rail_stations_considered_GTFS_2022v0.1.csv" # Path to file
+                                                                                                         # with id of
+                                                                                                         # rail stations
+                                                                                                         # to be used
+                                                                                                         # from the
+                                                                                                         # GTFS to
+                                                                                                         # reduce the
+                                                                                                         # services
+                                                                                                         # considered
+        mct_rail = "infrastructure/mct/mct_rail_v0.1.csv" # Minimum connecting time between trains at rail stations
+        mct_default = 15 # Default minimum connecting time between trains if rail station not in mct_rail
+        create_rail_layer_from = 'services' # If pre_processed_version > 0, then instead of using GTFS the train
+                                            # timetables can be taken from the processed folder (output_folder)
+                                            # and using as input directly the rail_timetable_proc_#.csv as input
+                                            # this allows to providde timetables already prepared/processed.
+                                            # If pre_processed_version=0 (first time), then the
+                                            # rail_timetable_proc_0.csv will be created from the GTFS regardless of this
+                                            # parameter
+        country = "LE" # Country of the rail timetable. Future work to identify this directly. Needed to estimate things
+                       # like emissions which are country dependent for rail (see compute_cost_emissions_rail in
+                       # strategic_evaluator.py
+        n_seats_default = 295 # Number of seats to be used for all trains. Note in this version there's no other option
+                              # to specify the seats in the trains
+
+    # List of processing times defined. It can be a list if the processing times are defined in different folders/files
+    [[network_definition.processing_time]]
+        airport_processes = "infrastructure/pax_processes/airport_processes_v0.1.csv" # Path to csv file with airport
+                                                                                      # processing time (k2g, g2k)
+        iata_icao_static = "infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv" # Path to csv file with
+                                                                                           # convertion ICAO/IATA codes
+        rail_stations_processes = "infrastructure/pax_processes/rail_stations_processes_v0.1.csv" # Path to csv file
+                                                                                                  # with rail station
+                                                                                                  #  processing time
+                                                                                                  # (k2p, p2k)
+        default_process_time_k2g = 90 # Default k2g in minutes if none provided in airport_processes for the airport
+        default_process_time_g2k = 30 # Default g2k in minutes if none provided in airport_processes for the airport
+        default_process_time_k2p = 15 # Default k2p in minutes if none provided in the rail_station_processes
+        default_process_time_p2k = 10 # Default p2k in minutes if none provided in the rail_station_processes
+
+    # List of multimodal transition times between layers.
+    # Note that this is not necessarily multimodal, it could allow transfer between nodes in the same layer, e.g.
+    # between two rail stations (or airports) within the same city.
+    [[network_definition.multimodal]]
+        air_rail_transitions = "infrastructure/infrastructure_transitions/infrastructure_transitions_v0.1.csv" # Path to
+                                                                                                               # file
+	# List of regions access files enabling the transition between regions (as defined in the demand) and the
+    # infrastructure nodes (airports or rail stations). Note that the initial point in the demand could be an airport
+    # or a rail station; in that case, this would not be needed.
+    [[network_definition.regions_access]]
+		regions_access = "infrastructure/regions_access/regions_access_v0.5.csv" # Path to csv file with access and
+                                                                                 # egress time between regions and
+                                                                                 # infrastructure nodes
+        iata_icao_static = "infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv" # Path to csv file with
+                                                                                           # convertion ICAO/IATA codes
+
+
+# Other paramters to control how the computation of paths, itinearies, passenger assigment is performed by the
+# strategic_evaluator
+[other_param]
+    # You can provide heuristics precomputed. These heuristics are for air and rail time between distances and are
+    # used by the A* algorithm when looking for possible itineraries and paths. If not provided then the A* won't use
+    # the heuristic and perform like a uniform cost search (UCS). The scrip compute_air_rail_heuristics.py can be used
+    # to generate these heuristcis
+    [other_param.heuristics_precomputed]
+        heuristics_precomputed_air = "heuristics/air_time_heuristics_v0.1.csv" # within experiment_path
+        heuristics_precomputed_rail = "heuristics/rail_time_heuristics_v0.1.csv" # within experiment_path
+
+    # Can define, or not kpis_to_use for the clustering of itineraries.
+    # Then, thresholds can be provided. if category doesn't exit (e.g. no rail, or no some kpi for some category),
+    # the values from 'all' will be taken (if given) if nothing is provided, the threshold will be computed as the
+    # std of the kpi for the category being clustered
+    [other_param.kpi_cluster_itineraries]
+        kpis_to_use = ['total_travel_time', 'total_cost', 'total_emissions', 'total_waiting_time', 'nservices']
+        [other_param.kpi_cluster_itineraries.thresholds.all]
+            total_cost = 30
+            total_travel_time = 50
+            total_emissions = 15
+            total_waiting_time = 30
+            nservices = 0
+        [other_param.kpi_cluster_itineraries.thresholds.air]
+            total_emissions = 20
+
+    # These are thresholds whe comparing different clusters to decide if a cluster Pareto dominates another, it will
+    # need to be 'better' on all these categories by at least these thresholds
+    [other_param.thresholds_pareto_dominance]
+        total_travel_time = 15
+        total_cost = 10
+        total_emissions = 5
+        total_waiting_time = 30
+
+    # Parameters for the passenger assigner
+    [other_param.pax_assigner]
+        fillers_in_not_used_flights = 1 # For flights in the schedule but without any pax from the pax itineraries flow
+                                        # to fill them with fillers. Otherwise, these flights will be empty.
+        train_seats_per_segment = 'segment' # How to consider capacity in the trains:
+                                            # - 'segment' each train segment is treated independently (A-B, A-C, B-D,
+                                            #    etc), as in real trains.
+                                            # - 'combined', but then if a pax uses x_1_2 and another x_3_5 the seats
+                                            #   are "shared" for the whole train 1_5...
+        type_of_optimisation = 'lexicographic' # Type of optimisation lexicographic (can select solver)
+                                               # or max_assinged_only (will be with Gurobi)
+
+        # Parameters for pax assigner if max_assiged_only is used as type_of_optimisation
+        [other_param.pax_assigner.max_assinged_only]
+            problem_file = 'problem' # Save the Gurobi LP problem in a file (name of the file)
+            compute_leg2_plus_first = 1 # Either 1 or 0 to select if doing 2+ legs assigment first
+
+        # Parameters for pax assigner if lexicographic is used as type_of_optimisation
+        [other_param.pax_assigner.lexicographic]
+            solver = 'gurobi' # Could be any solver installed in your computer (e.g. gurobi or scip). This will be
+                              # given to SolverFactory from pyomo.
+            nprocs = 23 # Number of processes to be used for parallel computing
+
+            # List of objectives to be used and if they are minimization of maximization and in order for lexicographic.
+            # Possible objectives are:
+            # - total_pax_connecting --> put as many pax with connections as possible
+            # - total_pax --> put as many pax in general as possible
+            # - minimize_load_factor_diff --> minimise load factor difference between flights
+            # - minimize_underutilization --> penalise underutilisation of services
+            # - total_pax_combined_utilisation --> combined objective of maximise pax while minimise load factors
+            #                                      imbalance
+            objectives = [['total_pax_connecting','maximize'],
+                          ['total_pax', 'maximize']]
+                          #['total_pax_combined_utilisation', 'maximize']]
+            # Thresholds to be used for lexigraphic optimisation --> how much degrade a given objective to improve
+            # the next one. Defined per objective.
+            [other_param.pax_assigner.lexicographic.thresholds]
+                [other_param.pax_assigner.lexicographic.thresholds.total_pax_connecting]
+                    type = 'relative'
+                    value = 0.05
+
+        # Define target load factors for services
+        [other_param.pax_assigner.target_load_factor]
+            # This first one to be used as default, then can be defined for flgihts and rail below (or not)
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.75,0.95,1] # Parameters for triangular or fixed value
+            [other_param.pax_assigner.target_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.75,0.95,1]
+            [other_param.pax_assigner.target_load_factor.rail]
+                type = 'fix' # triangular | fix. If something else then flights will be at full capacity
+                param = 1
+
+        # Define target minimum load factors for services (as target). These will be used to generate filler pax if
+        # needed.
+        [other_param.pax_assigner.minimum_load_factor]
+            type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+            param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.flight]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+            [other_param.pax_assigner.minimum_load_factor.rail]
+                type = 'triangular' # triangular | fix. If something else then flights will be at full capacity
+                param = [0.35,0.8,0.8]
+
+    # Parameteres needed to generate tactical_input (Mercury input)
+    [other_param.tactical_input]
+        # Information on aircraft data needed to generate Mercury schedules on aircraft (IATA/ICAO codes, MTOW, WTC).
+        [other_param.tactical_input.aircraft]
+            ac_type_icao_iata_conversion = "ac_airline_info/ac_type_icao_iata_v0.1.csv"
+            ac_mtow = "ac_airline_info/mtow_v0.1.csv"
+            ac_wtc = "ac_airline_info/wtc_v0.1.csv"
+        # Information on airlines (airlines types and IATA/ICAO codes to generate schedules
+        [other_param.tactical_input.airlines]
+            airline_ao_type = "ac_airline_info/airline_icao_ao_type_v1.1.csv"
+            airline_iata_icao = "ac_airline_info/iata_icao_airlines_codes_v1.1.csv"
+
+
+
+
+

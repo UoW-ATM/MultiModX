@@ -1,0 +1,27 @@
+# TOML defining policy package
+# Only sections which are to be applied need to be defined. For example, if there is no flight ban, then that
+# section should just be removed.
+
+# Flight ban policy definition
+# The strategic evaluator will ban/remove the flights which fall within this definition
+[flight_ban]
+	ban_type = 'time' #time or distance
+	ban_length = 180  #number in minutes or km
+    distance_rail_serves_airport = 30 # km to consider that if a rail station is closer than that then it's same as
+									  # airport (if nothing provided 30 used)
+
+# Emission taxes policies applied to cost of tickets, i.e., extra cost to flights/rail based on CO2
+[tax_charges]
+    [tax_charges.air]
+	    co2_cost = 0.15 #carbon price EU Emissions Trading System forecast #0.05 #eur per kg -- atmosfair.de
+    [tax_charges.rail]
+        co2_cost = 0
+
+# Integrated ticketing policy which adds/reduces time between modes (as MCT).
+[integrated_ticketing]
+    air_air_processing_extra = 0 # Extra time to go between two airports
+    rail_rail_processing_extra = 0 # Extra time to go between two rail stations
+	air_rail_processing_extra = 0 # Extra time to go from airport to rail station --> without integrated ticketing
+                                  # MCT increased by 15 minutes
+	rail_air_processing_extra = 0 # Extra time to go from rail station to airport --> without integrated ticketing
+								  # MCT increased by 30 minutes
