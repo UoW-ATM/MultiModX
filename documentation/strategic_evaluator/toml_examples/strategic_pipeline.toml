@@ -35,8 +35,26 @@
         logit_id = "international" # id of logit model. Can be anything, but distinct to others. Used as key internally.
                                    # if another demand uses same logit_id then this one will be replaced by the last
                                    # definition.
-        sensitivities = "logit/sensitivities_int_v0.1" # path within experiment_path with the sensitivity files for the
-                                                       # logit model (archetype_#.pickle)
+        sensitivities = "../../../libs/logit_model/international_spain_1_archetype/v=0.1" # By default this is a path within 
+                                                                                          # experiment_path with the sensitivity
+                                                                                          # files for the logit model 
+                                                                                          # (archetype_#.pickle). However,
+                                                                                          # the repository provides three calibrated
+                                                                                          # sensitivies already. These are located
+                                                                                          # within libs/logit_model folder:
+                                                                          # - intra_spain_6_archetypes/v=0.5 --> Sensitivities of 6
+                                                                          #                                     archetypes used in
+                                                                          #                                     MultiModX deliverables
+                                                                          #                                     for intra-Spain mobility
+                                                                          # - intra_spain_1_archetype/v=0.1 --> Sensitivitis of 1 single
+                                                                          #                                     archetype for all the
+                                                                          #                                     intra-Spain mobility
+                                                                          #                                     demand
+                                                                          # - international_spain_1_archetype/v=0.1 --> Sensitivitis of 1 
+                                                                          #                                     single archetype for
+                                                                          #                                     international demand
+                                                                          #                                     starting-ending in Spain
+                                            
         compress_archetypes = true # This is an optional parameter. If not provided it will be considered as false.
                                    # If true, then all the demand per (date, origin, destination) is aggregated and
                                    # grouped into a single archetype (archetype_0). This allows to 'compress' demand which
