@@ -11,6 +11,8 @@ sys.path.insert(1, '../../..')
 import warnings
 warnings.warn(
     "strategic_pipeline_legacy_1.py is deprecated all functionalities can be done with new toml structure. "
+    "The biggest change is the toml structure. In this version there's only one logit model for all the demand."
+    "This version is similar to the one used in MultiModX deliverables."
     "Review path in toml as now inside subfolder legacy (need additional ..)",
     DeprecationWarning
 )
