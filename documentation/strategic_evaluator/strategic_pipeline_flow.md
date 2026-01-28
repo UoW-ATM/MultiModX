@@ -1,9 +1,6 @@
 # Strategic Pipeline Documentation
 
-See al technical documents and articles from remaining documentation. This folder contains summary of information
-about the strategic evaluator pipeline, the [input](input_file_format) and [configuration TOML](toml_examples) files.
-
-For detailed Functional Description on the Strategic Multimodal Evaluator see [D4.3_Solution_399_FRD.pdf](/documentation/documents/D4.3_Solution_399_FRD.pdf).
+See al technical documents and articles from remaining documentation. For detailed Functional Description on the Strategic Multimodal Evaluator see [D4.3_Solution_399_FRD.pdf](/documentation/documents/D4.3_Solution_399_FRD.pdf).
 
 This document describes the high-level architecture and data flow of the
 **Strategic Evaluator pipeline**, implemented in: run_full_strategic_pipeline function in 
@@ -166,8 +163,7 @@ Note that it can be possible to pass as input directly some of there preprocesse
 flight_schedules_proc_0.csv instead of flight_schedules.csv, or rail_timetable_all_gtfs_0.csv
 or rail_timetable_proc_0.csv instead of the GTFS rail data).
 
-See high-level description of all the CSV input files in [input_file_format](input_file_format) folder and 
-particularly in [input_files_definition.txt](input_file_format/input_file_definition.txt).
+See high-level description of all the CSV input files in [input_format.md](input_format.md).
 
 ---
 
