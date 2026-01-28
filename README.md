@@ -18,7 +18,7 @@ Repository for MultiModX project: Strategic and Tactical Evaluation of Air-Rail 
 All documentation in [documentation folder](documentation).
 
 ### [Data flow and input/output formats](documentation/strategic_evaluator)
-- See  [Strategic Evaluator documentation](documentation/strategic_evaluator/strategic_pipeline_flow.md) for information on input/ouput and configuration files TOML for the
+- See  [Strategic Evaluator documentation](documentation/strategic_evaluator) for information on input/ouput and configuration files TOML for the
   strategic evaluator pipeline.
 
 ### [Documents](documentation/documents)
