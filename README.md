@@ -17,9 +17,12 @@ Repository for MultiModX project: Strategic and Tactical Evaluation of Air-Rail 
 
 All documentation in [documentation folder](documentation).
 
-### [Data flow and input/output formats](documentation/strategic_evaluator)
-- See  [Strategic Evaluator documentation](documentation/strategic_evaluator) for information on input/ouput and configuration files TOML for the
+### Pipelines, data flows and input/output formats
+- See  [Strategic Evaluator](/script/strategic) for information on input/ouput and configuration files TOML for the
   strategic evaluator pipeline.
+- See [Pre-tactical Evaluator](/script/pre-tactical) for information on the Pre-Tactical Evaluator for replanning of networks.
+- See [Performance Indicators](/performance_indicators) for information on the computation of PI/KPIs from the models.
+- See [Dashboard](/dashboard) for information on the Strategic dashboard for visualisation of some of the results.
 
 ### [Documents](documentation/documents)
   - Functional decomposition and input/output format as in Functional Requirements Document (FRD) of MultiModX project 
