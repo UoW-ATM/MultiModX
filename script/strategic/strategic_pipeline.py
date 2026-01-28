@@ -92,6 +92,11 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
                                                               consider_times_constraints=False,
                                                               policy_package=toml_config.get('policy_package'))
 
+    if len(df_potential_paths) == 0:
+        # There are no paths possible for the demand and supply provided
+        logger.important_info("THERE ARE NO PATHS POSSIBLE FOR THE DEMAND AND SUPPLY PROVIDED --> END ")
+        return None
+
     # Remove paths without mode of transport --> Access and egress only
     df_potential_paths = df_potential_paths[df_potential_paths.nmodes>=1].copy().reset_index(drop=True)
 
@@ -217,17 +222,19 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
         n_alternatives = subset_pareto_df.groupby(["origin", "destination"])["cluster_id"].nunique().max()
         logger.important_info(f"Assigning demand to paths with {n_alternatives} alternatives.")
         # TODO: subset_pareto now have train, plan, multimodal and option_number columns. We could remerge these into pareto_df
-        df_pax_demand_paths, df_paths_final = assign_demand_to_paths(subset_pareto_df, 
-                                                                    max_connections= max_connections,
-                                                                    logit_model=logit_models[logit_id],
-                                                                    df_demand=demand_matrices[logit_id].copy(),
-                                                                    n_alternatives=n_alternatives,
-                                                                    network_paths_config=toml_config) #this is where I have to look at
-        df_pax_demand_paths["logit_id"]=logit_id #tag logit model
-        df_paths_final["logit_id"]=logit_id
+        if len(subset_pareto_df)>0:
+            # Avoid doing anything if there are no options
+            df_pax_demand_paths, df_paths_final = assign_demand_to_paths(subset_pareto_df,
+                                                                        max_connections= max_connections,
+                                                                        logit_model=logit_models[logit_id],
+                                                                        df_demand=demand_matrices[logit_id].copy(),
+                                                                        n_alternatives=n_alternatives,
+                                                                        network_paths_config=toml_config) #this is where I have to look at
+            df_pax_demand_paths["logit_id"]=logit_id #tag logit model
+            df_paths_final["logit_id"]=logit_id
 
-        df_pax_demand_paths_list.append(df_pax_demand_paths) #append new entry to the list
-        df_paths_final_list.append(df_paths_final)
+            df_pax_demand_paths_list.append(df_pax_demand_paths) #append new entry to the list
+            df_paths_final_list.append(df_paths_final)
 
     df_pax_demand_paths=pd.concat(df_pax_demand_paths_list,ignore_index=True) #concat the list
     df_paths_final=pd.concat(df_paths_final_list, ignore_index=True)
