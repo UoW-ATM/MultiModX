@@ -37,7 +37,11 @@
                                    # definition.
         sensitivities = "logit/sensitivities_int_v0.1" # path within experiment_path with the sensitivity files for the
                                                        # logit model (archetype_#.pickle)
-        n_archetypes = 1 # This is an optinal parameter (see example below where not provided).
+        compress_archetypes = true # This is an optional parameter. If not provided it will be considered as false.
+                                   # If true, then all the demand per (date, origin, destination) is aggregated and
+                                   # grouped into a single archetype (archetype_0). This allows to 'compress' demand which
+                                   # originally could have been defined as a collection of archetypes.
+        n_archetypes = 1 # This is an optional parameter (see example below where not provided).
                          # If not provided number of archetypes directly taken from the sensitiviy files names
 [[demand]]
     # Example of another demand

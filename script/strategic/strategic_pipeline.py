@@ -42,7 +42,14 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     logit_models = {}
     for demand in toml_config["demand"]:
         logit_id=demand["sensitivities_logit"]["logit_id"]
-        demand_matrices[logit_id]=read_origin_demand_matrix(demand["demand"])
+        df_demand = read_origin_demand_matrix(demand["demand"])
+        # If compress_archetypes is set in the TOML config file then
+        # group all the demand by date, origin, destination and
+        # rename archetype to archetype_0
+        if demand["sensitivities_logit"].get('compress_archetypes',False):
+            df_demand = df_demand.groupby(['date', 'origin', 'destination'])['trips'].sum().reset_index()
+            df_demand['archetype'] = 'archetype_0'
+        demand_matrices[logit_id] = df_demand
         logit_models[logit_id] = {'sensitivities': demand["sensitivities_logit"]["sensitivities"],
                                   'n_archetypes': demand["sensitivities_logit"].get("n_archetypes")}
 
