@@ -17,6 +17,10 @@ Repository for MultiModX project: Strategic and Tactical Evaluation of Air-Rail 
 
 All documentation in [documentation folder](documentation).
 
+### [Data flow and input/output formats](documentation/strategic_evaluator)
+- See  [Strategic Evaluator documentation](documentation/strategic_evaluator/strategic_pipeline_flow.md) for information on input/ouput and configuration files TOML for the
+  strategic evaluator pipeline.
+
 ### [Documents](documentation/documents)
   - Functional decomposition and input/output format as in Functional Requirements Document (FRD) of MultiModX project 
   (available also in CORDIS): [D4.3_Solution_399_FRD.pdf](documentation/documents/D4.3_Solution_399_FRD.pdf)
