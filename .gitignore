@@ -23,8 +23,6 @@ __pycache__/
 
 *.png
 
-*.pickle
-
 *.log
 
 data
