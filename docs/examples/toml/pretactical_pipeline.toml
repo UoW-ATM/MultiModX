@@ -1,0 +1,139 @@
+##########################################################################################
+# Example of toml config file used to define experiment to run with pretactical pipeline #
+##########################################################################################
+# For each category an explanation is given followed by an example
+# Input files format documented in files documentation
+
+# python ./replanning_passengers_script.py -tf ../data/CS10/v=0.16/replanned_disruptions/DP200/replanning_05.toml -ni 50 -np 100
+#                                         -mc 1 -hpc -ppv 0 -pc 23 -eo _output_04
+
+
+[general]
+# General has information on where the experiment is (including the replanning)
+    experiment_path = "../../data/CS10/v=0.16/" # path to the experiment
+    replanned_input_folder  = "replanned_disruptions/DP200/PP00.DM00.PA05" # path to where the replanning will be
+                                                                           # computed
+    replanned_actions_folder = "replanned_actions" # Folder inside replanned_input_folder which contains the replanning
+                                                   # actions. These could be
+                                                   # - flight_added_schedules_proc_#.csv --> New flights
+                                                   # - flight_cancelled_#.csv --> Flights to be removed
+                                                   # - flight_replanned_#.csv --> Flights to be replanned (i.e., new
+                                                   #                              schedules, so usually delayed)
+                                                   # - rail_cancelled_#.csv --> Rail services to be removed
+                                                   # - rail_timetable_added_all_gtfs_#.csv --> Rail services to be added
+                                                   # - rail_timetable_replanned_all_gtfs_#.csv --> Rail services to be
+                                                   #                              replanned (i.e, usualy delayed)
+
+[planned_network_info]
+# Info on where the original planned network is located (i.e., outoput from Strategic Evaluator)
+# The files of the planned network are looked for inside, the subfolders defined here, for example:
+# path_planned_pax_assigned = Path(toml_config['general']['experiment_path']) /
+#                                 toml_config['planned_network_info']['planned_network'] /
+#                                 toml_config['planned_network_info']['path_results'] /
+#                                 ('pax_assigned_to_itineraries_options_' +
+#                                  str(toml_config['planned_network_info']['precomputed']) + '.csv')
+
+    planned_network = 'output/processed_cs10.pp00.nd00.so00.00' # Path to original network within experiment_path
+    path_results = 'paths_itineraries' # Folder inside planned_network where paths_itineraries of oringal network
+                                       # are located
+    path_processed = 'processed' # Folder inside planned_network where the planned network is located
+    precomputed = 0 # # within processed for the netwokr
+    
+[network_definition]
+# Info on where the parameters defining the network parameters (inside experiment path)
+# See definition in strategic_pipeline.toml file
+    [[network_definition.air_network]]
+        airports_static = "infrastructure/airports_info/airports_coordinates_v1.1.csv"
+        mct_air = "infrastructure/mct/mct_air_v0.2.csv"
+        mct_default = 30
+    [[network_definition.rail_network]]
+         gtfs = "gtfs_es_UIC_v2.3"
+         date_to_set_rail = "20190906" # Date from flights to make rail and flights 'compatible'
+         rail_stations_considered = "infrastructure/rail_info/rail_stations_considered_GTFS_2022v0.1.csv"
+         mct_rail = "infrastructure/mct/mct_rail_v0.1.csv"
+         mct_default = 15
+         create_rail_layer_from = 'gtfs' #gtfs / services
+    [[network_definition.processing_time]]
+        airport_processes = "infrastructure/pax_processes/airport_processes_v0.1.csv"
+        iata_icao_static = "infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv"
+        rail_stations_processes = "infrastructure/pax_processes/rail_stations_processes_v0.1.csv"
+        default_process_time_k2g = 90
+        default_process_time_g2k = 30
+        default_process_time_k2p = 15
+        default_process_time_p2k = 10
+    [[network_definition.multimodal]]
+        air_rail_transitions = "infrastructure/infrastructure_transitions/infrastructure_transitions_v0.1.csv"
+	[[network_definition.regions_access]]
+		regions_access = "infrastructure/regions_access/regions_access_v0.4.csv"
+        iata_icao_static = "infrastructure/airports_info/IATA_ICAO_Airport_codes_v1.3.csv"
+
+[replanning_considerations]
+# This is important for the replanning of operations, it defines how the replanning can be done.
+# Therefore, it sets up the flexibility for considering alternatives as valid or not and how to
+# assign passengers to those alternatives considering the available seats.
+
+    [replanning_considerations.constraints]
+    # This section defines the constraints that need to be satisfied to consider that an alternative is valid,
+    # i.e., it defines the flexibility available when finding alternatives for otherwise stranded passengers.
+        respect_alliances_pax_it_new_it = false # true/false -- respect (or not) new itineraries same alliances as
+                                                # in the originally planned pax itineraries
+        new_itineraries_respect_alliances = true # true/false -- allow new itineraries to use services that among them
+                                                 # might not be in the same alliance (e.g. RYR-BA)
+        respect_path = false # keep only the same paths from planned (i.e., same infrastructure nodes (airports and
+                             # rail stations))
+        respect_modes = false # keep same mode as planned
+        initial_node_same = false # keep initial node the same (same airport or rail station)
+        final_node_same = false # keep the final node the same (same airport or rail station)
+        departure_before_pax_it = true # allow departure (from home (consiering d2i)) before initial pax planned
+
+    [replanning_considerations.optimisation]
+    # This defines the optimisation that is used to assign passengers to the possible alternatives that they could use.
+    # Note that some sort of optimisation is needed as there are constraints (seats available).
+    # A lexicographic optimisation is performed.
+        solver = 'gurobi' # Which solver to use (pyomo is used as library (SolverFactory(solver)))
+        nprocs = 23 # For parallel computing
+        # List of objectives to consider in the assigment, they are in the order that they will be optimised.
+        objectives = [['total_pax', 'maximize'], # Total number of passengers (i.e., minimise stranded pax)
+                      ['arrival_door_difference', 'minimize'], # Arrive as close as possible to whenever it was
+                                                               # originally planned considering i2d phase.
+                      ['same_path', 'maximize'], # Try to keep the same path
+                      ['same_starting_node', 'maximize'], # Try to start in the same infrastructure node
+                      ['same_arrival_node', 'maximize']] # Try to keep the sam arrival node
+                      
+        # Thesholds for the lexicographic optimisation (i.e., by how much allow one objective to be degradated to
+        # optimise the ones below)
+        [replanning_considerations.optimisation.thresholds]
+            [replanning_considerations.optimisation.thresholds.total_pax]
+                type = 'relative'
+                value = 0.10
+            [replanning_considerations.optimisation.thresholds.arrival_door_difference]
+                type = 'relative'
+                value = 0.05
+            [replanning_considerations.optimisation.thresholds.starting_node_different]
+                type = 'relative'
+                value = 0.05
+            [replanning_considerations.optimisation.thresholds.arrival_node_different]
+                type = 'relative'
+                value = 0.05
+
+[other_param]
+    # Other parameters
+
+    [other_param.heuristics_precomputed]
+    # Heuristics for tha path finding algorithm (A*) same as for the Strategic Pipeline
+        heuristics_precomputed_air = "heuristics/air_time_heuristics_v0.1.csv" # within experiment_path
+        heuristics_precomputed_rail = "heuristics/rail_time_heuristics_v0.1.csv" # within experiment_path
+
+    [other_param.tactical_input]
+    # Parameters to generate the tactical input at the end of the Pretactical pipeline so that results can be
+    # used as input for the Tactical Evaluator (if desired)
+        [other_param.tactical_input.aircraft]
+            ac_type_icao_iata_conversion = "ac_airline_info/ac_type_icao_iata_v0.1.csv"
+            ac_mtow = "ac_airline_info/mtow_v0.1.csv"
+            ac_wtc = "ac_airline_info/wtc_v0.1.csv"
+        [other_param.tactical_input.airlines]
+            airline_ao_type = "ac_airline_info/airline_icao_ao_type_v1.1.csv"
+            airline_iata_icao = "ac_airline_info/iata_icao_airlines_codes_v1.1.csv"
+
+
+

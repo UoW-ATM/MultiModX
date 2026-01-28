@@ -1,0 +1,10 @@
+title: MultiModX Documentation
+description: Strategic and pre-tactical multimodal evaluation framework
+markdown: kramdown
+
+url: https://uow-atm.github.io
+baseurl: /MultiModX
+
+aux_links:
+  "GitHub Repository":
+    - "https://github.com/UoW-ATM/MultiModX"

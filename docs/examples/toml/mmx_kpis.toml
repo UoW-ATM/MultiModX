@@ -1,0 +1,244 @@
+[input]
+# Define the input folders, i.e. where the results of the pipeline are located, and where some other input files
+# are located (needed for example to generate plots)
+    path_to_strategic_output = "../data/CS10/v=0.16/output/"
+	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/3.1_9_1_0_ground_mobility__delay_mean_0/"
+	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
+	nuts_data_path = "/home/luis/MultiModX/data/EUROSTAT/NUTS_RG_01M_2021_4326.shp/NUTS_RG_01M_2021_4326.shp"
+
+[output]
+	# Define where to save the results of running the script
+	# config['output']['path_to_output'] = Path(config['output']['path_to_output']) / args.experiment / 'indicators'
+	# config['output']['path_to_output_figs'] = (config['output']['path_to_output'] / 'figures')
+	# config['input']['preprocessed_version'] = args.preprocessed_version[0]
+
+	path_to_output = "../data/CS10/v=0.16/output/"
+
+
+[indicators]
+	# This includes the list of indicators to be computed. These are grouped between:
+	# - strategic indicators (to be computed from the strategic pipeline (or the pre-tactical, as a replanning but
+	#                         computed in the replanned network only, i.e., not comparing with the original planned
+	#                         network).
+	# - replanned: specific indicators for replanned networks.
+	#
+	# See for each indicator examples of different variants (e.g. total_journey_time comptued as sum or average with
+	# different aggreations), and if a plot is to be generated or not. Some additional parameters might be possible
+	# e.g. when plotting indluceing min and max values for axis, etc, filtering for particular NUTS or aiports, etc.
+	# These configuarations are used by the libraries of kpi_lib_strategic.py and kpi_lib_replanned.py to compute
+	# the indicators. See the mmx_kpis.py code to see how this works. The code mainly computes all the results indicated
+	# in this TOML in a dictionary that then is used to gernerate the output (CSV/plots).
+	[indicators.strategic]
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "sum"
+			plot = true
+			#name = "my_sum"
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "avg_connecting_itineraries"
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "avg_by_nuts"
+			plot = true
+			plot_matrix = true
+			vmin_matrix = 0
+			vmax_matrix = 800
+			vmin_matrix_nuts2 = 100
+			vmax_matrix_nuts2 = 600
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "sum_per_region_archetype"
+		[[indicators.strategic.strategic_total_journey_time]]
+			variant = "avg_per_region_archetype"
+		[[indicators.strategic.diversity_of_destinations]]
+			variant = "nuts"
+			plot = true
+		[[indicators.strategic.diversity_of_destinations]]
+			variant = "hubs"
+			plot = true
+		[[indicators.strategic.modal_share]]
+			variant = "total"
+		[[indicators.strategic.modal_share]]
+			variant = "by_regional_archetype"
+		[[indicators.strategic.modal_share]]
+			variant = "by_nuts"
+		[[indicators.strategic.modal_share]]
+			variant = "between_nuts"
+			plot = true
+			plot_top = 50
+		[[indicators.strategic.modal_share]]
+			variant = "between_nuts_level2"
+			plot = true
+			plot_top = 20
+		[[indicators.strategic.pax_time_efficiency]]
+			variant = "total"
+		[[indicators.strategic.demand]]
+			variant = "all"
+			plot = true
+			top_od = 20
+		[[indicators.strategic.demand_served]]
+			variant = "total_connecting_itineraries"
+		[[indicators.strategic.demand_served]]
+			variant = "total"
+		[[indicators.strategic.demand_served]]
+			variant = "by_nuts"
+			vmin_matrix = 0
+			vmax_matrix = 1
+			plot = true
+		[[indicators.strategic.demand_served]]
+			variant = "by_regional_archetype"
+			vmin_matrix = 0.7
+			vmax_matrix = 1
+		    plot = true
+		[[indicators.strategic.demand_served]]
+			variant = "by_od"
+			od = [['ES617', 'ES111'],
+				  ['ES111', 'ES617'],
+				  ['ES111', 'ES512'],
+				  ['ES512', 'ES111']]
+			figure_ending = '0'
+		[[indicators.strategic.demand_served]]
+			variant = "by_od"
+			od = [['ES511', 'ES300'],
+				  ['ES300', 'ES511'],
+				  ]
+			figure_ending = '1'
+		[[indicators.strategic.load_factor]]
+			variant = "modes"
+		[[indicators.strategic.load_factor]]
+			variant = "total"
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_nuts"
+			vmin_matrix = 0
+			vmax_matrix = 60
+			vmin_matrix_air = 0
+			vmax_matrix_air = 36
+			vmin_matrix_rail = 10
+			vmax_matrix_rail = 60
+			vmin_matrix_multimodal = 0
+			vmax_matrix_multimodal = 30
+			vmin_matrix_nuts2 = 25
+			vmax_matrix_nuts2 = 500
+			vmin_matrix_nuts2_air = 25
+			vmax_matrix_nuts2_air = 300
+			vmin_matrix_nuts2_rail = 25
+			vmax_matrix_nuts2_rail = 300
+			vmin_matrix_nuts2_multimodal = 10
+			vmax_matrix_nuts2_multimodal = 200
+			plot = true
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_regional_archetype"
+			plot = true
+			vmin_matrix = 400
+			vmax_matrix = 6000
+		[[indicators.strategic.resilience_alternatives]]
+			variant = "by_regional_archetype"
+		[[indicators.strategic.buffer_in_itineraries]]
+			variant = "avg"
+			plot = true
+		[[indicators.strategic.buffer_in_itineraries]]
+			variant = "sum"
+		[[indicators.strategic.catchment_area]]
+			variant = "hubs_rail_time"
+			plot = true
+		[[indicators.strategic.catchment_area]]
+			variant = "access_egress"
+			plot = true
+			vmin = 0
+			vmax = 1000
+			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMD'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEBL'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEVD'
+				vmin = 0
+				vmax = 100
+				topleft = [43.67, -9]
+				bottomright = [39.6, -2.3]
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMG'
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEZL'
+		[[indicators.strategic.catchment_area]]
+			variant = "rail_stop_pax"
+			plot = true
+			vmin = 0
+			vmax = 1000
+			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMD'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEBL'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEVD'
+				vmin = 0
+				vmax = 100
+				topleft = [43.67, -9]
+				bottomright = [39.6, -2.3]
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMG'
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEZL'
+		[[indicators.strategic.catchment_area]]
+			variant = "access_egress_rail_stop"
+			plot = true
+			vmin = 0
+			vmax = 1000
+			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMD'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEBL'
+				exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEVD'
+				vmin = 0
+				vmax = 100
+				topleft = [43.67, -9]
+				bottomright = [39.6, -2.3]
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEMG'
+			[[indicators.strategic.catchment_area.plot_airports]]
+				airport= 'LEZL'
+		[[indicators.strategic.cost_per_user]]
+			variant = "avg"
+		[[indicators.strategic.co2_emissions]]
+			variant = "avg"
+		[[indicators.strategic.seamless_of_travel]]
+			variant = "avg"
+		[[indicators.strategic.pax_processes_time]]
+				variant = "avg"
+		[[indicators.strategic.capacity_available]]
+			variant = "all"
+			plot = true
+			vmax_nuts2 = 20000
+			vmax_nuts3 = 3000
+			od_capacity_modes_nuts3 = [ ['ES511', 'ES300'],
+										['ES300', 'ES511'],
+								 		['ES617', 'ES111'],
+										['ES111', 'ES617'],
+										['ES111', 'ES512'],
+										['ES512', 'ES111']]
+			od_capacity_modes_nuts2 = [['ES30', 'ES51']]
+		[[indicators.strategic.connectivity_infrastructure]]
+			variant = 'all'
+			plot = true
+			top_rail = 15
+			top_air = 20
+			plot_map = true
+			top_rail_map = 10
+			top_air_map = 15
+			exclude_nuts = ['ES703', 'ES704', 'ES705', 'ES706', 'ES707', 'ES708', 'ES709']
+			topleft = [44, -9.5]
+			bottomright = [35.9, 4.5]
+
+
+	[indicators.replanned]
+		[[indicators.replanned.resilience_replanned]]
+			variant = "total"
+		[[indicators.replanned.pax_resilience_replanned]]
+			variant = "total"

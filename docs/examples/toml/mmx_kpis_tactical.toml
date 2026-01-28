@@ -1,0 +1,42 @@
+[input]
+# Define the input folders, i.e. where the results of the pipeline are located, and where some other input files
+# are located (needed for example to generate plots). Some additional information for the tactical evaluator needed.
+    path_to_strategic_output = "../../data/CS10/v=0.16/output/"
+	path_to_tactical_output = "/home/michal/Documents/westminster/multimodx/results/"
+	tactical_output_name = "3.1_1_0"
+	parameter_name = ""#"ground_mobility__delay_mean_30"
+	iterations = 10
+	path_to_tactical_input = "/home/michal/Documents/westminster/multimodx/input/scenario=1/"
+	nuts_data_path = "/home/michal/Documents/westminster/multimodx/data/demand/data/NUTS_RG_01M_2021_4326_shp.shp"
+
+[output]
+# Define where to save the results of running the script
+	path_to_output = "../../data/CS10/v=0.16/output/"
+
+[indicators]
+# This includes the list of indicators to be computed. Same principle as in mmx_kpis.tom (see documentation there)
+# but with the category tactical for tactical indicators.
+	[indicators.tactical]
+		[[indicators.tactical.total_arrival_delay]]
+			variant = "total"
+			#name = "my_sum"
+		[[indicators.tactical.total_arrival_delay]]
+			variant = "missed_connection"
+		[[indicators.tactical.stranded_pax]]
+			variant = "total"
+		[[indicators.tactical.stranded_pax]]
+			variant = "missed_air2rail"
+		[[indicators.tactical.stranded_pax]]
+			variant = "missed_rail2air"
+		[[indicators.tactical.stranded_pax]]
+			variant = "abs"
+		[[indicators.tactical.ratio_stranded_pax]]
+			variant = "total"
+		[[indicators.tactical.missed_connections]]
+			variant = "all"
+		[[indicators.tactical.total_journey_time]]
+			variant = "total"
+		[[indicators.tactical.flight_arrival_delay]]
+			variant = "total"
+		[[indicators.tactical.variability]]
+			variant = "total"

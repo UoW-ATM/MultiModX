@@ -1,0 +1,42 @@
+name: Deploy MkDocs
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r docs/requirements.txt
+
+      - name: Add docs folder to PYTHONPATH
+        run: echo "PYTHONPATH=$(pwd)/docs:$PYTHONPATH" >> $GITHUB_ENV
+
+      - name: Build docs
+        run: |
+          mkdocs build
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        uses: actions/deploy-pages@v4

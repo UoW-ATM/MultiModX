@@ -1,0 +1,57 @@
+site_name: MultiModX Documentation
+site_url: https://uow-atm.github.io/MultiModX/
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - content.code.annotate
+    - content.tabs.links
+
+plugins:
+  - search
+  - panzoom:
+      always_show_hint: true
+      key: "ctrl"
+      initial_zoom_level: 1.5
+  - macros:
+      modules:
+        - docs.macros
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - toc:
+      permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.blocks.caption
+  - attr_list
+
+nav:
+  - Home: index.md
+
+  - Pipelines:
+      - Strategic Evaluator: strategic/index.md
+      - Pre-Tactical Evaluator: pre-tactical/index.md
+      - Tactical Evaluator: tactical/index.md
+
+  - Data and Configuration:
+      - Input Files: examples/input_format.md
+      - TOML: examples/toml_examples.md
+
+  - Indicators & Dashboards:
+      - Performance Indicators: performance_indicators/index.md
+      - Strategic Dashboard: dashboard/strategic_dashboard.md
+
+  - Publications:
+      - Articles and Technical Documents: publications/index.md
+
+extra:
+  mermaid:
+    theme: default
+  version:
+    provider: mike
