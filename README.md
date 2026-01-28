@@ -29,7 +29,7 @@ All documentation in [documentation folder](documentation).
   - Weiszer, M., Delgado, L. and Menendez-Pidal, L. (2025). [Air-rail multimodal disruption management - Rail network 
     supporting air disruptions](documentation/articles/SIDs_2025_paper_108-final.pdf). SESAR Innovation Days 2025.
   - Weiszer, M., Delgado, L. and Gurtner, G. (2024).
-    [Evaluation of Passenger Connections in Air-rail Multimodal Operations](documentation/articles/SIDs_2024_paper_050 final.pdf). 
+    [Evaluation of Passenger Connections in Air-rail Multimodal Operations](documentation/articles/SIDs_2024_paper_050_final.pdf). 
     SESAR Innovation Days 2024.
   
 
