@@ -24,11 +24,12 @@ All documentation in [documentation folder](documentation).
   [Technical_Summary_Open_Multimodal_Performance_Framework_and_Evaluation_tools.pdf](documentation/documents/Technical_Summary_Open_Multimodal_Performance_Framework_and_Evaluation_tools.pdf)
   
 ### [Articles](documentation/articles)
-  - Delgado, L., Weiszer, M., de Boissieu, M., Bueno-Gonzlez, J. and Menendez-Pidal, L. (2025). Strategic multimodal 
-    evaluator for air-rail networks. 27th Euro Working Group on Transportation Meeting (EWGT 2025).
-  - Weiszer, M., Delgado, L. and Menendez-Pidal, L. (2025). Air-rail multimodal disruption management - Rail network 
-    supporting air disruptions. SESAR Innovation Days 2025.
-  - Weiszer, M., Delgado, L. and Gurtner, G. (2024). Evaluation of Passenger Connections in Air-rail Multimodal Operations. 
+  - Delgado, L., Weiszer, M., de Boissieu, M., Bueno-Gonzlez, J. and Menendez-Pidal, L. (2025). [Strategic multimodal 
+    evaluator for air-rail networks](documentation/articles/EWGT_2025_MMX_Strategic.pdf). 27th Euro Working Group on Transportation Meeting (EWGT 2025).
+  - Weiszer, M., Delgado, L. and Menendez-Pidal, L. (2025). [Air-rail multimodal disruption management - Rail network 
+    supporting air disruptions](documentation/articles/SIDs_2025_paper_108-final.pdf). SESAR Innovation Days 2025.
+  - Weiszer, M., Delgado, L. and Gurtner, G. (2024).
+    [Evaluation of Passenger Connections in Air-rail Multimodal Operations](documentation/articles/SIDs_2024_paper_050 final.pdf). 
     SESAR Innovation Days 2024.
   
 
