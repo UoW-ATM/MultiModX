@@ -2,4 +2,6 @@
 
 Used to compute the PI and KPIs for the different evaluators.
 
-📘 Full documentation: [../../docs/performance_indicators/README.md](/docs/performance_indicators)
+📘 Full documentation:
+- [https://uow-atm.github.io/MultiModX/performance_indicators/](https://uow-atm.github.io/MultiModX/performance_indicators/)
+- [../../docs/performance_indicators/index.md](/docs/performance_indicators/index.md)

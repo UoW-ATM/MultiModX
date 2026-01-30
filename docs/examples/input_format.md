@@ -1,11 +1,13 @@
 # Strategic Pipeline Input File Formats
 
 This document describes the **expected input files** for the MultiModX Strategic Pipeline.  
-It is split into three sections:
+It is split into five sections:
 
 1. [Introduction](#introduction)  
 2. [Strategic Pipeline Inputs](#strategic-pipeline-inputs)  
 3. [Heuristics Computation Inputs](#heuristics-computation-inputs)
+4. [Pre-Tactical (Replanning) Pipeline Inputs](#pretactical-replanning-pipeline-inputs)
+5. [Tactical Pipeline Inputs](#tactical-pipeline-inputs)
 
 A **sample dataset** containing minimal valid inputs is available on Zenodo: [Download Sample Inputs](https://zenodo.org/your-dataset-link)  
 
@@ -13,10 +15,18 @@ A **sample dataset** containing minimal valid inputs is available on Zenodo: [Do
 
 ## Introduction
 
+
+
+
+---
+
+## Strategic Pipeline Inputs
+
+
 The strategic pipeline is configured primarily via TOML files:
 
-- `strategic_pipeline.toml`: See example in [strategic_pipeline.toml](toml_examples/strategic_pipeline.toml)  
-- `policy_package.toml`: See example in [policy_package.toml](toml_examples/policy_package.toml)
+- `strategic_pipeline.toml`: See example in [strategic_pipeline.toml](toml_examples.md)  
+- `policy_package.toml`: See example in [policy_package.toml](toml_examples.md)
 
 The input files are then processed to build:
 
@@ -27,26 +37,17 @@ The input files are then processed to build:
 
 The table below summarises the main groups of input files:
 
-| Input Group | Purpose                                                                                                                      |
-|------------|------------------------------------------------------------------------------------------------------------------------------|
-| Demand & Logit | Passenger demand, archetypes, sensitivities                                                                                  |
-| Network Data | Flight schedules, rail GTFS, MCTs, node locations                                                                            |
-| Infrastructure | Processing times, airport/rail stations, transitions, regions access                                                         |
-| Aircraft & Airlines | Tactical info for flights (types, capacities, codes). Needed to generate input for Tactical Evaluator (Mercury), if desired. |
-| Heuristics | Optional precomputed travel-time heuristics for path finding                                                                 |
+| Input Group | Purpose                                                                                                                                                              |
+|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Demand & Logit | Passenger demand, archetypes, sensitivities                                                                                                                          |
+| Network Data | Flight schedules, rail GTFS, MCTs, node locations                                                                                                                    |
+| Infrastructure | Processing times, airport/rail stations, transitions, regions access                                                                                                 |
+| Aircraft & Airlines | Tactical info for flights (types, capacities, codes). Needed to generate input for Tactical Evaluator (Mercury), if desired.                                         |
+| Heuristics | Optional precomputed travel-time heuristics for path finding. See [Heuristics Computation Inputs](#heuristics-computation-inputs) for information on the heuristics. |
 
-
-The Heuristics are computed to support the path finding algorithm (A*). These can be provided or not, if not then the algorithm will be
-performed as a uniform cost search (UCS). The scrip [compute_air_rail_heuristics.py](/script/strategic/compute_air_rail_heuristics.py) 
-can be used to generate these heuristcis. See [Heuristics Computation Inputs](#heuristics-computation-inputs) for info
-on inputs needed.
-
----
-
-## Strategic Pipeline Inputs
 
 **Note:** The structure below follows the order defined in `strategic_pipeline.toml`.  
-For reference, see the [TOML example](toml_examples/strategic_pipeline.toml).
+For reference, see the [TOML examples](toml_examples.md).
 
 ### 1. Demand Data
 
@@ -70,7 +71,7 @@ For reference, see the [TOML example](toml_examples/strategic_pipeline.toml).
 
 - Each archetype corresponds to a separate `.pickle` file.  
 - Used for logit-based choice modelling.  
-- Provided for intra-Spain and international-Spain in [libs/logit_model](/libs/logit_model).
+- Provided for intra-Spain and international-Spain in [libs/logit_model](https://github.com/UoW-ATM/MultiModX/blob/main/libs/logit_model).
 
 ---
 
@@ -226,6 +227,8 @@ For reference, see the [TOML example](toml_examples/strategic_pipeline.toml).
 | max_dist | Max distance | 150 |
 | time | Heuristic time (minutes) | 25 |
 
+See [Heuristics Computation Inputs](#heuristics-computation-inputs) for more details.
+
 ---
 
 ### 15. Aircraft & Airlines
@@ -237,11 +240,20 @@ For reference, see the [TOML example](toml_examples/strategic_pipeline.toml).
 
 ---
 
+
+
 ## Heuristics Computation Inputs
 
+The Heuristics are computed to support the path finding algorithm (A*). These can be provided or not, if not then the algorithm will be
+performed as a uniform cost search (UCS).
+
 This subset is sufficient to **compute travel-time heuristics** for the pathfinder. See 
-[heuristics_computation.toml](toml_examples/heuristics_computation.toml) for example of TOML
-file configuring the [compute_air_rail_heuristics.py](/script/strategic/compute_air_rail_heuristics.py) script.
+[heuristics_computation.toml](toml_examples.md) for example of TOML
+file configuring the [compute_air_rail_heuristics.py](https://github.com/UoW-ATM/MultiModX/blob/main/script/strategic/compute_air_rail_heuristics.py) script that is the one used to generate the heuristics.
+
+
+**Note:** For heuristics computation, only the files below are necessary. All other files are optional.
+
 
 ### 1. Flight Schedules
 
@@ -279,4 +291,134 @@ file configuring the [compute_air_rail_heuristics.py](/script/strategic/compute_
 
 ---
 
-**Note:** For heuristics computation, only these files are necessary. All other files are optional.
+## PreTactical Replanning Pipeline Inputs
+
+**Input data formats** required by the **pre-tactical passenger replanning pipeline**.
+
+Inputs consist of:
+- Planned network outputs
+- Replanned operational modifications
+- Infrastructure and transfer constraints
+
+All paths are provided via the TOML configuration file.
+
+Notes
+
+- All inputs must be temporally consistent (time zones, date formats).
+- Identifiers (service IDs, stop IDs) must match across datasets.
+- Inputs are assumed to be **pre-validated** for structural correctness.
+
+
+---
+
+### 1. Planned Passenger Assignments
+
+**Description:**  
+Passenger itineraries from the strategic or planned scenario.
+
+**Typical content:**
+- Passenger or demand identifier
+- Assigned itinerary
+- Service sequence
+- Travel times and costs
+
+**Source:**  
+Output of the strategic pipeline.
+
+
+### 2. Planned Flight Schedules
+
+**Description:**  
+Baseline flight schedules prior to disruption.
+
+**Format:** CSV
+
+Key fields include:
+- `service_id`
+- `origin`, `destination`
+- `sobt`, `sibt`
+- `provider`
+- `seats`
+
+
+### 3. Planned Rail Schedules (GTFS)
+
+**Description:**  
+Rail services in GTFS format.
+
+**Required files:**
+- `stops.txt`
+- `trips.txt`
+- `stop_times.txt`
+- `calendar.txt`
+
+Used to construct the planned rail network.
+
+
+### 4. Rail Stations Considered
+
+**File:** `rail_stations_considered.csv`
+
+| Column | Description |
+|------|-------------|
+| stop_id | GTFS stop identifier |
+
+Only the listed stations are retained in the replanning network.
+
+
+### 5. Replanned Actions – Flights
+
+**Description:**  
+Operational changes applied after disruption.
+
+Possible inputs:
+- Cancelled flights
+- Modified flight schedules
+- Additional flights
+
+These override or extend the planned flight network.
+
+### 6. Replanned Actions – Rail
+
+**Description:**  
+Rail timetable changes due to disruption.
+
+Possible inputs:
+- Cancelled rail services
+- Modified rail trips
+- Additional rail trips
+
+Applied on top of the planned GTFS network.
+
+
+### 7. Minimum Connecting Times (MCT)
+
+**Description:**  
+Minimum transfer times between services.
+
+**Includes:**
+- Air-to-air
+- Rail-to-rail
+- Air-to-rail transitions
+
+Used to validate itinerary feasibility during reassignment.
+
+
+### 8. Capacity Information
+
+**Description:**  
+Available capacity per service after replanning.
+
+Computed internally from:
+- Planned seat counts
+- Already assigned passengers
+- Cancelled services
+
+
+
+
+---
+
+## Tactical Pipeline Inputs
+
+---

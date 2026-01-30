@@ -2,4 +2,7 @@
 
 Used to evaluate planned air, rail and multimodal mobility networks.
 
-📘 Full documentation: [../../docs/strategic/README.md](/docs/strategic)
+📘 Full documentation: 
+
+- [https://uow-atm.github.io/MultiModX/strategic/](https://uow-atm.github.io/MultiModX/strategic/)
+- [../../docs/strategic/index.md](/docs/strategic/index.md)

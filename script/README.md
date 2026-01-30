@@ -6,9 +6,12 @@ This folder contains scripts to execute the models. It contains:
  possible itineraries and demand assigment.
 - [Pre-Tactical Evaluator](pre-tactical): Pre-Tactical evaluator of replanned operations due to disruptions: 
   passengers impacted and alternatives computation.
-- [Mercury](mercury): Scripts to finalise tranforming output of Strategic Evaluator into input for Tactical Evaluator
+- [Tactical Evaluator](tactical): Scripts to finalise tranforming output of Strategic Evaluator into input for Tactical Evaluator
   (Mercury).
 
 ---
 
-📘 Full documentation: [../../docs/README.md](/docs)
+📘 Full documentation: 
+
+- [https://uow-atm.github.io/MultiModX/](https://uow-atm.github.io/MultiModX/)
+- [../../docs/index.md](/docs/index.md)

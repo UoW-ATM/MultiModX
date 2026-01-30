@@ -1,25 +1,26 @@
 # Publications
 
----
+Relevant technical documentation and articles.
 
-### [Documents](documents)
+## Technical Documents
 
-Technical documents generated in MultiModX which help to understand the models or as result from the project.
+Technical documents generated in MultiModX, which help to understand the models or as the result from the project.
 
-   - White Paper from project final results: [MultiModX_White_Paper.pdf](documents/MultiModX_White_Paper.pdf)
+
+  - White Paper from project final results: [MultiModX_White_Paper.pdf](documents/MultiModX_White_Paper.pdf)
   - Technical Summary of Multimodal Performance Framework and Multimodal Evaluators:
   [Technical_Summary_Open_Multimodal_Performance_Framework_and_Evaluation_tools.pdf](documents/Technical_Summary_Open_Multimodal_Performance_Framework_and_Evaluation_tools.pdf)
   - Functional decomposition and input/output format as in Functional Requirements Document (FRD) of MultiModX project 
   (available also in CORDIS): [D4.3_Solution_399_FRD.pdf](documents/D4.3_Solution_399_FRD.pdf)
 
-For other document and reports from MultiModX see:
-- [Project website](https://multimodx.eu/)
-- [CORDIS EU project website](https://cordis.europa.eu/project/id/101114815)
 
---- 
-### [Articles](articles)
+Other documents and reports:
+  - Project website: [https://multimodx.eu/](https://multimodx.eu/)
+  - CORDIS EU project website: [https://cordis.europa.eu/project/id/101114815](https://cordis.europa.eu/project/id/101114815)
 
-Articles generated with the MultiModX models.
+
+## Articles
+Research articles describing or using MultiModX models:
 
   - Delgado, L., Weiszer, M., de Boissieu, M., Bueno-Gonzlez, J. and Menendez-Pidal, L. (2025). [Strategic multimodal 
     evaluator for air-rail networks](articles/EWGT_2025_MMX_Strategic.pdf). 27th Euro Working Group on Transportation Meeting (EWGT 2025).

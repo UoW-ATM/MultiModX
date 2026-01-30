@@ -10,6 +10,10 @@ theme:
 
 plugins:
   - search
+  - panzoom:
+      always_show_hint: true
+      key: "ctrl"
+      initial_zoom_level: 1.5
   - macros:
       modules:
         - docs.macros
@@ -22,6 +26,9 @@ markdown_extensions:
       custom_fences:
         - name: mermaid
           class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.blocks.caption
+  - attr_list
 
 nav:
   - Home: index.md
@@ -40,9 +47,7 @@ nav:
       - Strategic Dashboard: dashboard/strategic_dashboard.md
 
   - Publications:
-      - Overview: publications/index.md
-      - Articles: publications/articles.md
-      - Technical Documents: publications/documents.md
+      - Articles and Technical Documents: publications/index.md
 
 extra:
   mermaid:
