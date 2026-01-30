@@ -15,8 +15,8 @@ A **sample dataset** containing minimal valid inputs is available on Zenodo: [Do
 
 The strategic pipeline is configured primarily via TOML files:
 
-- `strategic_pipeline.toml`: See example in [strategic_pipeline.toml](toml_examples/strategic_pipeline.toml)  
-- `policy_package.toml`: See example in [policy_package.toml](toml_examples/policy_package.toml)
+- `strategic_pipeline.toml`: See example in [strategic_pipeline.toml](toml_examples.md)  
+- `policy_package.toml`: See example in [policy_package.toml](toml_examples.md)
 
 The input files are then processed to build:
 
@@ -37,7 +37,7 @@ The table below summarises the main groups of input files:
 
 
 The Heuristics are computed to support the path finding algorithm (A*). These can be provided or not, if not then the algorithm will be
-performed as a uniform cost search (UCS). The scrip [compute_air_rail_heuristics.py](/script/strategic/compute_air_rail_heuristics.py) 
+performed as a uniform cost search (UCS). The scrip [compute_air_rail_heuristics.py](https://github.com/UoW-ATM/MultiModX/blob/main/script/strategic/compute_air_rail_heuristics.py) 
 can be used to generate these heuristcis. See [Heuristics Computation Inputs](#heuristics-computation-inputs) for info
 on inputs needed.
 
@@ -46,7 +46,7 @@ on inputs needed.
 ## Strategic Pipeline Inputs
 
 **Note:** The structure below follows the order defined in `strategic_pipeline.toml`.  
-For reference, see the [TOML example](toml_examples/strategic_pipeline.toml).
+For reference, see the [TOML examples](toml_examples.md).
 
 ### 1. Demand Data
 
@@ -70,7 +70,7 @@ For reference, see the [TOML example](toml_examples/strategic_pipeline.toml).
 
 - Each archetype corresponds to a separate `.pickle` file.  
 - Used for logit-based choice modelling.  
-- Provided for intra-Spain and international-Spain in [libs/logit_model](/libs/logit_model).
+- Provided for intra-Spain and international-Spain in [libs/logit_model](https://github.com/UoW-ATM/MultiModX/blob/main/libs/logit_model).
 
 ---
 
@@ -240,8 +240,8 @@ For reference, see the [TOML example](toml_examples/strategic_pipeline.toml).
 ## Heuristics Computation Inputs
 
 This subset is sufficient to **compute travel-time heuristics** for the pathfinder. See 
-[heuristics_computation.toml](toml_examples/heuristics_computation.toml) for example of TOML
-file configuring the [compute_air_rail_heuristics.py](/script/strategic/compute_air_rail_heuristics.py) script.
+[heuristics_computation.toml](toml_examples.md) for example of TOML
+file configuring the [compute_air_rail_heuristics.py](https://github.com/UoW-ATM/MultiModX/blob/main/script/strategic/compute_air_rail_heuristics.py) script.
 
 ### 1. Flight Schedules
 
