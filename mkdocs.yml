@@ -40,9 +40,7 @@ nav:
       - Strategic Dashboard: dashboard/strategic_dashboard.md
 
   - Publications:
-      - Overview: publications/index.md
-      - Articles: publications/articles.md
-      - Technical Documents: publications/documents.md
+      - Articles and Technical Documents: publications/index.md
 
 extra:
   mermaid:
