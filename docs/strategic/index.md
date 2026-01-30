@@ -13,7 +13,7 @@ This includes:
 
 # Strategic Pipeline Flow
 
-See al technical documents and articles from remaining documentation. For detailed Functional Description on the Strategic Multimodal Evaluator see [D4.3_Solution_399_FRD.pdf](/documentation/documents/D4.3_Solution_399_FRD.pdf).
+See al technical documents and articles from remaining documentation. For detailed Functional Description on the Strategic Multimodal Evaluator see [D4.3_Solution_399_FRD.pdf](../documentation/documents/D4.3_Solution_399_FRD.pdf).
 
 This section describes the high-level architecture and data flow of the
 **Strategic Evaluator pipeline**, implemented in: run_full_strategic_pipeline function in 
