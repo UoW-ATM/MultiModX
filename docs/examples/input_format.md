@@ -38,7 +38,7 @@ The **logit model sensitivity parameters** are stored as pickle files from the b
 are provided (see [TOML](toml_examples.md#1-strategic-pipeline) for an example and more information on this).
 
 The Tactical Evaluator requires additional input files that are not provided by the MultiModX pipeline (e.g. ATFM delays,
-minimum turnaround times, flight plans). See [Tactical Evaluator](../tactical/#4-multimodx-scripts) for more information.
+minimum turnaround times, flight plans). See [Tactical Evaluator](../tactical/index.md#4-multimodx-scripts) for more information.
 
 
 ---
@@ -48,8 +48,8 @@ minimum turnaround times, flight plans). See [Tactical Evaluator](../tactical/#4
 
 The strategic pipeline is configured primarily via TOML files:
 
-- `strategic_pipeline.toml`: See example in [strategic_pipeline.toml](toml_examples.md)  
-- `policy_package.toml`: See example in [policy_package.toml](toml_examples.md)
+- `strategic_pipeline.toml`: See example in [strategic_pipeline.toml](toml_examples.md#1-strategic-pipeline)  
+- `policy_package.toml`: See example in [policy_package.toml](toml_examples.md# )
 
 The input files are then processed to build:
 
@@ -69,16 +69,11 @@ The table below summarises the main groups of input files:
 | Heuristics | Optional precomputed travel-time heuristics for path finding. See [Heuristics Computation Inputs](#heuristics-computation-inputs) for information on the heuristics. |
 
 
-??? note "Test"
-
-    This should be collapsible.
-
-**Note:** The structure below follows the order defined in `strategic_pipeline.toml`.  
-For reference, see the [TOML examples](toml_examples.md).
-
-
-??? info "Strategic data files description"
+??? info "Strategic pipeline data files description"
     
+    **Note:** The structure below follows the order defined in `strategic_pipeline.toml`.  
+    For reference, see the [TOML examples](toml_examples.md).
+
     ### A. Demand Data
     
     **File:** `demand.csv`
@@ -268,10 +263,10 @@ For reference, see the [TOML examples](toml_examples.md).
     - Aircraft types, maximum take-off weights, wake turbulence categories, airline types, and code conversions.
     - Used for tactical inputs generation.
     
-    ---
 
+---
 
-## Heuristics Computation Inputs
+## 3. Heuristics Computation Inputs
 
 The Heuristics are computed to support the path finding algorithm (A*). These can be provided or not, if not then the algorithm will be
 performed as a uniform cost search (UCS).
@@ -281,46 +276,49 @@ This subset is sufficient to **compute travel-time heuristics** for the pathfind
 file configuring the [compute_air_rail_heuristics.py](https://github.com/UoW-ATM/MultiModX/blob/main/script/strategic/compute_air_rail_heuristics.py) script that is the one used to generate the heuristics.
 
 
-**Note:** For heuristics computation, only the files below are necessary. All other files are optional.
+??? info "Heuristics computation data files description"
 
+        **Note:** For heuristics computation, only the files below are necessary. All other files are optional.
+        
+        
+        ### A. Flight Schedules
+        
+        **File:** `flight_schedules.csv` (same structure as above)
+        
+        ### B. Airports Coordinates
+        
+        **File:** `airports_coordinates.csv` (same structure as above)
+        
+        ### C. GTFS (Rail Timetables)
+        
+        **Folder:** `GTFS/`  
+        
+        ### D. Rail Stations Considered
+        
+        **File:** `rail_stations_considered.csv`
+        
+        | Column | Description | Example |
+        |--------|------------|---------|
+        | stop_id | GTFS stop ID | 0077821 |
+        
+        ### E. Rail Stations Considered + NUTS
+        
+        **File:** `rail_stations_considered_nuts.csv`
+        
+        | Column | Description | Example |
+        |--------|------------|---------|
+        | NUTS_ID | NUTS region ID | ES61 |
+        | LEVL_CODE | Level code | 2 |
+        | NAME_LATN | Name | Andalucía |
+        | num_rail_stations | Number of rail stations | 2 |
+        | num_airports | Number of airports | 5 |
+        | airports | List of airports in region | ['LEMG', 'LEJR', 'LEGR', 'LEAM', 'LEZL'] |
+        | rail_stations | List of rail stations in region | [('ES50500', 'Estación de tren Cordoba'), ('ES51003', 'Estación de tren Sevilla-Santa Justa')] |
 
-### 1. Flight Schedules
-
-**File:** `flight_schedules.csv` (same structure as above)
-
-### 2. Airports Coordinates
-
-**File:** `airports_coordinates.csv` (same structure as above)
-
-### 3. GTFS (Rail Timetables)
-
-**Folder:** `GTFS/`  
-
-### 4. Rail Stations Considered
-
-**File:** `rail_stations_considered.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| stop_id | GTFS stop ID | 0077821 |
-
-### 5. Rail Stations Considered + NUTS
-
-**File:** `rail_stations_considered_nuts.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| NUTS_ID | NUTS region ID | ES61 |
-| LEVL_CODE | Level code | 2 |
-| NAME_LATN | Name | Andalucía |
-| num_rail_stations | Number of rail stations | 2 |
-| num_airports | Number of airports | 5 |
-| airports | List of airports in region | ['LEMG', 'LEJR', 'LEGR', 'LEAM', 'LEZL'] |
-| rail_stations | List of rail stations in region | [('ES50500', 'Estación de tren Cordoba'), ('ES51003', 'Estación de tren Sevilla-Santa Justa')] |
 
 ---
 
-## PreTactical Replanning Pipeline Inputs
+## 4. PreTactical Replanning Pipeline Inputs
 
 **Input data formats** required by the **pre-tactical passenger replanning pipeline**.
 
@@ -331,124 +329,126 @@ Inputs consist of:
 
 All paths are provided via the TOML configuration file.
 
-Notes
 
-- All inputs must be temporally consistent (time zones, date formats).
-- Identifiers (service IDs, stop IDs) must match across datasets.
-- Inputs are assumed to be **pre-validated** for structural correctness.
+??? info "Pretactical replanning pipeline data files description"
 
-
----
-
-### 1. Planned Passenger Assignments
-
-**Description:**  
-Passenger itineraries from the strategic or planned scenario.
-
-**Typical content:**
-- Passenger or demand identifier
-- Assigned itinerary
-- Service sequence
-- Travel times and costs
-
-**Source:**  
-Output of the strategic pipeline.
-
-
-### 2. Planned Flight Schedules
-
-**Description:**  
-Baseline flight schedules prior to disruption.
-
-**Format:** CSV
-
-Key fields include:
-- `service_id`
-- `origin`, `destination`
-- `sobt`, `sibt`
-- `provider`
-- `seats`
-
-
-### 3. Planned Rail Schedules (GTFS)
-
-**Description:**  
-Rail services in GTFS format.
-
-**Required files:**
-- `stops.txt`
-- `trips.txt`
-- `stop_times.txt`
-- `calendar.txt`
-
-Used to construct the planned rail network.
-
-
-### 4. Rail Stations Considered
-
-**File:** `rail_stations_considered.csv`
-
-| Column | Description |
-|------|-------------|
-| stop_id | GTFS stop identifier |
-
-Only the listed stations are retained in the replanning network.
-
-
-### 5. Replanned Actions – Flights
-
-**Description:**  
-Operational changes applied after disruption.
-
-Possible inputs:
-- Cancelled flights
-- Modified flight schedules
-- Additional flights
-
-These override or extend the planned flight network.
-
-### 6. Replanned Actions – Rail
-
-**Description:**  
-Rail timetable changes due to disruption.
-
-Possible inputs:
-- Cancelled rail services
-- Modified rail trips
-- Additional rail trips
-
-Applied on top of the planned GTFS network.
-
-
-### 7. Minimum Connecting Times (MCT)
-
-**Description:**  
-Minimum transfer times between services.
-
-**Includes:**
-- Air-to-air
-- Rail-to-rail
-- Air-to-rail transitions
-
-Used to validate itinerary feasibility during reassignment.
-
-
-### 8. Capacity Information
-
-**Description:**  
-Available capacity per service after replanning.
-
-Computed internally from:
-- Planned seat counts
-- Already assigned passengers
-- Cancelled services
-
+    Notes
+    
+    - All inputs must be temporally consistent (time zones, date formats).
+      - Identifiers (service IDs, stop IDs) must match across datasets.
+      - Inputs are assumed to be **pre-validated** for structural correctness.
+    
+    
+    ### A. Planned Passenger Assignments
+    
+    **Description:**  
+    Passenger itineraries from the strategic or planned scenario.
+    
+    **Typical content:**
+    - Passenger or demand identifier
+      - Assigned itinerary
+      - Service sequence
+      - Travel times and costs
+    
+    **Source:**  
+    Output of the strategic pipeline.
+    
+    
+    ### B. Planned Flight Schedules
+    
+    **Description:**  
+    Baseline flight schedules prior to disruption.
+    
+    **Format:** CSV
+    
+    Key fields include:
+    - `service_id`
+      - `origin`, `destination`
+      - `sobt`, `sibt`
+      - `provider`
+      - `seats`
+    
+    
+    ### C. Planned Rail Schedules (GTFS)
+    
+    **Description:**  
+    Rail services in GTFS format.
+    
+    **Required files:**
+    - `stops.txt`
+      - `trips.txt`
+      - `stop_times.txt`
+      - `calendar.txt`
+    
+    Used to construct the planned rail network.
+    
+    
+    ### D. Rail Stations Considered
+    
+    **File:** `rail_stations_considered.csv`
+    
+    | Column | Description |
+    |------|-------------|
+    | stop_id | GTFS stop identifier |
+    
+    Only the listed stations are retained in the replanning network.
+    
+    
+    ### E. Replanned Actions – Flights
+    
+    **Description:**  
+    Operational changes applied after disruption.
+    
+    Possible inputs:
+    - Cancelled flights
+      - Modified flight schedules
+      - Additional flights
+    
+    These override or extend the planned flight network.
+    
+    ### F. Replanned Actions – Rail
+    
+    **Description:**  
+    Rail timetable changes due to disruption.
+    
+    Possible inputs:
+    - Cancelled rail services
+      - Modified rail trips
+      - Additional rail trips
+    
+    Applied on top of the planned GTFS network.
+    
+    
+    ### G. Minimum Connecting Times (MCT)
+    
+    **Description:**  
+    Minimum transfer times between services.
+    
+    **Includes:**
+    - Air-to-air
+      - Rail-to-rail
+      - Air-to-rail transitions
+    
+    Used to validate itinerary feasibility during reassignment.
+    
+    
+    ### H. Capacity Information
+    
+    **Description:**  
+    Available capacity per service after replanning.
+    
+    Computed internally from:
+    - Planned seat counts
+      - Already assigned passengers
+      - Cancelled services
 
 
 
 ---
 
 ## 5. Tactical Pipeline Inputs
+
+
 
 ---
 

@@ -6,28 +6,35 @@ The data available on Zenodo (see [Input Files](input_format.md)) contains some 
 here a description of the different elements of the configuration  files is provided for:
 
 1. [Strategic pipeline](#1-strategic-pipeline)
-2. [Policy package definition](#policy-package)
-3. [Heuristics computation](#heuristics-computation)
-4. [Pre-tactical pipeline](#pretactical-pipeline)
+2. [Policy package definition](#2-policy-package)
+3. [Heuristics computation](#3-heuristics-computation)
+4. [Pre-tactical pipeline](#4-pretactical-pipeline)
 5. For [Performance Indicators](../performance_indicators/index.md), the information is directly in the description of the scripts.
 
-
+---
 
 ## 1. Strategic Pipeline
 
+??? info "Strategic pipeline TOML description"
+    ```toml
+    {{ read_file("examples/toml/strategic_pipeline.toml") }}
+    ```
 
-```toml
-{{ read_file("examples/toml/strategic_pipeline.toml") }}
-```
+---
+## 2. Policy Package
 
-## Policy Package
-```toml
-{{ read_file("examples/toml/policy_package.toml") }}
-```
+??? info "Policy package TOML description"
+    ```toml
+    {{ read_file("examples/toml/policy_package.toml") }}
+    ```
 
-## Heuristics Computation
-```toml
-{{ read_file("examples/toml/heuristics_computation.toml") }}
-```
+---
+## 3. Heuristics Computation
 
-## Pretactical Pipeline
+??? info "Heuristics computation TOML description"
+    ```toml
+    {{ read_file("examples/toml/heuristics_computation.toml") }}
+    ```
+
+---
+## 4. Pretactical Pipeline
