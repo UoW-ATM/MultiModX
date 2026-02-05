@@ -5,7 +5,7 @@ All scripts in MultiModX are configured using [TOML](https://toml.io/en/) config
 The data available on Zenodo (see [Input Files](input_format.md)) contains some examples, 
 here a description of the different elements of the configuration  files is provided for:
 
-1. [Strategic pipeline](#strategic-pipeline)
+1. [Strategic pipeline](#1-strategic-pipeline)
 2. [Policy package definition](#policy-package)
 3. [Heuristics computation](#heuristics-computation)
 4. [Pre-tactical pipeline](#pretactical-pipeline)
@@ -13,7 +13,7 @@ here a description of the different elements of the configuration  files is prov
 
 
 
-## Strategic Pipeline
+## 1. Strategic Pipeline
 
 
 ```toml

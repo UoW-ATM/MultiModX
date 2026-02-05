@@ -1,26 +1,49 @@
-# Strategic Pipeline Input File Formats
+# Input Files Format
 
-This document describes the **expected input files** for the MultiModX Strategic Pipeline.  
+This document describes the **expected input files** for the MultiModX Pipelines.  
 It is split into five sections:
 
-1. [Introduction](#introduction)  
-2. [Strategic Pipeline Inputs](#strategic-pipeline-inputs)  
-3. [Heuristics Computation Inputs](#heuristics-computation-inputs)
-4. [Pre-Tactical (Replanning) Pipeline Inputs](#pretactical-replanning-pipeline-inputs)
-5. [Tactical Pipeline Inputs](#tactical-pipeline-inputs)
+1. [Introduction on files](#1-introduction-on-files)  
+2. [Strategic Pipeline Inputs](#2-strategic-pipeline-inputs)  
+3. [Heuristics Computation Inputs](#3-heuristics-computation-inputs)
+4. [Pre-Tactical (Replanning) Pipeline Inputs](#4-pretactical-replanning-pipeline-inputs)
+5. [Tactical Pipeline Inputs](#5-tactical-pipeline-inputs)
+6. [Performance Indicators](#6-performance-indicators)
 
 A **sample dataset** containing minimal valid inputs is available on Zenodo: [Download Sample Inputs](https://zenodo.org/your-dataset-link)  
 
 ---
 
-## Introduction
+## 1. Introduction on files
+
+### Configuration files
+All **configuration files** are stored in TOML format. See the [TOML](toml_examples.md) section of the documentation for
+details on these.
+
+### Input and output files
+
+All **input and output data** used by MultiModX is in **CSV** format, with few exceptions (see [Special cases](#special-cases) below). 
+
+The information is by default stored in the data folder and organised by case studies (e.g. CS10) with versions
+inside (e.g. v=0.1). This is just a convention and can be changed by modifying the path of the experiment (`experiment_path`) in the relevant
+TOML files (see example of [TOML file](toml_examples.md#1-strategic-pipeline)).
+
+The name of the individual files required (and by changing their name one could change their path within the `exmperiment_path`) is also
+defined within the TOML configuration files.
 
 
+### Special cases
+
+The **logit model sensitivity parameters** are stored as pickle files from the biogeme library. Calibration for three different mobility settings
+are provided (see [TOML](toml_examples.md#1-strategic-pipeline) for an example and more information on this).
+
+The Tactical Evaluator requires additional input files that are not provided by the MultiModX pipeline (e.g. ATFM delays,
+minimum turnaround times, flight plans). See [Tactical Evaluator](../tactical/#4-multimodx-scripts) for more information.
 
 
 ---
 
-## Strategic Pipeline Inputs
+## 2. Strategic Pipeline Inputs
 
 
 The strategic pipeline is configured primarily via TOML files:
@@ -49,197 +72,198 @@ The table below summarises the main groups of input files:
 **Note:** The structure below follows the order defined in `strategic_pipeline.toml`.  
 For reference, see the [TOML examples](toml_examples.md).
 
-### 1. Demand Data
-
-**File:** `demand.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| date | Date of demand | 20220923 |
-| origin | Origin region or station | ES111 |
-| destination | Destination region or station | ES112 |
-| archetype | Demand archetype | archetype_0 |
-| trips | Number of trips | 521 |
-
-**Notes:** Demand is mapped to logit models via sensitivities pickle files.
-
----
-
-### 2. Sensitivities Logit
-
-**File(s):** `archetype_x.pickle` (from Biogeme library)
-
-- Each archetype corresponds to a separate `.pickle` file.  
-- Used for logit-based choice modelling.  
-- Provided for intra-Spain and international-Spain in [libs/logit_model](https://github.com/UoW-ATM/MultiModX/blob/main/libs/logit_model).
-
----
-
-### 3. Flight Schedules
-
-**File:** `flight_schedules.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| service_id | Flight ID | VY_2473 |
-| origin | Departure airport ICAO | GCRR |
-| destination | Arrival airport ICAO | LEBL |
-| dep_terminal | Departure terminal | 1 |
-| arr_terminal | Arrival terminal | 1 |
-| sobt | Scheduled off-block time | 2019-09-06 12:15:00 |
-| sibt | Scheduled in-block time | 2019-09-06 15:10:00 |
-| provider | Airline code | VY |
-| act_type | Aircraft type | 321 |
-| seats | Number of seats | 220 |
-| gcdistance | Great-circle distance (km) | 1971 |
-
----
-
-### 4. Alliances
-
-**File:** `alliances.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| provider | Airline code | IB |
-| alliance | Alliance name | OneWorld |
-
----
-
-### 5. Airports Coordinates
-
-**File:** `airports_coordinates.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| icao_id | ICAO airport code | AGGA |
-| lat | Latitude | -8.6983333333 |
-| lon | Longitude | 160.6783333333 |
-
----
-
-### 6. Minimum Connecting Times (Air)
-
-**File:** `mct_air.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| icao_id | ICAO airport code | BIKF |
-| standard | Standard MCT | 39 |
-| domestic | Domestic MCT | 20 |
-| international | International MCT | 60 |
-
----
-
-### 7. GTFS (Rail Timetables)
-
-**Folder:** `GTFS/`  
-
-- Standard GTFS format  
-- Used to generate rail network
-
----
-
-### 8. Rail Stations Considered
-
-**File:** `rail_stations_considered.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| stop_id | GTFS stop ID | 007102002 |
-
----
-
-### 9. Minimum Connecting Times (Rail)
-
-**File:** `mct_rail.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| stop_id | Rail station stop ID | 007105000 |
-| default_transfer_time | Minimum transfer time (minutes) | 6 |
-
----
-
-### 10. Airport & Rail Processing Times
-
-**Files:** `airport_processes.csv`, `rail_stations_processes.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| airport / station | Node ID | ACE / 007102002 |
-| pax_type | Passenger type | all |
-| k2g / k2p | Check-in to gate / station process | 90 / 15 |
-| g2k / p2k | Gate to check-in / station process | 30 / 10 |
-| k2g_multimodal / k2p_multimodal | Multimodal adjustment | 90 / 15 |
-| g2k_multimodal / p2k_multimodal | Multimodal adjustment | 30 / 10 |
-
----
-
-### 11. IATA-ICAO Mapping
-
-**File:** `iata_icao_static.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| IATA | IATA code | AAC |
-| ICAO | ICAO code | HEAR |
-
----
-
-### 12. Air-Rail Transitions
-
-**File:** `air_rail_transitions.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| origin_station | Node origin | LEAL |
-| destination_station | Node destination | 7160911 |
-| layer_origin | Mode | air |
-| layer_destination | Mode | rail |
-| avg_travel_a_b | Travel time | 40 |
-| avg_travel_b_a | Travel time | 40 |
-
----
-
-### 13. Regions Access
-
-**File:** `regions_access.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| region | Demand region | ES111 |
-| station | Node ID | LEST |
-| layer | Mode | air |
-| pax_type | Passenger type | all |
-| avg_d2i | Avg access time (min) | 53 |
-| avg_i2d | Avg egress time (min) | 50 |
-
----
-
-### 14. Heuristics (Optional)
-
-**Files:** `air_time_heuristics.csv`, `rail_time_heuristics.csv`
-
-| Column | Description | Example |
-|--------|------------|---------|
-| min_dist | Min distance | 0 |
-| max_dist | Max distance | 150 |
-| time | Heuristic time (minutes) | 25 |
-
-See [Heuristics Computation Inputs](#heuristics-computation-inputs) for more details.
-
----
-
-### 15. Aircraft & Airlines
-
-**Files:** `ac_type_icao_iata_conversion.csv`, `ac_mtow.csv`, `ac_wtc.csv`, `airline_ao_type.csv`, `airline_iata_icao.csv`  
-
-- Aircraft types, maximum take-off weights, wake turbulence categories, airline types, and code conversions.  
-- Used for tactical inputs generation.
-
----
-
+??? info "Strategic data files description"
+    
+    ### A. Demand Data
+    
+    **File:** `demand.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | date | Date of demand | 20220923 |
+    | origin | Origin region or station | ES111 |
+    | destination | Destination region or station | ES112 |
+    | archetype | Demand archetype | archetype_0 |
+    | trips | Number of trips | 521 |
+    
+    **Notes:** Demand is mapped to logit models via sensitivities pickle files.
+    
+    ---
+    
+    ### B. Sensitivities Logit
+    
+    **File(s):** `archetype_x.pickle` (from Biogeme library)
+    
+    - Each archetype corresponds to a separate `.pickle` file.  
+      - Used for logit-based choice modelling.  
+      - Provided for intra-Spain and international-Spain in [libs/logit_model](https://github.com/UoW-ATM/MultiModX/blob/main/libs/logit_model).
+    
+    ---
+    
+    ### C. Flight Schedules
+    
+    **File:** `flight_schedules.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | service_id | Flight ID | VY_2473 |
+    | origin | Departure airport ICAO | GCRR |
+    | destination | Arrival airport ICAO | LEBL |
+    | dep_terminal | Departure terminal | 1 |
+    | arr_terminal | Arrival terminal | 1 |
+    | sobt | Scheduled off-block time | 2019-09-06 12:15:00 |
+    | sibt | Scheduled in-block time | 2019-09-06 15:10:00 |
+    | provider | Airline code | VY |
+    | act_type | Aircraft type | 321 |
+    | seats | Number of seats | 220 |
+    | gcdistance | Great-circle distance (km) | 1971 |
+    
+    ---
+    
+    ### D. Alliances
+    
+    **File:** `alliances.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | provider | Airline code | IB |
+    | alliance | Alliance name | OneWorld |
+    
+    ---
+    
+    ### E. Airports Coordinates
+    
+    **File:** `airports_coordinates.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | icao_id | ICAO airport code | AGGA |
+    | lat | Latitude | -8.6983333333 |
+    | lon | Longitude | 160.6783333333 |
+    
+    ---
+    
+    ### F. Minimum Connecting Times (Air)
+    
+    **File:** `mct_air.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | icao_id | ICAO airport code | BIKF |
+    | standard | Standard MCT | 39 |
+    | domestic | Domestic MCT | 20 |
+    | international | International MCT | 60 |
+    
+    ---
+    
+    ### G. GTFS (Rail Timetables)
+    
+    **Folder:** `GTFS/`  
+    
+    - Standard GTFS format  
+      - Used to generate rail network
+    
+    ---
+    
+    ### H. Rail Stations Considered
+    
+    **File:** `rail_stations_considered.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | stop_id | GTFS stop ID | 007102002 |
+    
+    ---
+    
+    ### I. Minimum Connecting Times (Rail)
+    
+    **File:** `mct_rail.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | stop_id | Rail station stop ID | 007105000 |
+    | default_transfer_time | Minimum transfer time (minutes) | 6 |
+    
+    ---
+    
+    ### J. Airport & Rail Processing Times
+    
+    **Files:** `airport_processes.csv`, `rail_stations_processes.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | airport / station | Node ID | ACE / 007102002 |
+    | pax_type | Passenger type | all |
+    | k2g / k2p | Check-in to gate / station process | 90 / 15 |
+    | g2k / p2k | Gate to check-in / station process | 30 / 10 |
+    | k2g_multimodal / k2p_multimodal | Multimodal adjustment | 90 / 15 |
+    | g2k_multimodal / p2k_multimodal | Multimodal adjustment | 30 / 10 |
+    
+    ---
+    
+    ### K IATA-ICAO Mapping
+    
+    **File:** `iata_icao_static.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | IATA | IATA code | AAC |
+    | ICAO | ICAO code | HEAR |
+    
+    ---
+    
+    ### L. Air-Rail Transitions
+    
+    **File:** `air_rail_transitions.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | origin_station | Node origin | LEAL |
+    | destination_station | Node destination | 7160911 |
+    | layer_origin | Mode | air |
+    | layer_destination | Mode | rail |
+    | avg_travel_a_b | Travel time | 40 |
+    | avg_travel_b_a | Travel time | 40 |
+    
+    ---
+    
+    ### M. Regions Access
+    
+    **File:** `regions_access.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | region | Demand region | ES111 |
+    | station | Node ID | LEST |
+    | layer | Mode | air |
+    | pax_type | Passenger type | all |
+    | avg_d2i | Avg access time (min) | 53 |
+    | avg_i2d | Avg egress time (min) | 50 |
+    
+    ---
+    
+    ### N Heuristics (Optional)
+    
+    **Files:** `air_time_heuristics.csv`, `rail_time_heuristics.csv`
+    
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | min_dist | Min distance | 0 |
+    | max_dist | Max distance | 150 |
+    | time | Heuristic time (minutes) | 25 |
+    
+    See [Heuristics Computation Inputs](#heuristics-computation-inputs) for more details.
+    
+    ---
+    
+    ### O. Aircraft & Airlines
+    
+    **Files:** `ac_type_icao_iata_conversion.csv`, `ac_mtow.csv`, `ac_wtc.csv`, `airline_ao_type.csv`, `airline_iata_icao.csv`  
+    
+    - Aircraft types, maximum take-off weights, wake turbulence categories, airline types, and code conversions.
+    - Used for tactical inputs generation.
+    
+    ---
 
 
 ## Heuristics Computation Inputs
@@ -419,6 +443,8 @@ Computed internally from:
 
 ---
 
-## Tactical Pipeline Inputs
+## 5. Tactical Pipeline Inputs
 
 ---
+
+## 6. Performance Indicators

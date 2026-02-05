@@ -22,11 +22,11 @@ Other documents and reports:
 ## Articles
 Research articles describing or using MultiModX models:
 
-  - Delgado, L., Weiszer, M., de Boissieu, M., Bueno-Gonzlez, J. and Menendez-Pidal, L. (2025). [Strategic multimodal 
-    evaluator for air-rail networks](articles/EWGT_2025_MMX_Strategic.pdf). 27th Euro Working Group on Transportation Meeting (EWGT 2025).
-  - Weiszer, M., Delgado, L. and Menendez-Pidal, L. (2025). [Air-rail multimodal disruption management - Rail network 
-    supporting air disruptions](articles/SIDs_2025_paper_108-final.pdf). SESAR Innovation Days 2025.
-  - Weiszer, M., Delgado, L. and Gurtner, G. (2024).
-    [Evaluation of Passenger Connections in Air-rail Multimodal Operations](articles/SIDs_2024_paper_050_final.pdf). 
+  - Delgado, L., Weiszer, M., de Boissieu, M., Bueno-Gonzlez, J. and Menendez-Pidal, L. (2025), [Strategic multimodal 
+    evaluator for air-rail networks](articles/EWGT_2025_MMX_Strategic.pdf), 27th Euro Working Group on Transportation Meeting (EWGT 2025).
+  - Weiszer, M., Delgado, L. and Menendez-Pidal, L. (2025), [Air-rail multimodal disruption management - Rail network 
+    supporting air disruptions](articles/SIDs_2025_paper_108-final.pdf), SESAR Innovation Days 2025.
+  - Weiszer, M., Delgado, L. and Gurtner, G. (2024),
+    [Evaluation of Passenger Connections in Air-rail Multimodal Operations](articles/SIDs_2024_paper_050_final.pdf), 
     SESAR Innovation Days 2024.
   

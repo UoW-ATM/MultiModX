@@ -11,7 +11,7 @@ of the required inputs and the computation of associated performance indicators.
 
 See additional documentation for information on:
 
-- [Input Files](../examples/input_format.md#tactical-pipeline-inputs)
+- [Input Files](../examples/input_format.md#5-tactical-pipeline-inputs)
 - [Performance indicators computation](../performance_indicators/index.md#tactical-indicators)
 
 
@@ -25,7 +25,7 @@ This documentation targets:
 ### Researchers
 
 - Study robustness in passenger-centric metrics of (re)planned networks under different levels of stress (delays)
-- Analyse the effectiveness of mechanisms to support multimodal connectivity
+- Analyse the effectiveness of mechanisms (e.g. fast-track to process multimodal passengers at airports) to support multimodal connectivity
 
 ### Scenario Analysts
 
@@ -44,8 +44,8 @@ Mercury can simulate **passengers with their itineraries** (including their conn
 connection  ✈️ ↔️ ✈️) and **multimodal itineraries** (✈️ ↔️ 🚆) when passengers are connecting with a rail service 
 (rail-to-flight, flight-to-rail). 
 
-The model also simulates the required **flight**, **rail services** and **ground mobility** (🚇, 🚌) (from rail station to airport and 
-from airport to rail station).
+The model also simulates the required **flight**, **rail services** and **ground mobility** (🚇, 🚌) (from rail station 
+to airport and from airport to rail station).
 
 [Figure A](#fig-multimodal-connections-types) shows the different type of multimodal connections considered.
 
@@ -58,6 +58,12 @@ from airport to rail station).
 
 The Evaluator can simulate any network, but focus on a given hub with its multimodal connectivity is a particularly well-suited
 use case.
+
+The Evaluator can also assess different levels of delays (e.g. in the ground mobility layer (connectivity between
+airports and rail stations)) and mechanisms that modify some connectivity parameters (e.g. fast-track at airport
+for multimodal passengers or dedicated bus line between airport and rail stations). These elements were evaluated for
+example in _Weiszer, M., Delgado, L. and Gurtner, G. (2024), 
+[Evaluation of Passenger Connections in Air-rail Multimodal Operations](articles/SIDs_2024_paper_050_final.pdf), SESAR Innovation Days 2024_.
 
 ---
 

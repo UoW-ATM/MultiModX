@@ -6,7 +6,7 @@ on passenger itineraries. These replanned operations are as reaction to disrupti
 
 See additional documentation for information on:
 
-- [Input Files](../examples/input_format.md#pretactical-replanning-pipeline-inputs)
+- [Input Files](../examples/input_format.md#4-pretactical-replanning-pipeline-inputs)
 - [TOML examples](../examples/toml_examples.md#pretactical-pipeline)
 - [Performance indicators computation](../performance_indicators/index.md#pre-tactical-replanned-operations-indicators)
 
@@ -119,7 +119,7 @@ These reflect modifications applied due to disruption:
 - Modified (replanned) rail timetables  
 - Additional flights/trains added post-disruption
 
-See [Input Files](../examples/input_format.md#pretactical-replanning-pipeline-inputs) section for examples.
+See [Input Files](../examples/input_format.md#4-pretactical-replanning-pipeline-inputs) section for examples.
 
 #### **Infrastructure Parameters**
 Min. Connecting Times (MCTs) and transition layers between modes.

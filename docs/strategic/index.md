@@ -5,7 +5,7 @@ demand assigment and passenger itineraries generation.
 
 See additional documentation for information on:
 
-- [Input Files](../examples/input_format.md#strategic-pipeline-inputs)
+- [Input Files](../examples/input_format.md#2-strategic-pipeline-inputs)
 - [TOML examples](../examples/toml_examples.md#strategic-pipeline)
 - [Performance indicators computation](../performance_indicators/index.md#strategic-indicators)
 
@@ -274,7 +274,7 @@ of the schedules (e.g. due to an optimisation (as performed by the Multimodal Sc
 (SOL400))).
 
 See high-level description of all the CSV input files in
-[Input Files Strategic Pipeline](../examples/input_format.md#strategic-pipeline-inputs) for the strategic
+[Input Files Strategic Pipeline](../examples/input_format.md#2-strategic-pipeline-inputs) for the strategic
 pipeline and [TOML - Policy Package](../examples/toml_examples.md#policy-package) for the definition of the Policy Package in the
 associated TOML config file.
 

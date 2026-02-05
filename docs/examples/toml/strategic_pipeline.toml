@@ -50,7 +50,7 @@
                                                                           #                                     archetype for all the
                                                                           #                                     intra-Spain mobility
                                                                           #                                     demand
-                                                                          # - international_spain_1_archetype/v=0.1 --> Sensitivitis of 1 
+                                                                          # - international_spain_1_archetype/v=0.1 --> Sensitivities of 1 
                                                                           #                                     single archetype for
                                                                           #                                     international demand
                                                                           #                                     starting-ending in Spain
@@ -68,7 +68,11 @@
         # In this sensitivities_logit example the n_archetypes are not provided. They'll be automatically taken from
         # the sensitivity_logit archetype_#.pickle files names
         logit_id = "spanish"
-        sensitivities = "logit/sensitivities_v0.5"
+        sensitivities = "logit/sensitivities_v0.5" # Here a different logit model sensitivities located in a folder
+                                                   # called logit/sensitivities_v0.5 within the experiment_path is
+                                                   # used. See sensitivities defined in the previous example
+                                                   # (international), for information on the sensitivities already
+                                                   # available within the libs/logit_model folder.
 
 # This section defines the mobility network (there is only one composed of several layers), which is composed of:
 # - n air networks (based on flight schedules)
