@@ -69,8 +69,13 @@ The table below summarises the main groups of input files:
 | Heuristics | Optional precomputed travel-time heuristics for path finding. See [Heuristics Computation Inputs](#heuristics-computation-inputs) for information on the heuristics. |
 
 
+??? note "Test"
+
+    This should be collapsible.
+
 **Note:** The structure below follows the order defined in `strategic_pipeline.toml`.  
 For reference, see the [TOML examples](toml_examples.md).
+
 
 ??? info "Strategic data files description"
     
