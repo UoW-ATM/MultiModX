@@ -63,7 +63,7 @@ The Evaluator can also assess different levels of delays (e.g. in the ground mob
 airports and rail stations)) and mechanisms that modify some connectivity parameters (e.g. fast-track at airport
 for multimodal passengers or dedicated bus line between airport and rail stations). These elements were evaluated for
 example in _Weiszer, M., Delgado, L. and Gurtner, G. (2024), 
-[Evaluation of Passenger Connections in Air-rail Multimodal Operations](articles/SIDs_2024_paper_050_final.pdf), SESAR Innovation Days 2024_.
+[Evaluation of Passenger Connections in Air-rail Multimodal Operations](../publications/articles/SIDs_2024_paper_050_final.pdf), SESAR Innovation Days 2024_.
 
 ---
 
