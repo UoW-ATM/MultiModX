@@ -100,7 +100,7 @@ The pipeline identifies the status of passengers and, for those stranded, finds 
 
 #### **Configuration**
 
-- `toml_config` — Replanning and network paths defined in a TOML file (experiment paths, replanned actions folder, planned network info) (see [TOML](../examples/toml_examples.md#pretactical-pipeline) section). The configuration file includes, crucially, the flexibility to be used to find suitable alternatives for stranded passengers.
+- `toml_config` — Replanning and network paths defined in a TOML file (experiment paths, replanned actions folder, planned network info) (see [TOML](../examples/toml_examples.md#4-pretactical-pipeline) section). The configuration file includes, crucially, the flexibility to be used to find suitable alternatives for stranded passengers.
 
 #### **Planned Network Inputs**
 These are taken from outputs of the strategic pipeline (considering the **originally planned** network):

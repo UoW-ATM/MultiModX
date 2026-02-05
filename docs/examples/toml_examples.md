@@ -26,7 +26,7 @@ here a description of the different elements of the configuration  files is prov
 
 ??? info "Policy package TOML description"
     ```toml
-    {{ read_file("examples/toml/policy_package.toml") }}
+    {{ read_file("examples/toml/policy_package.toml") | indent(4) }}
     ```
 
 ---
@@ -34,7 +34,7 @@ here a description of the different elements of the configuration  files is prov
 
 ??? info "Heuristics computation TOML description"
     ```toml
-    {{ read_file("examples/toml/heuristics_computation.toml") }}
+    {{ read_file("examples/toml/heuristics_computation.toml") | indent(4) }}
     ```
 
 ---
