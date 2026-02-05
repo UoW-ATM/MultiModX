@@ -15,10 +15,12 @@ here a description of the different elements of the configuration  files is prov
 
 ## 1. Strategic Pipeline
 
-??? info "Strategic pipeline TOML description"
+
+::: info "Strategic pipeline TOML description"
     ```toml
     {{ read_file("examples/toml/strategic_pipeline.toml") }}
     ```
+:::
 
 ---
 ## 2. Policy Package
