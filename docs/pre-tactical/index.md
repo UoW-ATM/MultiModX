@@ -22,7 +22,7 @@ Specify:
 - Output folder structure
 - Replanning constraints, to control which itineraries are valid as alternatives, and optimisation objectives, to select how to assign passengers to alternatives.
 
-See [TOML](../examples/toml_examples.md#pretactical-pipeline) for examples and description.
+See [TOML](../examples/toml_examples.md#4-pretactical-pipeline) for examples and description.
 
 ### 2. Run the replanning script
 

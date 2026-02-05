@@ -71,7 +71,7 @@ The table below summarises the main groups of input files:
 ??? info "Strategic pipeline data files description"
     
     **Note:** The structure below follows the order defined in `strategic_pipeline.toml`.  
-    For reference, see the [TOML examples](toml_examples.md).
+    For reference, see the [TOML examples](toml_examples.md#1-strategic-pipeline).
 
     ### A. Demand Data
     
@@ -251,7 +251,7 @@ The table below summarises the main groups of input files:
     | max_dist | Max distance | 150 |
     | time | Heuristic time (minutes) | 25 |
     
-    See [Heuristics Computation Inputs](#heuristics-computation-inputs) for more details.
+    See [Heuristics Computation Inputs](#3-heuristics-computation-inputs) for more details.
     
     ---
     
@@ -271,7 +271,7 @@ The Heuristics are computed to support the path finding algorithm (A*). These ca
 performed as a uniform cost search (UCS).
 
 This subset is sufficient to **compute travel-time heuristics** for the pathfinder. See 
-[heuristics_computation.toml](toml_examples.md) for example of TOML
+[heuristics_computation.toml](toml_examples.md#3-heuristics-computation) for example of TOML
 file configuring the [compute_air_rail_heuristics.py](https://github.com/UoW-ATM/MultiModX/blob/main/script/strategic/compute_air_rail_heuristics.py) script that is the one used to generate the heuristics.
 
 

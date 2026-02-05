@@ -59,7 +59,7 @@ python strategic_pipeline.py -tf ../../data/CS_example/v=0.1/CS_example.PP00.tom
 
 The strategic pipeline is fully **configuration-driven** via [TOML files](../examples/toml_examples.md), primarily:
 
-- [`strategic_pipeline.toml`](../examples/toml_examples.md#strategic-pipeline)
+- [`strategic_pipeline.toml`](../examples/toml_examples.md#1-strategic-pipeline)
 - [`policy_package.toml`](../examples/toml_examples.md#2-policy-package)
 
 At a high level, the configuration is organised as follows:
@@ -275,7 +275,7 @@ of the schedules (e.g. due to an optimisation (as performed by the Multimodal Sc
 
 See high-level description of all the CSV input files in
 [Input Files Strategic Pipeline](../examples/input_format.md#2-strategic-pipeline-inputs) for the strategic
-pipeline and [TOML - Policy Package](../examples/toml_examples.md#policy-package) for the definition of the Policy Package in the
+pipeline and [TOML - Policy Package](../examples/toml_examples.md#2-policy-package) for the definition of the Policy Package in the
 associated TOML config file.
 
 #### 3. Compute Potential Paths Stage
