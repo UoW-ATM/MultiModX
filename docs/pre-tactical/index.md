@@ -7,7 +7,7 @@ on passenger itineraries. These replanned operations are as reaction to disrupti
 See additional documentation for information on:
 
 - [Input Files](../examples/input_format.md#4-pretactical-replanning-pipeline-inputs)
-- [TOML examples](../examples/toml_examples.md#pretactical-pipeline)
+- [TOML examples](../examples/toml_examples.md#4-pretactical-pipeline)
 - [Performance indicators computation](../performance_indicators/index.md#pre-tactical-replanned-operations-indicators)
 
 

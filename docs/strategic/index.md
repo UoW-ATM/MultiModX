@@ -6,7 +6,7 @@ demand assigment and passenger itineraries generation.
 See additional documentation for information on:
 
 - [Input Files](../examples/input_format.md#2-strategic-pipeline-inputs)
-- [TOML examples](../examples/toml_examples.md#strategic-pipeline)
+- [TOML examples](../examples/toml_examples.md#1-strategic-pipeline)
 - [Performance indicators computation](../performance_indicators/index.md#strategic-indicators)
 
 
@@ -60,7 +60,7 @@ python strategic_pipeline.py -tf ../../data/CS_example/v=0.1/CS_example.PP00.tom
 The strategic pipeline is fully **configuration-driven** via [TOML files](../examples/toml_examples.md), primarily:
 
 - [`strategic_pipeline.toml`](../examples/toml_examples.md#strategic-pipeline)
-- [`policy_package.toml`](../examples/toml_examples.md#policy-package)
+- [`policy_package.toml`](../examples/toml_examples.md#2-policy-package)
 
 At a high level, the configuration is organised as follows:
 
