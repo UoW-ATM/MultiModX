@@ -39,3 +39,8 @@ here a description of the different elements of the configuration  files is prov
 
 ---
 ## 4. Pretactical Pipeline
+
+??? info "Pretactical pipeline TOML description"
+    ```toml
+    {{ read_file("examples/toml/pretactical_pipeline.toml") | indent(4) }}
+    ```

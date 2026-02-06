@@ -131,7 +131,7 @@ Min. Connecting Times (MCTs) and transition layers between modes.
 
 The pre-tactical replanning pipeline:
 
-1. **Load configuration**: Reads the [TOML](../examples/toml_examples.md#pretactical-pipeline) configuration file and the replanning operations from the `replanned_actions` folder.
+1. **Load configuration**: Reads the [TOML](../examples/toml_examples.md#4-pretactical-pipeline) configuration file and the replanning operations from the `replanned_actions` folder.
 2. **Applies the replanning to the network**: Read the _planned network_ and modifies its supply to reflect replanning actions (cancellations, replanned, added services) .
 3. **Identifies how passengers are impacted**: Classify passengers between not affected, affected but that can keep their itinerary (e.g., delayed, connections can be kept), and passengers who would be stranded (i.e., cancelled services and missed connections) (kept or delayed but connected).
 4. **Find alternatives for stranded passengers**: Recompute capacities available in services (removing stranded passengers), and using the capabilities of the [Strategic Evaluator](../strategic/index.md) compute possible itineraries for the stranded passengers. Finally, filtering alternatives to keep the ones that respect the defined operational constraints (e.g. keep (or not) operator, keep (or not) origin and/or destination infrastructure nodes (airports, rail stations)) 
