@@ -322,6 +322,7 @@ file configuring the [compute_air_rail_heuristics.py](https://github.com/UoW-ATM
 **Input data formats** required by the **pre-tactical passenger replanning pipeline**.
 
 Inputs consist of:
+
 - Planned network outputs
 - Replanned operational modifications
 - Infrastructure and transfer constraints
@@ -334,8 +335,8 @@ All paths are provided via the TOML configuration file.
     **Note:**
     
     - All inputs must be temporally consistent (time zones, date formats).
-      - Identifiers (service IDs, stop IDs) must match across datasets.
-      - Inputs are assumed to be **pre-validated** for structural correctness.
+    - Identifiers (service IDs, stop IDs) must match across datasets.
+    - Inputs are assumed to be **pre-validated** for structural correctness.
     
     ### From strategic pipeline (planned network)
     Note: See files and structure in the [strategic pipeline](#2-strategic-pipeline-inputs)
@@ -343,112 +344,111 @@ All paths are provided via the TOML configuration file.
     #### A. Planned Passenger Assignments
     
     **Description:**  
-    Passenger itineraries from the strategic or planned scenario.
+    Passenger itineraries from the strategic or planned scenario. As result from the Strategic Pipeline.
     
     **Typical content:**
     - Passenger or demand identifier
-      - Assigned itinerary
-      - Service sequence
-      - Travel times and costs
+    - Assigned itinerary
+    - Service sequence
+    - Travel times and costs
     
     **Source:**  
     Output of the strategic pipeline.
     
     
-    #### B. Planned Flight Schedules
+    #### B. Planned Network: Flight schedules, rail timetables, connections
     
     **Description:**  
-    Baseline flight schedules prior to disruption.
+    Baseline flight schedules and rail time table prior to disruption.
     
-    **Format:** CSV
-    
-    Key fields include:
-    - `service_id`
-      - `origin`, `destination`
-      - `sobt`, `sibt`
-      - `provider`
-      - `seats`
-    
-    
-    #### C. Planned Rail Schedules (GTFS)
-    
-    **Description:**  
-    Rail services in GTFS format.
-    
-    **Required files:**
-    - `stops.txt`
-      - `trips.txt`
-      - `stop_times.txt`
-      - `calendar.txt`
-    
-    Used to construct the planned rail network.
-    
-    
-    #### D. Rail Stations Considered
-    
-    **File:** `rail_stations_considered.csv`
-    
-    | Column | Description |
-    |------|-------------|
-    | stop_id | GTFS stop identifier |
-    
-    Only the listed stations are retained in the replanning network.
+    **Format:** CSVs
 
+    **Provided by indicating path to output of Strategic Evaluator Pipeline**
 
-    ### E. Minimum Connecting Times (MCT)
-    
-    **Description:**  
-    Minimum transfer times between services.
-    
-    **Includes:**
-    - Air-to-air
-      - Rail-to-rail
-      - Air-to-rail transitions
-    
-    Used to validate itinerary feasibility during reassignment.
-    
 
     ### Replanned Actions
-    Note: Actions to be applied to the planned network to create the replanned one. These can be: cancelled,
+    *Note:* Actions to be applied to the planned network to create the replanned one. These can be: cancelled,
     modified or added flight and rail services.
+
+    These are saved in a **replaned_actions** folder as individual CSV files.
 
     ### A. Replanned Actions – Flights
     
     **Description:**  
-    Operational changes applied after disruption.
+    Operational changes applied after disruption. These will override the planned flights in the network. 
+    There can be one or several of these files:
+
+    **Cancelled flights**: `flight_cancelled_#.csv'
+
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | service_id | Id of flight to be cancelled | AA_8381 |
+
+    **Replanned/Modified flights:** `flight_replanned_proc_#.csv`
+    New schedules for flights. New all the information that the flight will need as the original will be removed
+    from the dataframe and replaced by this one.
+
+    | Column | Description | Example |
+    |--------|------------|---------|
+    ! service_id | Flight Id | IB_3853 |
+    | origin | Airport code of origin | GCRR |
+    | destination | Airport code of destination | LEMD |
+    | sobt | SOBT in UTC | 2019-09-06 11:13:00 |
+    | sobt_tz| Time zone SOBT | +00:00 |
+    | sibt | SIBT in UTC | 2019-09-06 13:48:00 |
+    | sibt_tz| Time zone SIBT | +00:00 |
+    | sobt_local | SOBT in in local time | 2019-09-06 12:13:00 |
+    | sobt_local_tz| Time zone SOBT in local time| +01:00 |
+    | sibt_local | SIBT in local time | 2019-09-06 15:48:00 |
+    | sibt_local_tz| Time zone SIBT in local time | +02:00 |
+    | provider | Operator | IB |
+    | act_type | Aircraft type | 32A |
+    | seats | Number of seats | 177 |
+    | gcdistance | Great circle distance (km) between origin and destination | 1574 |
+    | alliance | Airline alliance | IB |
+    | cost  | Cost (Eur)  | 0 |
+    | emissions | Emissions (CO2) | 1 |
+
+    **Added flights:** `flight_added_schedules_proc_#.csv`
+
+    Same format at flgiht_schedules_proc_#.csv as output from Strategic Pipeline. Must contain
+    same elements as replannign.
     
-    Possible inputs:
-    - Cancelled flights
-    - Modified flight schedules
-    - Additional flights
-    
-    These override or extend the planned flight network.
-    
+
     ### B. Replanned Actions – Rail
     
     **Description:**  
-    Rail timetable changes due to disruption.
-    
-    Possible inputs:
-    - Cancelled rail services
-    - Modified rail trips
-    - Additional rail trips
-    
-    Applied on top of the planned GTFS network.
-    
-    
-    ### Computed
-    
-    ### A. Capacity Information
-    
-    **Description:**  
-    Available capacity per service after replanning.
-    
-    Computed internally from:
-    - Planned seat counts
-      - Already assigned passengers
-      - Cancelled services
+    Rail timetable changes due to disruption. As in the flight, these will override the planned rail services in the
+    network. There can be one or several of these:
 
+    **Cancelled rail services**: `rail_cancelled_#.csv'
+
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | service_id | Id of rail service to be cancelled | 703 |
+    | from | Optional stop number from which to cancel the service, if not provided then from stop 1 | 4 |
+    | to | Optional stop number until when to cancel the service, if not provided until last stop | 7 |
+
+    The example provided will cancel service 703 between stops 4 and 7.
+
+    **Replanned/Modified rail services:** `rail_timetable_replanned_all_gtfs_#.csv`
+    
+    Similar format as GTFS:
+
+    | Column | Description | Example |
+    |--------|------------|---------|
+    | trip_id | Rail service id | 231 |
+    | stop_id | Id of stop | 007174200 |
+    | arrival_time | Time of arrival to stop | 08:10:00 |
+    | departure_time | Time leaving the stop | 08:11:00 |
+    | stop_sequence | Sequence in stops | 3 | 
+    | stpo_type | Type of stop | 1 | 
+    | alliance | Alliance of rail operator if any | R |
+    | country | Country of rail service | LE |
+
+    **Added rail services:** `rail_timetable_added_all_gtfs_#.csv`
+
+    Same as rail_timetable_replanned_all_gtfs_#.csv
 
 
 ---

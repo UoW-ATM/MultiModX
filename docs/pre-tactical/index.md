@@ -27,7 +27,7 @@ See [TOML](../examples/toml_examples.md#4-pretactical-pipeline) for examples and
 ### 2. Run the replanning script
 
 ```bash
-python replanning_passengers_script.py -tf your_config.toml
+python replanning_passengers_script.py -tf your_config.toml -np 100 -ni 50 -mc 1 -hpc -ppv 0
 ```
 
 ---
@@ -100,7 +100,9 @@ The pipeline identifies the status of passengers and, for those stranded, finds 
 
 #### **Configuration**
 
-- `toml_config` — Replanning and network paths defined in a TOML file (experiment paths, replanned actions folder, planned network info) (see [TOML](../examples/toml_examples.md#4-pretactical-pipeline) section). The configuration file includes, crucially, the flexibility to be used to find suitable alternatives for stranded passengers.
+- `toml_config` — Replanning and network paths defined in a TOML file (experiment paths, replanned actions folder, 
+planned network info) (see [TOML](../examples/toml_examples.md#4-pretactical-pipeline) section). The configuration file 
+includes, crucially, the flexibility to be used to find suitable alternatives for stranded passengers.
 
 #### **Planned Network Inputs**
 These are taken from outputs of the strategic pipeline (considering the **originally planned** network):
@@ -109,7 +111,11 @@ These are taken from outputs of the strategic pipeline (considering the **origin
 - Flight schedules (processed)  
 - Rail timetables (processed GTFS)  
 - Rail GTFS stops and stops considered  
-- Capacity per service (pre-computed)
+- Other network parameters, such as:
+  - Processing time of passengers at infrastructure nodes
+  - Minimum connecting times intra-mode
+  - Regions access/egress
+  - Multimodal connectivity between layers with minimum connecting times (MCTs)
 
 #### **Replanned Network Inputs**
 These reflect modifications applied due to disruption:
@@ -120,9 +126,6 @@ These reflect modifications applied due to disruption:
 - Additional flights/trains added post-disruption
 
 See [Input Files](../examples/input_format.md#4-pretactical-replanning-pipeline-inputs) section for examples.
-
-#### **Infrastructure Parameters**
-Min. Connecting Times (MCTs) and transition layers between modes.
 
 
 
@@ -295,7 +298,7 @@ These KPIs are derived from the **replanned passenger itineraries**, **service s
 Typical indicators include:
 
 - **Total travel time changes**
-- **Missed connections and denied boarding**
+- **Missed connections and stranded passengers**
 - **Load factor variations**
 - **Mode share impacts** (air / rail / multimodal)
 
