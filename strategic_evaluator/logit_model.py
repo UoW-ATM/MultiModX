@@ -688,9 +688,9 @@ def assign_demand_to_paths(
 ):
     logger.important_info("Predict demand on paths")
 
-    experiment_path = Path(network_paths_config["general"]["experiment_path"])
     n_archetypes = logit_model.get('n_archetypes')
-    sensitivities_path = experiment_path / Path(logit_model["sensitivities"])
+    # path is alrady in sensitivities (put there by strategic_pipeline pre-processing of TOML config file.
+    sensitivities_path = logit_model["sensitivities"]
 
     paths_final = paths.pipe(
         format_paths_for_predict, n_alternatives, max_connections, network_paths_config

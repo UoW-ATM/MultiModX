@@ -35,25 +35,29 @@
         logit_id = "international" # id of logit model. Can be anything, but distinct to others. Used as key internally.
                                    # if another demand uses same logit_id then this one will be replaced by the last
                                    # definition.
-        sensitivities = "../../../libs/logit_model/international_spain_1_archetype/v=0.1" # By default this is a path within 
-                                                                                          # experiment_path with the sensitivity
-                                                                                          # files for the logit model 
-                                                                                          # (archetype_#.pickle). However,
-                                                                                          # the repository provides three calibrated
-                                                                                          # sensitivies already. These are located
-                                                                                          # within libs/logit_model folder:
-                                                                          # - intra_spain_6_archetypes/v=0.5 --> Sensitivities of 6
-                                                                          #                                     archetypes used in
-                                                                          #                                     MultiModX deliverables
-                                                                          #                                     for intra-Spain mobility
-                                                                          # - intra_spain_1_archetype/v=0.1 --> Sensitivitis of 1 single
-                                                                          #                                     archetype for all the
-                                                                          #                                     intra-Spain mobility
-                                                                          #                                     demand
-                                                                          # - international_spain_1_archetype/v=0.1 --> Sensitivities of 1 
-                                                                          #                                     single archetype for
-                                                                          #                                     international demand
-                                                                          #                                     starting-ending in Spain
+        logit_path = "path_to_logit_model" # This is an optional parameter. If the parameter is not provided (i.e., the
+                                           # logit_path is not in the TOML (as in the example below for spanish) or it
+                                           # is empty (i.e., logit_path=""), then the by default path will be used:
+                                           # ../../libs/logit_model, which contains sensitivities already callibrated
+                                           # for intra Spain and international from Spain mobility (see sensitivities
+                                           # below). Otherwise, if a path is pfovided, this should contain the relative
+                                           # path to the folder containing the logit model parameters (folder named in
+                                           # 'senstitivities' which contains the archetype_#.pickle files).
+        sensitivities = "international_spain_1_archetype/v=0.1" # The repository provides three calibrated sensitivies
+                                                                # already. These are located within libs/logit_model
+                                                                # folder:
+                                                                # - intra_spain_6_archetypes/v=0.5 --> Sensitivities of 6
+                                                                #                                     archetypes used in
+                                                                #                                     MultiModX deliverables
+                                                                #                                     for intra-Spain mobility
+                                                                # - intra_spain_1_archetype/v=0.1 --> Sensitivitis of 1 single
+                                                                #                                     archetype for all the
+                                                                #                                     intra-Spain mobility
+                                                                #                                     demand
+                                                                # - international_spain_1_archetype/v=0.1 --> Sensitivities of 1
+                                                                #                                     single archetype for
+                                                                #                                     international demand
+                                                                #                                     starting-ending in Spain
                                             
         compress_archetypes = true # This is an optional parameter. If not provided it will be considered as false.
                                    # If true, then all the demand per (date, origin, destination) is aggregated and
@@ -69,10 +73,10 @@
         # the sensitivity_logit archetype_#.pickle files names
         logit_id = "spanish"
         sensitivities = "logit/sensitivities_v0.5" # Here a different logit model sensitivities located in a folder
-                                                   # called logit/sensitivities_v0.5 within the experiment_path is
-                                                   # used. See sensitivities defined in the previous example
-                                                   # (international), for information on the sensitivities already
-                                                   # available within the libs/logit_model folder.
+                                                   # called logit/sensitivities_v0.5 within the default
+                                                   # ../../libs/logit_model is used. See sensitivities defined in the
+                                                   # previous example (international), for information on the
+                                                   # sensitivities already available within the libs/logit_model folder.
 
 # This section defines the mobility network (there is only one composed of several layers), which is composed of:
 # - n air networks (based on flight schedules)

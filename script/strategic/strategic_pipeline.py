@@ -41,6 +41,13 @@ def run_full_strategic_pipeline(toml_config, pc=1, n_paths=15, n_itineraries=50,
     demand_matrices = {}
     logit_models = {}
     for demand in toml_config["demand"]:
+        if demand["sensitivities_logit"].get('logit_path') is not None:
+            demand["sensitivities_logit"]["sensitivities"] = (Path(demand["sensitivities_logit"]["logit_path"]) /
+                                                              demand["sensitivities_logit"]["sensitivities"])
+        else:
+            demand["sensitivities_logit"]["sensitivities"] = (Path("../../libs/logit_model") /
+                                                              demand["sensitivities_logit"]["sensitivities"])
+
         logit_id=demand["sensitivities_logit"]["logit_id"]
         df_demand = read_origin_demand_matrix(demand["demand"])
         # If compress_archetypes is set in the TOML config file then
