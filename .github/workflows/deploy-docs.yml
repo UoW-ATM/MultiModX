@@ -30,6 +30,8 @@ jobs:
         run: echo "PYTHONPATH=$(pwd)/docs:$PYTHONPATH" >> $GITHUB_ENV
 
       - name: Build docs
+        env:
+          NO_MKDOCS_2_WARNING: 1
         run: |
           mkdocs build
 
