@@ -1,5 +1,7 @@
 # MultiModX
 
+![version](https://img.shields.io/badge/version-2.0.0-blue)
+
 **Strategic and Tactical Evaluation of Air-Rail Multimodal Networks** (SESAR Solution 399) from the MultiModX project.
 
 
@@ -71,6 +73,8 @@ Dataset Version 0.1 works with release v2.0 (to be placed inside 'data' folder).
     [Evaluation of Passenger Connections in Air-rail Multimodal Operations](docs/publications/articles/SIDs_2024_paper_050_final.pdf). 
     SESAR Innovation Days 2024.
 
+## Versioning
+See [CHANGELOG.md](CHANGELOG.md) for a full history of changes between versions.
 
 ## License
 
