@@ -10,6 +10,7 @@ import logging
 import sys
 import shutil
 import os
+# from memory_profiler import memory_usage
 
 from joblib import Parallel, delayed
 
@@ -1914,13 +1915,23 @@ def compute_avg_paths_from_itineraries(df_itineraries):
 
 
 def filter_similar_options(group, kpis, thresholds=None):
+    # Greedy first-match clustering --> could lead to different clusters
+    # depending on order of processing alternatives.
+    # Future work could be using a 'better' clustering algorithm: e.g. DBSCAN
+
     filtered_options = []
     clusters = {}
+
     # Remove the dropna as we want to keep options even if some KPIs are missing. They'll be replaced
     # by 0, which maybe it's not great, but at least not loosing options.
     # group = group.dropna(subset=kpis)
+
     for category in group['journey_type'].unique():
         category_group = group[group['journey_type'] == category]
+
+        # Sort before the greedy loop so anchor selection is stable. This is due to the fact that the
+        # clustering is a greedy algorithm which uses the first option as anchor.
+        category_group = category_group.sort_values(by=kpis).reset_index(drop=True)
 
         if thresholds is None:
             # Calculate data-driven thresholds as std of group
@@ -1968,7 +1979,90 @@ def filter_similar_options(group, kpis, thresholds=None):
     return [opt['option'] for opt in filtered_options], clusters
 
 
+
 def process_group_clustering(name, group, kpis, thresholds):
+    origin, destination = name
+
+    # Avoid duplicate columns (nservices may be in kpis)
+    cols = ['option', 'journey_type'] + list(dict.fromkeys(kpis))
+    group = group[cols].copy()
+    group[kpis] = group[kpis].fillna(0)
+
+    filtered_options, clusters = filter_similar_options(group, kpis, thresholds)
+
+    rows = []
+
+    for cluster_idx, (rep_option, options) in enumerate(clusters.items()):
+        cluster_df = group[group['option'].isin(options)]
+
+        row = {
+            'origin': origin,
+            'destination': destination,
+            'journey_type': cluster_df['journey_type'].iloc[0],
+            'cluster_id': cluster_idx,
+            'options_in_cluster': sorted(options),
+        }
+
+        for kpi in kpis:
+            row[kpi] = round(cluster_df[kpi].mean(), 2)
+
+        row['nservices'] = cluster_df['nservices'].mean()
+        row['alternative_id'] = f"{origin}_{destination}_{cluster_idx}"
+
+        rows.append(row)
+
+    return rows
+
+
+def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):
+
+    tb = time.time()
+    if kpis is None:
+        kpis = [
+            'total_travel_time',
+            'total_cost',
+            'total_emissions',
+            'total_waiting_time',
+            'nservices'
+        ]
+
+    df = df_itineraries.copy()
+    df['total_waiting_time'] = df['total_waiting_time'].fillna(0)
+
+    grouped = df.groupby(['origin', 'destination'], sort=False)
+
+    if pc > 1:
+        pc = min(pc, max(1, os.cpu_count() // 2))
+
+        results = Parallel(
+            n_jobs=pc,
+            backend='loky',
+            batch_size=50
+        )(
+            delayed(process_group_clustering)(name, group, kpis, thresholds)
+            for name, group in grouped
+        )
+    else:
+        results = [
+            process_group_clustering(name, group, kpis, thresholds)
+            for name, group in grouped
+        ]
+
+    end_time_clustering = time.time()
+    logger.important_info("Filtering and clustering done in, "
+                          + str(end_time_clustering - tb) + " seconds.")
+
+    # Flatten list of lists
+    final_rows = [row for group_rows in results for row in group_rows]
+
+    final_df = pd.DataFrame(final_rows)
+
+    return final_df
+
+
+## These two functions below are the previous version of the clusering. See comment in
+## cluster_options_itineraries_prev
+def process_group_clustering_prev(name, group, kpis, thresholds):
     try:
         options_cluster = filter_similar_options(group, kpis, thresholds)
         return (name[0], name[1], options_cluster)
@@ -1976,8 +2070,12 @@ def process_group_clustering(name, group, kpis, thresholds):
         del group
         gc.collect()
 
+def cluster_options_itineraries_prev(df_itineraries, kpis=None, thresholds=None, pc=1):
+    # This is the previous version of the clustering where the average kpis per cluster
+    # was computed after the clustering itself. This had the issue of memory explosion
+    # and high computation time. Kept only as reference as this is what was used in V1.0 of
+    # the pipeline
 
-def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1):
     start_time_clustering = time.time()
 
     # Default KPIs if none are provided
@@ -1989,15 +2087,21 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
 
     grouped_data = df_itineraries.groupby(['origin', 'destination'])
 
+    tb = time.time()
+
     # If pc > 1, use parallel computing, otherwise proceed sequentially
     if pc > 1:
         #with Parallel(n_jobs=pc, backend='loky') as parallel:
         #    results = parallel(delayed(process_group_clustering)(name, group, kpis, thresholds) for name, group in grouped_data)
         results = Parallel(n_jobs=pc, backend='loky')(
-            delayed(process_group_clustering)(name, group, kpis, thresholds) for name, group in grouped_data)
+            delayed(process_group_clustering_prev)(name, group, kpis, thresholds) for name, group in grouped_data)
         gc.collect()
     else:
-        results = [process_group_clustering(name, group, kpis, thresholds) for name, group in grouped_data]
+        results = [process_group_clustering_prev(name, group, kpis, thresholds) for name, group in grouped_data]
+
+    end_time_clustering = time.time()
+    logger.important_info("Filtering and clustering done in, "
+                          + str(end_time_clustering - tb) + " seconds.")
 
     # Convert results to DataFrame
     result = pd.DataFrame(results, columns=['origin', 'destination', 'options_cluster'])
@@ -2062,15 +2166,15 @@ def cluster_options_itineraries(df_itineraries, kpis=None, thresholds=None, pc=1
     # Flatten options list
     clusters_df = clusters_df.explode('options_in_cluster')
 
-    #print("THEREI", len(clusters_df), len(df_itineraries))
-    #print((df_itineraries.memory_usage(deep=True) / (1024 * 1024)).astype(float).round(5).astype(str) + ' MB')
-    #print((clusters_df.memory_usage(deep=True) / (1024 * 1024)).astype(float).round(5).astype(str) + ' MB')
+    # print("THEREI", len(clusters_df), len(df_itineraries))
+    # print((df_itineraries.memory_usage(deep=True) / (1024 * 1024)).astype(float).round(5).astype(str) + ' MB')
+    # print((clusters_df.memory_usage(deep=True) / (1024 * 1024)).astype(float).round(5).astype(str) + ' MB')
 
     # Merge with df_itineraries once instead of filtering in a loop
     merged_df = clusters_df.merge(df_itineraries, left_on=['options_in_cluster', 'origin', 'destination'],
                                   right_on=['option', 'origin', 'destination'], how='left')
 
-    #print("THEREJ", len(merged_df))
+    # print("THEREJ", len(merged_df))
 
     # Group by cluster, origin, destination
     grouped = merged_df.groupby(['origin', 'destination', 'cluster_id'])
@@ -2299,9 +2403,9 @@ def assing_pax_to_services(df_schedules, df_demand, df_possible_itineraries, par
                     r'_.*', '', regex=True)
 
     # Initialize unique IDs for df_demand
-    #print(df_demand)
-    #sys.exit(0)
-    #df_demand['id'] = np.arange(1, len(df_demand) + 1)
+    # print(df_demand)
+    # sys.exit(0)
+    # df_demand['id'] = np.arange(1, len(df_demand) + 1)
 
     # Step 0: If journey_type is none then mode should be none too
     df_possible_itineraries.loc[(df_possible_itineraries['journey_type']=='none'), 'mode_0'] = None
