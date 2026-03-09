@@ -43,8 +43,14 @@ The models are complemented by:
 2. A **Strategic Dashboard**: To visualise some of the Strategic Evaluator results.
 
 
+## Dataset sample
+
+- **Sample dataset** available in [https://doi.org/10.5281/zenodo.18600289](https://doi.org/10.5281/zenodo.18600289). 
+Dataset Version 0.1 works with release v2.0 (to be placed inside 'data' folder). See [Technical documentation](https://uow-atm.github.io/MultiModX/examples/input_format/) for more details on data and configuration.
+
 ## Documentation
 
+### Technical documentation
 - **Technical documentation** in [https://uow-atm.github.io/MultiModX](https://uow-atm.github.io/MultiModX/).
 
 

@@ -10,7 +10,8 @@ It is split into five sections:
 5. [Tactical Pipeline Inputs](#5-tactical-pipeline-inputs)
 6. [Performance Indicators](#6-performance-indicators)
 
-A **sample dataset** containing minimal valid inputs is available on Zenodo: [Download Sample Inputs](https://zenodo.org/your-dataset-link)  
+A **sample dataset** containing minimal valid inputs is available on Zenodo: 
+[Download Sample Inputs](https://doi.org/10.5281/zenodo.18600289). Dataset v0.1 works with release v2.0 and should be placed inside 'data' folder.  
 
 ---
 
